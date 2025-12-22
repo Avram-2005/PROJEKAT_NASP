@@ -1,20 +1,27 @@
 package projekatnasp
 
 import (
+	"fmt"
 	"math"
 	"math/bits"
 )
 
 type hyperLogLog struct {
-	m   uint64
-	p   uint8
-	reg []uint8
+	m       uint64 //hyperLogLog set size
+	p       uint8  //hyperLogLog precision
+	buckets []uint8
 }
 
+// constructor
 func NewHyperLogLog(p uint8) (*hyperLogLog, error) {
 	hll := hyperLogLog{}
+	//preciznost je ocekivana da bude unutar odredjenog opsega, ako nije, baca error
+	if p < HLL_MIN_PRECISION || p > HLL_MAX_PRECISION {
+		return &hll, fmt.Errorf("hyperLogLog precision should be between 4 and 16")
+	}
 	hll.p = p
 	hll.m = uint64(math.Pow(2, float64(hll.p)))
+	hll.buckets = make([]uint8, 0)
 	return &hll, nil
 }
 
@@ -34,7 +41,7 @@ func trailingZeroBits(value uint64) int {
 
 func (hll *hyperLogLog) Estimate() float64 {
 	sum := 0.0
-	for _, val := range hll.reg {
+	for _, val := range hll.buckets {
 		sum += math.Pow(math.Pow(2.0, float64(val)), -1)
 	}
 
@@ -53,7 +60,7 @@ func (hll *hyperLogLog) Estimate() float64 {
 
 func (hll *hyperLogLog) emptyCount() int {
 	sum := 0
-	for _, val := range hll.reg {
+	for _, val := range hll.buckets {
 		if val == 0 {
 			sum++
 		}
