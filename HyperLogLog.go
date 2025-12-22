@@ -11,7 +11,7 @@ type HyperLogLog struct {
 	reg []uint8
 }
 
-// helper files :)
+// helper functions :)
 const (
 	HLL_MIN_PRECISION = 4
 	HLL_MAX_PRECISION = 16
