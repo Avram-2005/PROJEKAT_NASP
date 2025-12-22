@@ -5,10 +5,17 @@ import (
 	"math/bits"
 )
 
-type HyperLogLog struct {
+type hyperLogLog struct {
 	m   uint64
 	p   uint8
 	reg []uint8
+}
+
+func NewHyperLogLog(p uint8) (*hyperLogLog, error) {
+	hll := hyperLogLog{}
+	hll.p = p
+	hll.m = uint64(math.Pow(2, float64(hll.p)))
+	return &hll, nil
 }
 
 // helper functions :)
@@ -25,7 +32,7 @@ func trailingZeroBits(value uint64) int {
 	return bits.TrailingZeros64(value)
 }
 
-func (hll *HyperLogLog) Estimate() float64 {
+func (hll *hyperLogLog) Estimate() float64 {
 	sum := 0.0
 	for _, val := range hll.reg {
 		sum += math.Pow(math.Pow(2.0, float64(val)), -1)
@@ -44,7 +51,7 @@ func (hll *HyperLogLog) Estimate() float64 {
 	return estimation
 }
 
-func (hll *HyperLogLog) emptyCount() int {
+func (hll *hyperLogLog) emptyCount() int {
 	sum := 0
 	for _, val := range hll.reg {
 		if val == 0 {
