@@ -1,6 +1,8 @@
 package projekatnasp
 
 import (
+	"crypto/md5"
+	"encoding/binary"
 	"fmt"
 	"math"
 	"math/bits"
@@ -12,7 +14,7 @@ type hyperLogLog struct {
 	buckets []uint8
 }
 
-// constructor
+// HyperLogLog constructor-p(precision) must be between 4 and 16
 func NewHyperLogLog(p uint8) (*hyperLogLog, error) {
 	hll := hyperLogLog{}
 	//preciznost je ocekivana da bude unutar odredjenog opsega, ako nije, baca error
@@ -21,8 +23,17 @@ func NewHyperLogLog(p uint8) (*hyperLogLog, error) {
 	}
 	hll.p = p
 	hll.m = uint64(math.Pow(2, float64(hll.p)))
-	hll.buckets = make([]uint8, 0)
+	hll.buckets = make([]uint8, hll.m)
 	return &hll, nil
+}
+
+func (hll *hyperLogLog) Add(text string) {
+	hashValue := hash(text)
+	bucket := firstKbits(hashValue, uint64(hll.p))
+	value := trailingZeroBits(hashValue) + 1
+	if hll.buckets[bucket] < uint8(value) {
+		hll.buckets[bucket] = uint8(value)
+	}
 }
 
 // helper functions :)
@@ -66,4 +77,10 @@ func (hll *hyperLogLog) emptyCount() int {
 		}
 	}
 	return sum
+}
+
+func hash(text string) uint64 {
+	fn := md5.New()
+	fn.Write([]byte(text))
+	return binary.BigEndian.Uint64(fn.Sum(nil))
 }
