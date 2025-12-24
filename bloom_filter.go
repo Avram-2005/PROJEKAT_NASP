@@ -8,40 +8,48 @@ import (
 	"time"
 )
 
-type BloomFilter struct {
-	// TODO: Reconsider the name
-	bitfields []byte
+type HashWithSeed struct {
+	Seed []byte
 }
 
-func (bf BloomFilter) IsIn(data []byte) (bool, error) {
+type bloomFilter struct {
+	// TODO: Reconsider the name
+	bitset []byte
+	hashFunctions []HashWithSeed
+	m uint
+	k uint
+}
+
+func (bf bloomFilter) IsFound(data []byte) (bool, error) {
 	return false, errors.New("not implemented")
 }
 
-func (bf BloomFilter) Set(data []byte) error {
+func (bf bloomFilter) Set(data []byte) error {
 	return errors.New("not implemented")
 }
 
-func New(expectedElements int, falsePositiveRate float64) (BloomFilter, error) {
-	return BloomFilter{}, errors.New("not implemented")
+func NewBloomFilter(expectedElements int, falsePositiveRate float64) (bloomFilter, error) {
+	// TODO: check params
+	return bloomFilter{}, errors.New("not implemented")
 }
 
-func Dump(bf BloomFilter, filename string) (error) {
+func DumpBloomFilter(bf bloomFilter, filename string) (error) {
 	return errors.New("not implemented")
 }
 
-func Load(filename string) (BloomFilter, error) {
-	return BloomFilter{}, errors.New("not implemented")
+func LoadBloomFilter(filename string) (bloomFilter, error) {
+	return bloomFilter{}, errors.New("not implemented")
 }
 
 // PERF: Save the masks maybe
-func (bf BloomFilter) setBit(i uint64) {
-	target := bf.bitfields[i/8]
+func (bf bloomFilter) setBit(i uint) {
+	target := bf.bitset[i/8]
 	var mask byte = 1 << (i % 8)
-	bf.bitfields[i/8] = target | mask
+	bf.bitset[i/8] = target | mask
 }
 
-func (bf BloomFilter) getBit(i uint64) bool {
-	target := bf.bitfields[i/8]
+func (bf bloomFilter) getBit(i uint) bool {
+	target := bf.bitset[i/8]
 	var mask byte = 1 << (i % 8)
 	return (target & mask) != 0
 }
@@ -52,10 +60,6 @@ func calculateM(expectedElements int, falsePositiveRate float64) uint {
 
 func calculateK(expectedElements int, m uint) uint {
 	return uint(math.Ceil((float64(m) / float64(expectedElements)) * math.Log(2)))
-}
-
-type HashWithSeed struct {
-	Seed []byte
 }
 
 func (h HashWithSeed) hash(data []byte) uint64 {
