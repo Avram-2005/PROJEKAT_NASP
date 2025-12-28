@@ -2,6 +2,7 @@ package bloom_filter
 
 import (
 	"encoding/binary"
+	"reflect"
 	"testing"
 )
 
@@ -49,5 +50,14 @@ func TestFound(t *testing.T) {
 		if false_positives > int(float64(LENGTH)*FALSE_POSITIVE_RATE*1.6) {
 			t.Errorf("There are %d false-positives", false_positives)
 		}
+	}
+}
+
+func TestSerialize(t *testing.T) {
+	bf, _ := NewBloomFilter(LENGTH, FALSE_POSITIVE_RATE)
+	data := bf.Dump()
+	loaded := LoadBloomFilter(data)
+	if !reflect.DeepEqual(bf, loaded) {
+		t.Error("Serialized then deserialized is not the same as the starting BloomFilter. Expected", bf, "but was", loaded)
 	}
 }
