@@ -1,29 +1,41 @@
-package main
+package SimHash
 
 import (
 	"crypto/md5"
 	"fmt"
+	"math/bits"
 	"strings"
 )
 
-func splitString(s string) []string {
+func splitString(s string) map[string]int {
 	sa := strings.Split(strings.ToLower(s), " ")
+	stringMap := make(map[string]int)
 	for _, i := range sa {
 		fmt.Println(i)
+		_, ok := stringMap[i]
+		if ok {
+			stringMap[i] += 1
+		} else {
+			stringMap[i] = 1
+		}
+
 	}
-	return sa
+	return stringMap
 }
-func MD5Hash(data []string) [][16]byte {
+func md5Hash(data map[string]int) ([][16]byte, []int) {
 	hashes := make([][16]byte, len(data))
-
-	for i, s := range data {
-		hashes[i] = md5.Sum([]byte(s))
+	multiply := make([]int, len(data))
+	i := 0
+	for key, value := range data {
+		hashes[i] = md5.Sum([]byte(key))
+		multiply[i] = value
+		i++
 	}
 
-	return hashes
+	return hashes, multiply
 }
 
-func HammingDistance(hashes [][16]byte) [16]byte {
+func hammingDistance(hashes [][16]byte, multiply []int) ([16]byte, int) {
 	var result [16]byte
 
 	for i := 0; i < 16; i++ {
@@ -31,9 +43,9 @@ func HammingDistance(hashes [][16]byte) [16]byte {
 			sum := 0
 			mask := byte(1 << (7 - j))
 
-			for _, h := range hashes {
-				if h[i]&mask != 0 {
-					sum++
+			for k := 0; k < len(hashes); k++ {
+				if hashes[k][i]&mask != 0 {
+					sum += 1 * multiply[k]
 				} else {
 					sum--
 				}
@@ -45,19 +57,16 @@ func HammingDistance(hashes [][16]byte) [16]byte {
 		}
 	}
 
-	return result
+	count := 0
+	for _, b := range result {
+		count += bits.OnesCount8(b)
+	}
+	return result, count
 }
 
-// Sve se jos testira
-// DONT JUDGE
-func main() {
-	text := "Ovo je neki test tekst"
-
+func GetSimHashValue(text string) int {
 	words := splitString(text)
-	hashes := MD5Hash(words)
-	center := HammingDistance(hashes)
-	for i := 0; i < len(hashes); i++ {
-		fmt.Println(hashes[i])
-	}
-	fmt.Println(center)
+	hashes, multiply := md5Hash(words)
+	_, value := hammingDistance(hashes, multiply)
+	return value
 }
