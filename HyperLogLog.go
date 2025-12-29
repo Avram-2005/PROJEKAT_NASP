@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"math/bits"
+	"os"
 )
 
 type hyperLogLog struct {
@@ -40,6 +41,60 @@ func (hll *hyperLogLog) Add(text string) {
 	if hll.buckets[bucket] < uint8(value) {
 		hll.buckets[bucket] = uint8(value)
 	}
+}
+
+func (hll *hyperLogLog) Serialize(FileName string) error {
+	bytes := make([]byte, 10)
+	binary.BigEndian.PutUint16(bytes, uint16(hll.p))
+	binary.BigEndian.PutUint64(bytes, hll.m)
+	bytes = append(bytes, hll.buckets...)
+
+	filePath := fmt.Sprintf(FileName, os.PathSeparator)
+	file, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return fmt.Errorf("Error with opening file")
+	}
+	defer file.Close()
+
+	_, err = file.Write(bytes)
+	if err != nil {
+		return fmt.Errorf("Error with writing to file")
+	}
+	return nil
+}
+
+func Deserialize(FileName string) (*hyperLogLog, error) {
+	filePath := fmt.Sprintf(FileName, os.PathSeparator)
+	file, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return nil, fmt.Errorf("Error with opening file")
+	}
+
+	defer file.Close()
+	file.Seek(0, 0)
+	p := make([]byte, 2)
+	_, err = file.Read(p)
+	if err != nil {
+		panic(err)
+	}
+	m := make([]byte, 8)
+	_, err = file.Read(m)
+	if err != nil {
+		panic(err)
+	}
+	_, err = file.Read(m)
+	bucketLen := binary.BigEndian.Uint64(m)
+	buckets := make([]byte, bucketLen)
+	_, err = file.Read(buckets)
+	if err != nil {
+		panic(err)
+	}
+
+	return &hyperLogLog{
+		p:       uint8(binary.BigEndian.Uint16(p)),
+		m:       bucketLen,
+		buckets: buckets,
+	}, nil
 }
 
 // helper functions :)
