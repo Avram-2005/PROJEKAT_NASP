@@ -19,15 +19,11 @@ type bloomFilter struct {
 	bitset       []byte
 }
 
-var masks = [8]byte{
-	1 << 0, 1 << 1, 1 << 2, 1 << 3, 1 << 4, 1 << 5, 1 << 6, 1 << 7,
-}
-
 func (bf *bloomFilter) IsFound(data []byte) bool {
 	for _, hashFunc := range bf.hashFuncs {
 		i := hashFunc.hash(data) % bf.numBits
 		target := bf.bitset[i/8]
-		if target&masks[i%8] == 0 {
+		if target&(1<<i%8) == 0 {
 			return false
 		}
 	}
@@ -38,7 +34,7 @@ func (bf *bloomFilter) Set(data []byte) {
 	for _, hashFunc := range bf.hashFuncs {
 		i := hashFunc.hash(data) % bf.numBits
 		target := bf.bitset[i/8]
-		bf.bitset[i/8] = target | masks[i%8]
+		bf.bitset[i/8] = target | (1 << i % 8)
 	}
 }
 
