@@ -9,27 +9,33 @@ import (
 )
 
 type hyperLogLog struct {
-	m       uint64 //hyperLogLog set size
-	p       uint8  //hyperLogLog precision
-	buckets []uint8
+	m       uint64  //hyperLogLog set size
+	p       uint8   //hyperLogLog precision
+	buckets []uint8 //hyperLogLog set
 }
 
 // HyperLogLog constructor-p(precision) must be between 4 and 16
 func NewHyperLogLog(p uint8) (*hyperLogLog, error) {
-	hll := hyperLogLog{}
 	//preciznost je ocekivana da bude unutar odredjenog opsega, ako nije, baca error
 	if p < HLL_MIN_PRECISION || p > HLL_MAX_PRECISION {
-		return &hll, fmt.Errorf("hyperLogLog precision should be between 4 and 16")
+		return nil, fmt.Errorf("hyperLogLog precision should be between 4 and 16")
 	}
-	hll.p = p
-	hll.m = uint64(math.Pow(2, float64(hll.p)))
-	hll.buckets = make([]uint8, hll.m)
-	return &hll, nil
+	//bit shiftujemo da bi smo dobili m = 2 na stepen p
+	m := uint64(1 << p)
+	buckets := make([]uint8, m)
+	return &hyperLogLog{
+		m:       m,
+		p:       p,
+		buckets: buckets,
+	}, nil
 }
 
+// Funkcija za dodavanje string-a u hyperloglog
 func (hll *hyperLogLog) Add(text string) {
 	hashValue := hash(text)
+	//Trazimo prvih k-bitova za kljuc
 	bucket := firstKbits(hashValue, uint64(hll.p))
+	//Gledamo koliko nula ima na kraju, i dodajemo jos jedan na to
 	value := trailingZeroBits(hashValue) + 1
 	if hll.buckets[bucket] < uint8(value) {
 		hll.buckets[bucket] = uint8(value)
@@ -79,6 +85,7 @@ func (hll *hyperLogLog) emptyCount() int {
 	return sum
 }
 
+// vrlo prosta privatna hash funkcija
 func hash(text string) uint64 {
 	fn := md5.New()
 	fn.Write([]byte(text))
