@@ -42,23 +42,27 @@ func (hll *hyperLogLog) Add(text string) {
 	}
 }
 
-// metodu serialize pozivamo nad hyperloglog-om, i funkcija nam vraca bajtove
+// metodu serialize pozivamo nad HyperlLgLog-om, i funkcija nam vraca bajtove
 func (hll *hyperLogLog) Serialize() ([]byte, error) {
-
+	//pravimo nizove bitova od vrednosti p i m
 	pbytes := make([]byte, 2)
 	binary.BigEndian.PutUint16(pbytes, uint16(hll.p))
 	mbytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(mbytes, hll.m)
+	//inicijalizujemo bytes, koji dobija vrednost pbytes no koje su konkatenirani mbytes
 	bytes := append(pbytes, mbytes...)
+	//konkateniramo buckets na bytes
 	bytes = append(bytes, hll.buckets...)
 	return bytes, nil
 }
 
-// prosledjujemo metodi niz bajtova, koje metoda interpretira kao hyperloglog
+// prosledjujemo metodi niz bajtova, a metoda nam vraca HyperLogLog
 func Deserialize(bytes []byte) (*hyperLogLog, error) {
+	//prvih 16 bita koristimo za vrednost p
 	p := binary.BigEndian.Uint16(bytes)
+	//64 bita posle prva dva bajta koristimo za m
 	m := binary.BigEndian.Uint64(bytes[2:])
-
+	//svi biti posle prvih deset bajta su iskorisceni za buckets
 	buckets := []uint8(bytes[10:])
 
 	return &hyperLogLog{
@@ -68,7 +72,7 @@ func Deserialize(bytes []byte) (*hyperLogLog, error) {
 	}, nil
 }
 
-// helper functions :)
+// pomocne funkcije :)
 const (
 	HLL_MIN_PRECISION = 4
 	HLL_MAX_PRECISION = 16
