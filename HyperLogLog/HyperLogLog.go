@@ -59,8 +59,7 @@ func Deserialize(bytes []byte) (*hyperLogLog, error) {
 	p := binary.BigEndian.Uint16(bytes)
 	m := binary.BigEndian.Uint64(bytes[2:])
 
-	buckets := make([]uint8, m)
-	buckets = []uint8(bytes[10:])
+	buckets := []uint8(bytes[10:])
 
 	return &hyperLogLog{
 		p:       uint8(p),
