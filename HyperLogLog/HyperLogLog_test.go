@@ -1,12 +1,13 @@
 package HyperLogLog
 
 import (
+	"reflect"
 	"testing"
 )
 
 var PRECISION uint8 = 5
 
-func testEstimate(t *testing.T) {
+func TestEstimate(t *testing.T) {
 	hll, err := NewHyperLogLog(PRECISION)
 	if err != nil {
 		t.Errorf("HyperLogLog returned error while constructing")
@@ -20,7 +21,7 @@ func testEstimate(t *testing.T) {
 	}
 }
 
-func testSerializeDeserialize(t *testing.T) {
+func TestSerializeDeserialize(t *testing.T) {
 	hll, err := NewHyperLogLog(PRECISION)
 	if err != nil {
 		t.Errorf("HyperLogLog returned error while constructing")
@@ -28,11 +29,16 @@ func testSerializeDeserialize(t *testing.T) {
 	hll.Add("abc")
 	hll.Add("dfg")
 	hll.Add("sng")
-	est := hll.Estimate()
+
 	hllBytes, err := hll.Serialize()
+	if err != nil {
+		t.Errorf("Error while serializing")
+	}
 	hll2, err := Deserialize(hllBytes)
-	est2 := hll2.Estimate()
-	if est != est2 {
-		t.Errorf("HyperLogLog estimate before and after serialization was not the same")
+	if err != nil {
+		t.Errorf("Error while deserializing")
+	}
+	if !reflect.DeepEqual(hll, hll2) {
+		t.Errorf("HyperLogLog is not equal before and after serialization")
 	}
 }
