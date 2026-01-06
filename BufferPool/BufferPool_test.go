@@ -1,10 +1,9 @@
-package bufferpool
+package BufferPool
 
 import (
 	"testing"
 )
 
 func TestBufferPool(t *testing.T) {
-	//bp, _ := NewBufferPool(3, 4)
 
 }
