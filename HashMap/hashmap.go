@@ -2,21 +2,21 @@ package HashMap
 
 import "errors"
 
-type hashMap struct {
+type HashMap struct {
 	data map[string][]byte //parovi kljuc-vrednost
 	size int               //broj elemenata mape
 }
 
 // pravljenje nove prazne hashmape
-func NewHashMap() *hashMap {
-	return &hashMap{
+func NewHashMap() *HashMap {
+	return &HashMap{
 		data: make(map[string][]byte),
 		size: 0,
 	}
 }
 
 // dodavanje novog elementa
-func (hashmap *hashMap) Put(key string, value []byte) error {
+func (hashmap *HashMap) Put(key string, value []byte) error {
 	if key == "" {
 		return errors.New("Key cannot be empty")
 	}
@@ -33,7 +33,7 @@ func (hashmap *hashMap) Put(key string, value []byte) error {
 
 // pretraga elemenata po kljucu
 // povratna vrednost je par vrednost,bool
-func (hashmap *hashMap) Get(key string) ([]byte, error) {
+func (hashmap *HashMap) Get(key string) ([]byte, error) {
 	if key == "" {
 		return nil, errors.New("Key cannot be empty")
 	}
@@ -45,7 +45,7 @@ func (hashmap *hashMap) Get(key string) ([]byte, error) {
 }
 
 // brisanje elementa iz mape
-func (hashmap *hashMap) Delete(key string) error {
+func (hashmap *HashMap) Delete(key string) error {
 	if key == "" {
 		return errors.New("Key cannot be empty")
 	}
@@ -59,25 +59,25 @@ func (hashmap *hashMap) Delete(key string) error {
 }
 
 // Povratna vrednost - broj elemenata mape
-func (hashmap *hashMap) Size() int {
+func (hashmap *HashMap) Size() int {
 	return hashmap.size
 }
 
 //proverava da li je mapa prazna
 //Povratna vrednost-boolean
-func (hashmap *hashMap) IsEmpty() bool {
+func (hashmap *HashMap) IsEmpty() bool {
 	return hashmap.size == 0
 }
 
 // Proverava postojanje kljuca u mapi
 // Povratna vrednost boolean, true ako postoji
-func (hashmap *hashMap) Contains(key string) bool {
+func (hashmap *HashMap) Contains(key string) bool {
 	_, exists := hashmap.data[key] //trazimo element
 	return exists                  //vraca true ako element postoji, a false ako ne postoji
 }
 
 // Vraca listu svih kljuceva u mapi
-func (hashmap *hashMap) Keys() []string {
+func (hashmap *HashMap) Keys() []string {
 	keys := make([]string, 0, hashmap.size) //inicijalizacija liste u koju cemo da smestamo kljuceve,za pocetak postavili na 0
 	for key := range hashmap.data {
 		keys = append(keys, key)
@@ -86,7 +86,7 @@ func (hashmap *hashMap) Keys() []string {
 }
 
 // Vraca listu svih vrednosti u mapi
-func (hashmap *hashMap) Values() [][]byte {
+func (hashmap *HashMap) Values() [][]byte {
 	values := make([][]byte, 0, hashmap.size) //inicijalizacija liste u koju smestamo sve vrednosti,za pocetak postavili na 0
 	for _, value := range hashmap.data {
 		values = append(values, value)
@@ -95,7 +95,7 @@ func (hashmap *hashMap) Values() [][]byte {
 }
 
 // Vraca sve parove
-func (hashmap *hashMap) Items() []struct {
+func (hashmap *HashMap) Items() []struct {
 	Key   string
 	Value []byte
 } {
