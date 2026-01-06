@@ -1,8 +1,4 @@
-package projekatnasp
-
-//SkipLista se koristi u zahtevu 1.2 Memtable kao implememtacija dodatnog zahteva 1
-//gde se korisniku omogucava da bira koju implementaciju ce koristiti za memtable
-//hashmapu, b-stablo ili skip listu
+package skiplist
 
 import (
 	"math/rand"
@@ -14,7 +10,7 @@ type Node struct {
 	next  []*Node //niz pokazivaca koji pokazuju na svaki nivo
 }
 
-type SkipList struct {
+type skipList struct {
 	maxHeight int   //maksimalna visina
 	height    int   //vsiina na kojoj smo trenutno
 	head      *Node //pocetni cvor - minus beskonacno
@@ -22,8 +18,8 @@ type SkipList struct {
 }
 
 // kreiranje nove SkipListe
-func NewSkipList(maxHeight int) *SkipList {
-	return &SkipList{
+func NewSkipList(maxHeight int) *skipList {
+	return &skipList{
 		maxHeight: maxHeight,
 		height:    1,
 		head: &Node{
@@ -36,11 +32,11 @@ func NewSkipList(maxHeight int) *SkipList {
 
 // Novcic funkcija odredjuje 0 ili 1 za dodavanje elemenata skipliste
 // (pomocna funkcija dobijena na vezbama)
-func (s *SkipList) randomHeight() int {
+func (s *skipList) randomHeight() int {
 	level := 0
 	// moguce vrednosti koje vraca rand su 0 i 1
 	// zaustavljamo se kad dobijemo 0
-	for ; rand.Int31n(2) == 1; level++ {
+	for ; rand.Intn(2) == 1; level++ {
 		if level >= s.maxHeight {
 			return level
 		}
@@ -49,7 +45,7 @@ func (s *SkipList) randomHeight() int {
 }
 
 // Dodavanje novog elementa u skip listu
-func (skipList *SkipList) Insert(key string, value []byte) {
+func (skipList *skipList) Put(key string, value []byte) {
 	//priprema niza
 	//  u njega pamtimo poslednji cvor pre kljuca na svakom nivou, pa znamo da tu ubacimo novi element
 	prev := make([]*Node, skipList.maxHeight)
@@ -94,7 +90,7 @@ func (skipList *SkipList) Insert(key string, value []byte) {
 // Brisanje elementa iz skipliste
 // povratna vrednost oznacava uspesnost brisanja
 // vraca false ako element nije pronadjen
-func (skipList *SkipList) Delete(key string) bool {
+func (skipList *skipList) Delete(key string) bool {
 	prev := make([]*Node, skipList.maxHeight)   //u prev ce se naci poslednji cvor pre kljuca koji brisemo
 	current := skipList.head                    //krecemo od minus beskonacno
 	for i := skipList.height - 1; i >= 0; i-- { //trazimo cvor koji zelimo da obrisemo
@@ -126,7 +122,7 @@ func (skipList *SkipList) Delete(key string) bool {
 
 // Pretraga elemenata po kljucu
 // Vraca par (vrednost, bool)
-func (skipList *SkipList) Search(key string) ([]byte, bool) {
+func (skipList *skipList) Get(key string) ([]byte, bool) {
 	current := skipList.head
 	for i := skipList.height - 1; i >= 0; i-- {
 		for current.next[i] != nil && current.next[i].key < key { //krecemo se desno dok nenadjemo cvor sa vecim ili jednakim kljucem
