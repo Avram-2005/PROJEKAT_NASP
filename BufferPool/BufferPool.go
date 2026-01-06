@@ -40,11 +40,7 @@ func (bp *BufferPool) Get(filepath string, blockNumber int) (*[]byte, error) {
 	//proveravamo da li se kljuc nalazi u mapi
 	value, ok := bp.cacheMap[key]
 	if !ok {
-		err := os.Chmod(filepath, 0644)
-		if err != nil {
-			return nil, err
-		}
-		file, err := os.Open(filepath)
+		file, err := os.OpenFile(filepath, os.O_RDONLY, 0644)
 		if err != nil {
 			log.Fatal(err)
 		} else {
@@ -83,17 +79,9 @@ func (bp *BufferPool) Get(filepath string, blockNumber int) (*[]byte, error) {
 // Funkcija koja zapisuje podatke u blok fajla, i onda dodaje taj blok u BufferPool ako nije vec tu
 func (bp *BufferPool) Put(filepath string, blockNumber int, writeValue *[]byte) error {
 	//otvaramo fajl
-	err := os.Chmod(filepath, 0644)
-	if err != nil {
-		return err
-	}
-	file, err := os.Open(filepath)
+	file, err := os.OpenFile(filepath, os.O_RDWR, 0644)
 	if err != nil {
 		log.Fatal(err)
-	}
-	err = file.Chmod(0644)
-	if err != nil {
-		return err
 	}
 	//fajl ce se zatvoriti kad returnujemo
 	defer file.Close()
