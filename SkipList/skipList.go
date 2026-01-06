@@ -1,54 +1,68 @@
-package skiplist
+package SkipList
 
 import (
+	"errors"
+	"fmt"
 	"math/rand"
 )
 
-type Node struct {
+type node struct {
 	key   string
 	value []byte
-	next  []*Node //niz pokazivaca koji pokazuju na svaki nivo
+	next  []*node //niz pokazivaca koji pokazuju na svaki nivo
 }
 
 type skipList struct {
 	maxHeight int   //maksimalna visina
 	height    int   //vsiina na kojoj smo trenutno
-	head      *Node //pocetni cvor - minus beskonacno
+	head      *node //pocetni cvor - minus beskonacno
 	size      int   //br elemenata
 }
 
 // kreiranje nove SkipListe
-func NewSkipList(maxHeight int) *skipList {
+func NewSkipList(maxHeight int) (*skipList, error) {
+	if maxHeight <= 0 {
+		return nil, errors.New("Maximum height must be positive")
+	}
 	return &skipList{
 		maxHeight: maxHeight,
 		height:    1,
-		head: &Node{
+		head: &node{
 			key:  "",
-			next: make([]*Node, maxHeight),
+			next: make([]*node, maxHeight),
 		},
 		size: 0,
-	}
+	}, nil
 }
 
 // Novcic funkcija odredjuje 0 ili 1 za dodavanje elemenata skipliste
 // (pomocna funkcija dobijena na vezbama)
-func (s *skipList) randomHeight() int {
-	level := 0
+func (s *skipList) randomHeight() (int, error) {
+	level := 1
 	// moguce vrednosti koje vraca rand su 0 i 1
 	// zaustavljamo se kad dobijemo 0
 	for ; rand.Intn(2) == 1; level++ {
 		if level >= s.maxHeight {
-			return level
+			return s.maxHeight, nil //vraca maksimalnu velicinu, a ne gresku
 		}
 	}
-	return level
+	if level > s.maxHeight {
+		level = s.maxHeight
+	}
+	return level, nil
 }
 
 // Dodavanje novog elementa u skip listu
-func (skipList *skipList) Put(key string, value []byte) {
+func (skipList *skipList) Put(key string, value []byte) error {
+	if key == "" {
+		return errors.New("Key cannot be empty")
+	}
+	if value == nil {
+		return errors.New("Value cannot be nil")
+	}
 	//priprema niza
 	//  u njega pamtimo poslednji cvor pre kljuca na svakom nivou, pa znamo da tu ubacimo novi element
-	prev := make([]*Node, skipList.maxHeight)
+	prev := make([]*node, skipList.maxHeight)
 	current := skipList.head //pretraga krece od minus beskonacno
 	//trazimo najnizi nivo, kako bismo dodali element
 	for i := skipList.height - 1; i >= 0; i-- {
@@ -63,10 +77,13 @@ func (skipList *skipList) Put(key string, value []byte) {
 	//provera postojanja kljuca
 	if current != nil && current.key == key {
 		current.value = value
-		return
+		return nil
 	}
 	//kljuc nije postojao, pa pravimo novi
-	newHeight := skipList.randomHeight() //bacanje novcica
+	newHeight, err := skipList.randomHeight() //bacanje novcica
+	if err != nil {
+		return fmt.Errorf("Failed to generate random height: %w", err)
+	}
 
 	if newHeight > skipList.height {
 		for i := skipList.height; i < newHeight; i++ {
@@ -74,10 +91,10 @@ func (skipList *skipList) Put(key string, value []byte) {
 		}
 		skipList.height = newHeight
 	}
-	newNode := &Node{ //kreiranje novog cvora
+	newNode := &node{ //kreiranje novog cvora
 		key:   key,
 		value: value,
-		next:  make([]*Node, newHeight),
+		next:  make([]*node, newHeight),
 	}
 
 	for i := 0; i < newHeight; i++ { //dodajemo novi cvor na sve nivoe do broja puta koliko je novcic pokazao na 1
@@ -85,13 +102,15 @@ func (skipList *skipList) Put(key string, value []byte) {
 		prev[i].next[i] = newNode         //prev pokazuje na novi cvor
 	}
 	skipList.size++
+	return nil
 }
 
 // Brisanje elementa iz skipliste
-// povratna vrednost oznacava uspesnost brisanja
-// vraca false ako element nije pronadjen
-func (skipList *skipList) Delete(key string) bool {
-	prev := make([]*Node, skipList.maxHeight)   //u prev ce se naci poslednji cvor pre kljuca koji brisemo
+func (skipList *skipList) Delete(key string) error {
+	if key == "" {
+		return errors.New("Key cannot be empty")
+	}
+	prev := make([]*node, skipList.maxHeight)   //u prev ce se naci poslednji cvor pre kljuca koji brisemo
 	current := skipList.head                    //krecemo od minus beskonacno
 	for i := skipList.height - 1; i >= 0; i-- { //trazimo cvor koji zelimo da obrisemo
 		for current.next[i] != nil && current.next[i].key < key {
@@ -101,7 +120,7 @@ func (skipList *skipList) Delete(key string) bool {
 	}
 	current = current.next[0] //ili cvor koji brisemo ili prvi sa vecim kljucem
 	if current == nil || current.key != key {
-		return false //element nije pronadjen
+		return errors.New("Key not found") //element nije pronadjen
 	}
 
 	for i := 0; i < skipList.height; i++ { //brisanje elementa sa svih nivoa
@@ -117,12 +136,15 @@ func (skipList *skipList) Delete(key string) bool {
 		//znaci da je nivo prazan pa ga uklanjamo
 	}
 	skipList.size--
-	return true //element je uspesno obrisan
+	return nil //element je uspesno obrisan
 }
 
 // Pretraga elemenata po kljucu
 // Vraca par (vrednost, bool)
-func (skipList *skipList) Get(key string) ([]byte, bool) {
+func (skipList *skipList) Get(key string) ([]byte, error) {
+	if key == "" {
+		return nil, errors.New("Key cannot be empty")
+	}
 	current := skipList.head
 	for i := skipList.height - 1; i >= 0; i-- {
 		for current.next[i] != nil && current.next[i].key < key { //krecemo se desno dok nenadjemo cvor sa vecim ili jednakim kljucem
@@ -130,8 +152,8 @@ func (skipList *skipList) Get(key string) ([]byte, bool) {
 		}
 	}
 	current = current.next[0]                 //nulti nivo, gledamo cvor na koji pokazuje current
-	if current != nil && current.key == key { //proveravamo da li je pretraga uspela
-		return current.value, true //element je nadjen
+	if current == nil || current.key != key { //proveravamo da li je pretraga uspela
+		return nil, errors.New("Key not found") //element nije pronadjen
 	}
-	return nil, false //element nije pronadjen
+	return current.value, nil //element je nadjen
 }
