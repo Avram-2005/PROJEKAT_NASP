@@ -3,6 +3,7 @@ package BufferPool
 import (
 	"encoding/binary"
 	"fmt"
+	"os"
 	"testing"
 )
 
@@ -21,6 +22,13 @@ func TestBufferPool(t *testing.T) {
 		t.Errorf("greska tokom inicalizacije bufferpoola")
 		t.FailNow()
 	}
+	err = os.WriteFile("test.bin", data1, 0644)
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("greska tokom nultog pisanja")
+		t.FailNow()
+	}
+
 	err = bp.Put("test.bin", 1, &data1)
 
 	if err != nil {
