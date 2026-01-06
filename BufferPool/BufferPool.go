@@ -47,7 +47,7 @@ func (bp *BufferPool) Get(filepath string, blockNumber int) (*[]byte, error) {
 			//ako nismo nasli kljuc, moramo naci unutar fajla bajtove koji nam trebaju
 			defer file.Close()
 			//idemo do bajtova koji nam trebaju
-			block := int64(blockNumber * bp.blockSize)
+			block := int64((blockNumber - 1) * bp.blockSize)
 			file.Seek(block, 0)
 			returnBytes := make([]byte, bp.blockSize)
 			_, err := file.Read(returnBytes)
@@ -86,12 +86,12 @@ func (bp *BufferPool) Put(filepath string, blockNumber int, writeValue *[]byte) 
 	//fajl ce se zatvoriti kad returnujemo
 	defer file.Close()
 	//idemo do bloka koji trazimo
-	block := int64(blockNumber * bp.blockSize)
+	block := int64((blockNumber - 1) * bp.blockSize)
 	file.Seek(block, 0)
 
 	_, err = file.Write(*writeValue)
 	if err != nil {
-		return fmt.Errorf("error while reading file")
+		return err
 	}
 	//kad smo vec zapisali sta smo trebali, proveravamo da li je taj blok vec u bufferu
 	key := filepath + strconv.Itoa(blockNumber)
