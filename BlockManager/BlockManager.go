@@ -45,6 +45,30 @@ func (bm *BlockManager) Get(filepath string, blockNumber int) (*[]byte, error) {
 
 // filepath-path do fajla iz kojeg se dobavljaju informacije
 // blockNumber-broj bloka koji se trazi
+// offset-offset od pocetka bloka
+// size-kolicina bajtova koja treba da se vrati
+// na primer, sa offsetom 3, i size 3, vratili bi se cetvrti, peti i sesti bajt bloka
+// funkcija vraca niz bajtova, i error u slucaju da je nesto poslo po zlu
+// BITNO:funkcija vraca error za negativan offset, i ako se zbog offseta i size-a izadje van
+// opsega podataka koji su trenutno zapisani na tom bloku
+func (bm *BlockManager) GetSpecific(filepath string, blockNumber int, offset int, size int) (*[]byte, error) {
+	valueFound, err := bm.blockCache.Get(filepath, blockNumber)
+	if err != nil {
+		return nil, err
+	}
+	if offset < 0 {
+		return nil, fmt.Errorf("offset ne sme biti negativan")
+	}
+	if offset+size > len(*valueFound) {
+		return nil, fmt.Errorf("offset i size su takvi da se traze bajtovi van opsega jednog bloka, toest njegovog sadrzaja")
+	}
+	//iz celokupnog bloka uzima bajtove koje je korisnik zatrazio-od offseta, do trazene kolicine
+	specific := (*valueFound)[offset : offset+size]
+	return &specific, err
+}
+
+// filepath-path do fajla iz kojeg se dobavljaju informacije
+// blockNumber-broj bloka koji se trazi
 // writeValue-niz bajtova koji treba da se upise na trazen blok
 // funkcija vraca samo error, u slucaju da je nesto poslo po zlu
 // BITNO: kada upisujete nesto u fajl ovom metodom, CEO SADRZAJ BLOKA se override-uje
@@ -52,4 +76,48 @@ func (bm *BlockManager) Get(filepath string, blockNumber int) (*[]byte, error) {
 func (bm *BlockManager) Put(filepath string, blockNumber int, writeValue *[]byte) error {
 	err := bm.blockCache.Put(filepath, blockNumber, writeValue)
 	return err
+}
+
+// filepath-path do fajla iz kojeg se dobavljaju informacije
+// blockNumber-broj bloka koji se trazi
+// writeValue-niz bajtova koji treba da se upise na trazen blok
+// offset-offset od pocetka bloka
+// size-kolicina bajtova koja treba da se upise
+// funkcija vraca samo error, u slucaju da je nesto poslo po zlu
+// BITNO:funkcija vraca error za negativan offset, i ako se zbog offseta i size-a izadje van
+// opsega samog bloka
+func (bm *BlockManager) PutSpecific(filepath string, blockNumber int, offset int, size int, writeValue *[]byte) error {
+	if offset < 0 {
+		return fmt.Errorf("offset ne sme biti negativan")
+	}
+	valueFound, err := bm.blockCache.Get(filepath, blockNumber)
+	if err != nil {
+		return err
+	}
+	if offset+size > bm.blockCache.GetBlockSize() {
+		return fmt.Errorf("offset i size su takvi da se traze bajtovi van opsega jednog bloka")
+	}
+	i := 0
+	//Za svaki bajt, krecuci od offseta, menjamo bajt unutar vrednosti koja je pronadjena na bloku
+	//sa vrednoscu koju mi zelimo da stoji tu.
+	//Ovo radimo do momenta kada ili zapisemo sve sto smo hteli da zapisemo, ili do momenta kad
+	//naletimo na kraj onoga sto je tu trenutno zapisano.
+	for i+offset < len(*valueFound) && i < int(size) {
+		(*valueFound)[i+offset] = (*writeValue)[i]
+		i++
+	}
+	//ako se ispostavlja da je velicina niza bajtova kojeg smo nasli na bloku premala da bi stalo sve sto zelimo
+	//da zapisemo, mi cemo sve sto nije uspelo da stane u vec postojeci niz da konkateniramo na kraj.
+	if size+offset > len(*valueFound) {
+		remainingBytes := (*writeValue)[i:size]
+		finalWriteValue := append(*valueFound, remainingBytes...)
+		err = bm.blockCache.Put(filepath, blockNumber, &finalWriteValue)
+		return err
+	} else {
+		//Ako je sve stalo pri inicijalnom prolasku kroz oba niza, nista ne konkateniramo
+		//nego zapisujemo nas izmenjeni valueFound
+		err = bm.blockCache.Put(filepath, blockNumber, valueFound)
+		return err
+	}
+
 }
