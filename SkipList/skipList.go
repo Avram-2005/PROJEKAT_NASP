@@ -12,7 +12,7 @@ type node struct {
 	next  []*node //niz pokazivaca koji pokazuju na svaki nivo
 }
 
-type skipList struct {
+type SkipList struct {
 	maxHeight int   //maksimalna visina
 	height    int   //vsiina na kojoj smo trenutno
 	head      *node //pocetni cvor - minus beskonacno
@@ -20,11 +20,11 @@ type skipList struct {
 }
 
 // kreiranje nove SkipListe
-func NewSkipList(maxHeight int) (*skipList, error) {
+func NewSkipList(maxHeight int) (*SkipList, error) {
 	if maxHeight <= 0 {
 		return nil, errors.New("Maximum height must be positive")
 	}
-	return &skipList{
+	return &SkipList{
 		maxHeight: maxHeight,
 		height:    1,
 		head: &node{
@@ -37,7 +37,7 @@ func NewSkipList(maxHeight int) (*skipList, error) {
 
 // Novcic funkcija odredjuje 0 ili 1 za dodavanje elemenata skipliste
 // (pomocna funkcija dobijena na vezbama)
-func (s *skipList) randomHeight() (int, error) {
+func (s *SkipList) randomHeight() (int, error) {
 	level := 1
 	// moguce vrednosti koje vraca rand su 0 i 1
 	// zaustavljamo se kad dobijemo 0
@@ -53,7 +53,7 @@ func (s *skipList) randomHeight() (int, error) {
 }
 
 // Dodavanje novog elementa u skip listu
-func (skipList *skipList) Put(key string, value []byte) error {
+func (skipList *SkipList) Put(key string, value []byte) error {
 	if key == "" {
 		return errors.New("Key cannot be empty")
 	}
@@ -106,7 +106,7 @@ func (skipList *skipList) Put(key string, value []byte) error {
 }
 
 // Brisanje elementa iz skipliste
-func (skipList *skipList) Delete(key string) error {
+func (skipList *SkipList) Delete(key string) error {
 	if key == "" {
 		return errors.New("Key cannot be empty")
 	}
@@ -141,7 +141,7 @@ func (skipList *skipList) Delete(key string) error {
 
 // Pretraga elemenata po kljucu
 // Vraca par (vrednost, bool)
-func (skipList *skipList) Get(key string) ([]byte, error) {
+func (skipList *SkipList) Get(key string) ([]byte, error) {
 	if key == "" {
 		return nil, errors.New("Key cannot be empty")
 	}
