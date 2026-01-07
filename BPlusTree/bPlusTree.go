@@ -221,36 +221,6 @@ func (tree *BPlusTree) splitInternal(node *TreeNode) {
 
 	tree.insertIntoParent(node, firstKey, newNode)
 }
-func insertAt(array []string, index int, value string) []string {
-	final := make([]string, len(array)+1) //nov niz tacno za 1 duzi za novi elem
-	copy(final[:index], array[:index])    //kopiramo deo pre indeksa
-	final[index] = value                  //dodajemo novi elem
-	copy(final[index+1:], array[index:])  //kopiramo i dodamo deo nakon indeksa
-	return final
-}
-
-func insertAtVal(array [][]byte, index int, value []byte) [][]byte {
-	finalVal := make([][]byte, len(array)+1)
-	copy(finalVal[:index], array[:index])
-	finalVal[index] = value
-	copy(finalVal[index+1:], array[index:])
-	return finalVal
-
-}
-
-func removeAt(array []string, index int) []string {
-	final := make([]string, len(array)-1)
-	copy(final[:index], array[:index])
-	copy(final[index:], array[index+1:])
-	return final
-}
-
-func removeAtVal(array [][]byte, index int) [][]byte {
-	finalVal := make([][]byte, len(array)-1)
-	copy(finalVal[:index], array[:index])
-	copy(finalVal[index:], array[index+1:])
-	return finalVal
-}
 
 // Funkcija vrsi pretragu po kljucu
 // Povratna vrednost je par vrednost, bool (true ako je uspesno pronadjen)
@@ -268,16 +238,17 @@ func (tree *BPlusTree) Search(key string) ([]byte, bool) {
 // Povratna vrednost je boolean koji govori o uspesnosti brisanja
 func (tree *BPlusTree) Delete(key string) bool {
 	leaf := tree.FindLeaf(key)
-	index := 0
+	index := -1
 	for i := 0; i < leaf.keyCount; i++ {
 		if leaf.keys[i] == key {
 			index = i
-			return true //element je uspesno obrisan
+			break //element je uspesno pronadjen
 		}
 	}
 	if index == -1 {
 		return false //kljuc nije pronadjen
 	}
+	//pomeranje elemenata ulevo
 	for i := index; i < leaf.keyCount-1; i++ {
 		leaf.keys[i] = leaf.keys[i+1]
 		leaf.values[i] = leaf.values[i+1]
@@ -292,7 +263,7 @@ func (tree *BPlusTree) Delete(key string) bool {
 	if leaf.keyCount < tree.b-1 {
 		tree.rebalanceLeaf(leaf)
 	}
-	return true
+	return true //element je uspesno obrisan
 }
 
 func (tree *BPlusTree) rebalanceLeaf(leaf *TreeNode) {
@@ -316,7 +287,7 @@ func (tree *BPlusTree) rebalanceLeaf(leaf *TreeNode) {
 		rightSibling := parent.children[childIndex+1]
 		if rightSibling.keyCount > tree.b-1 {
 			//pozajmljivanje prvog elementa od desnog brata
-			for i := leaf.keyCount; i > 0; i-- { //pomeranje listova u levo
+			for i := leaf.keyCount; i > 0; i-- { //pomeranje listova u desno
 				leaf.keys[i] = leaf.keys[i-1]
 				leaf.values[i] = leaf.values[i-1]
 			}
@@ -379,9 +350,120 @@ func (tree *BPlusTree) mergeLeaves(left *TreeNode, right *TreeNode, index int) {
 
 	left.next = right.next
 	parent := left.parent
+	//pomeranje kljuceva roditelja ulevo
 	for i := index; i < parent.keyCount-1; i++ {
 		parent.keys[i] = parent.keys[i+1]
 
+	}
+	parent.keys[parent.keyCount-1] = ""
+	parent.keyCount--
+	//pomeranje dece u roditelju ulevo
+	for i := index + 1; i < parent.childCount-1; i++ {
+		parent.children[i] = parent.children[i+1]
+	}
+	parent.children[parent.childCount-1] = nil
+	parent.childCount--
+	if parent.keyCount < tree.b-1 && parent.parent != nil {
+		tree.rebalanceInternal(parent)
+	}
+}
+
+func (tree *BPlusTree) rebalanceInternal(node *TreeNode) {
+	parent := node.parent
+	if parent == nil {
+		return //u pitanju je koren
+	}
+	childIndex := -1
+	for i := 0; i < parent.childCount; i++ {
+		if parent.children[i] == node {
+			childIndex = i
+			break
+		}
+	}
+	if childIndex == -1 {
+		return
+	}
+	//pozajmljivanje od desnog brata
+	if childIndex < parent.childCount-1 {
+		rightSibling := parent.children[childIndex+1]
+		if rightSibling.keyCount > tree.b-1 {
+			parentKey := parent.keys[childIndex]
+			for i := node.keyCount; i > 0; i-- {
+				node.keys[i] = node.keys[i-1]
+			}
+			node.keys[0] = parentKey
+			node.keyCount++
+
+			for i := node.childCount; i > 0; i-- {
+				node.children[i] = node.children[i-1]
+			}
+
+			node.children[0] = rightSibling.children[0]
+			node.children[0].parent = node
+			node.childCount++
+
+			for i := 0; i < rightSibling.keyCount-1; i++ {
+				rightSibling.keys[i] = rightSibling.keys[i+1]
+			}
+			rightSibling.keys[rightSibling.keyCount-1] = ""
+			rightSibling.keyCount--
+
+			for i := 0; i < rightSibling.childCount-1; i++ {
+				rightSibling.children[i] = rightSibling.children[i+1]
+			}
+			rightSibling.children[rightSibling.childCount-1] = nil
+			rightSibling.childCount--
+			parent.keys[childIndex] = rightSibling.keys[0]
+			return
+		}
+	}
+	//pozajmljivanje od levog brata
+	if childIndex > 0 {
+		leftSibling := parent.children[childIndex-1]
+		if leftSibling.keyCount > tree.b-1 {
+			parentKey := parent.keys[childIndex-1]
+			node.keys[node.keyCount] = parentKey
+			node.keyCount++
+
+			node.children[node.childCount] = leftSibling.children[leftSibling.childCount-1]
+			node.children[node.childCount].parent = node
+			node.childCount++
+
+			leftSibling.children[leftSibling.childCount-1] = nil
+			leftSibling.childCount--
+
+			parent.keys[childIndex-1] = leftSibling.keys[leftSibling.keyCount-1]
+			leftSibling.keys[leftSibling.keyCount-1] = ""
+			leftSibling.keyCount--
+			return
+		}
+	}
+	//spajanje sa desnim bratom
+	if childIndex < parent.childCount-1 {
+		rightSibling := parent.children[childIndex+1]
+		tree.mergeInternal(node, rightSibling, childIndex)
+	} else if childIndex > 0 { //spaajanje sa levim bratom
+		leftSibling := parent.children[childIndex-1]
+		tree.mergeInternal(leftSibling, node, childIndex-1)
+	}
+
+}
+
+func (tree *BPlusTree) mergeInternal(left *TreeNode, right *TreeNode, index int) {
+	parent := left.parent
+	left.keys[left.keyCount] = parent.keys[index]
+	left.keyCount++
+	for i := 0; i < right.keyCount; i++ {
+		left.keys[left.keyCount+i] = right.keys[i]
+	}
+	left.keyCount += right.keyCount
+	for i := 0; i < right.childCount; i++ {
+		left.children[left.childCount+i] = right.children[i]
+		left.children[left.childCount+i].parent = left
+	}
+	left.childCount += right.childCount
+	for i := index; i < parent.keyCount-1; i++ {
+		parent.keys[i] = parent.keys[i+1]
 	}
 	parent.keys[parent.keyCount-1] = ""
 	parent.keyCount--
@@ -391,12 +473,85 @@ func (tree *BPlusTree) mergeLeaves(left *TreeNode, right *TreeNode, index int) {
 	}
 	parent.children[parent.childCount-1] = nil
 	parent.childCount--
-	/*if parent.keyCount<tree.b-1 && parent.parent !=nil{
+	if parent.keyCount < tree.b-1 && parent.parent != nil {
 		tree.rebalanceInternal(parent)
-	}*/
+	}
 }
 
-/*func (tree *BPlusTree)rebalanceInternal(node *TreeNode){
+func (tree *BPlusTree) RangeScan(startKey, endKey string) []struct {
+	Key   string
+	Value []byte
+} {
+	var result []struct {
+		Key   string
+		Value []byte
+	}
+	//pronalazenje pocetnog lista
+	startLeaf := tree.FindLeaf(startKey)
+	current := startLeaf
+	for current != nil {
+		for i := 0; i < current.keyCount; i++ {
+			key := current.keys[i]
+			if key >= startKey && key <= endKey {
+				result = append(result, struct {
+					Key   string
+					Value []byte
+				}{
+					Key:   key,
+					Value: current.values[i],
+				})
+			}
+			if key > endKey {
+				return result
+			}
 
-}*/
-//Bice dodata i range pretraga, nakon sto krenem implementaciju memtable-a
+		}
+		current = current.next //prelazak na sledeci list
+	}
+	return result
+}
+
+func (tree *BPlusTree) PrefixScan(prefix string) []struct {
+	Key   string
+	Value []byte
+} {
+	var result []struct {
+		Key   string
+		Value []byte
+	}
+
+	//pronalazak lista sa prviom kljucem koji pocinje sa prefiksom
+	//ili prvi list koji bi mogao da sadrzi takve kljuceve
+	startLeaf := tree.FindLeaf(prefix)
+	current := startLeaf
+
+	for current != nil {
+		for i := 0; i < current.keyCount; i++ {
+			key := current.keys[i]
+			//provera da li kljuc pocinje sa prefiksom
+			if len(key) >= len(prefix) && key[:len(prefix)] == prefix {
+				result = append(result, struct {
+					Key   string
+					Value []byte
+				}{
+					Key:   key,
+					Value: current.values[i],
+				})
+			} else if key > prefix && !startsWithPrefix(key, prefix) {
+				//posto su kljucevi sortirani, ako je ovaj uslov ispunjen
+				//znacemo da smo prosli sve kljuceve sa unetim prefiksom
+				break
+			}
+		}
+		current = current.next //ako smo stigli do kraja lista, proveriti sledeci u sliucaju da ima jos
+
+	}
+	return result
+}
+
+func startsWithPrefix(key, prefix string) bool {
+	if len(key) < len(prefix) {
+		return false
+	}
+	return key[:len(prefix)] == prefix
+}
