@@ -52,7 +52,7 @@ func (bp *BufferPool) Get(filepath string, blockNumber int) (*[]byte, error) {
 			returnBytes := make([]byte, bp.blockSize)
 			_, err := file.Read(returnBytes)
 			if err != nil {
-				return nil, fmt.Errorf("error while reading file")
+				return nil, err
 			}
 			//dodajemo bajtove u lru listu i mapu, i povecavamo current size
 			bp.cacheMap[key] = returnBytes

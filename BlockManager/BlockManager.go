@@ -2,6 +2,7 @@ package BlockManager
 
 import (
 	"fmt"
+	"io"
 
 	BufferPool "github.com/Avram-2005/PROJEKAT_NASP/BufferPool"
 )
@@ -16,7 +17,9 @@ type BlockManager struct {
 
 // Max size je maksimalna velicina bufferpoola sa kojim block manager raspolaze,
 // a blockSize velicina blokova sa kojima radimo, a u dokumentaciji pise da su dozvoljene vrednosti 4, 8 ili 16KB.
+//
 // Iz tog razloga, jedine dozvoljene vrednosti za blockSize su 4, 8 i 16, ako stavite ista drugo dobicete error.
+//
 // Konverzija iz kilobajta u bajtove desava se unutar konstruktora za BufferPool, vi se oko toga ne brinete.
 func NewBlockManager(maxSize int, blockSize int) (*BlockManager, error) {
 	if blockSize != 4 && blockSize != 8 && blockSize != 16 {
@@ -33,7 +36,9 @@ func NewBlockManager(maxSize int, blockSize int) (*BlockManager, error) {
 
 // filepath-path do fajla iz kojeg se dobavljaju informacije
 // blockNumber-broj bloka koji se trazi
+//
 // funkcija vraca niz bajtova, i error u slucaju da je nesto poslo po zlu
+//
 // BITNO: funkcija vam vraca CEO SADRZAJ BLOKA, na vama je da nadjete sta vam treba unutar njega
 func (bm *BlockManager) Get(filepath string, blockNumber int) (*[]byte, error) {
 	valueFound, err := bm.blockCache.Get(filepath, blockNumber)
@@ -47,8 +52,11 @@ func (bm *BlockManager) Get(filepath string, blockNumber int) (*[]byte, error) {
 // blockNumber-broj bloka koji se trazi
 // offset-offset od pocetka bloka
 // size-kolicina bajtova koja treba da se vrati
+//
 // na primer, sa offsetom 3, i size 3, vratili bi se cetvrti, peti i sesti bajt bloka
+//
 // funkcija vraca niz bajtova, i error u slucaju da je nesto poslo po zlu
+//
 // BITNO:funkcija vraca error za negativan offset, i ako se zbog offseta i size-a izadje van
 // opsega podataka koji su trenutno zapisani na tom bloku
 func (bm *BlockManager) GetSpecific(filepath string, blockNumber int, offset int, size int) (*[]byte, error) {
@@ -70,7 +78,9 @@ func (bm *BlockManager) GetSpecific(filepath string, blockNumber int, offset int
 // filepath-path do fajla iz kojeg se dobavljaju informacije
 // blockNumber-broj bloka koji se trazi
 // writeValue-niz bajtova koji treba da se upise na trazen blok
+//
 // funkcija vraca samo error, u slucaju da je nesto poslo po zlu
+//
 // BITNO: kada upisujete nesto u fajl ovom metodom, CEO SADRZAJ BLOKA se override-uje
 // na vam je da unutar vasih struktura regulisete kako se vasi zapisi dele po blokovima.
 func (bm *BlockManager) Put(filepath string, blockNumber int, writeValue *[]byte) error {
@@ -83,7 +93,9 @@ func (bm *BlockManager) Put(filepath string, blockNumber int, writeValue *[]byte
 // writeValue-niz bajtova koji treba da se upise na trazen blok
 // offset-offset od pocetka bloka
 // size-kolicina bajtova koja treba da se upise
+//
 // funkcija vraca samo error, u slucaju da je nesto poslo po zlu
+//
 // BITNO:funkcija vraca error za negativan offset, i ako se zbog offseta i size-a izadje van
 // opsega samog bloka
 func (bm *BlockManager) PutSpecific(filepath string, blockNumber int, offset int, size int, writeValue *[]byte) error {
@@ -92,7 +104,12 @@ func (bm *BlockManager) PutSpecific(filepath string, blockNumber int, offset int
 	}
 	valueFound, err := bm.blockCache.Get(filepath, blockNumber)
 	if err != nil {
-		return err
+		if err == io.EOF {
+			err = bm.blockCache.Put(filepath, blockNumber, writeValue)
+			return err
+		} else {
+			return err
+		}
 	}
 	if offset+size > bm.blockCache.GetBlockSize() {
 		return fmt.Errorf("offset i size su takvi da se traze bajtovi van opsega jednog bloka")
@@ -120,4 +137,30 @@ func (bm *BlockManager) PutSpecific(filepath string, blockNumber int, offset int
 		return err
 	}
 
+}
+
+// filepath-path do fajla iz kojeg se dobavljaju informacije
+// blockNumber-broj bloka koji se trazi
+//
+// Funkcija dodaje buffer na kraj bloka-proverava koliko je ostalo mesta do kraja bloka,
+// i konkatenira onoliko nula koliko je potrebno.
+//
+// Posle toga upisuje blok u fajl, i vraca vrednost koja je upisana, radi provere
+func (bm *BlockManager) AddBuffer(filepath string, blockNumber int) (*[]byte, error) {
+	valueFound, err := bm.blockCache.Get(filepath, blockNumber)
+	if err != nil {
+		return nil, err
+	}
+	if len(*valueFound) < bm.blockCache.GetBlockSize() {
+		zeroesToAdd := bm.blockCache.GetBlockSize() - len(*valueFound)
+		zeroBytes := make([]byte, zeroesToAdd)
+		returnValue := append(*valueFound, zeroBytes...)
+		err = bm.Put(filepath, blockNumber, &returnValue)
+		if err != nil {
+			return nil, err
+		}
+		return &returnValue, nil
+	} else {
+		return valueFound, nil
+	}
 }

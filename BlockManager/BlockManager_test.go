@@ -3,6 +3,7 @@ package BlockManager
 import (
 	"encoding/binary"
 	"fmt"
+	"os"
 	"reflect"
 	"testing"
 )
@@ -10,6 +11,7 @@ import (
 // Ovi testovi su direktna kopija testova iz bufferpoola,
 // koji proveravaju samo da li blockmanager zapravo funkcionise kao interfejs sa bufferpool-om
 func TestBlockManager(t *testing.T) {
+	os.Create("test.bin")
 	//prvo pravimo cetiri niza bajtova, koje cemo da ubacujemo u fajl
 	data1 := make([]byte, 4096)
 	binary.BigEndian.PutUint64(data1, 78)
@@ -120,6 +122,181 @@ func TestBlockManager(t *testing.T) {
 		fmt.Print(data1[:10])
 		fmt.Print((*readData1)[:10])
 		t.Errorf("data1 nije isto pre i posle drugog citanja")
+		t.FailNow()
+	}
+}
+
+func TestSpecific(t *testing.T) {
+	os.Create("testSpecific.bin")
+	//prvo pravimo cetiri niza bajtova, koje cemo da ubacujemo u fajl
+	data1 := make([]byte, 100)
+	binary.BigEndian.PutUint64(data1, 78)
+	data2 := make([]byte, 100)
+	binary.BigEndian.PutUint32(data2, 56)
+	data3 := make([]byte, 100)
+	binary.BigEndian.PutUint16(data3, 67)
+	//inicijalizacija bufferpool-a, ciji kes je duzine 3, a velicna blokova 4
+	bm, err := NewBlockManager(2, 4)
+	if err != nil {
+		t.Errorf("greska tokom inicalizacije blockmanagera")
+		t.FailNow()
+	}
+	err = bm.PutSpecific("testSpecific.bin", 1, 0, 100, &data1)
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("greska tokom prvog upisivanja")
+		t.FailNow()
+	}
+	err = bm.PutSpecific("testSpecific.bin", 1, 100, 100, &data2)
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("greska tokom drugog upisivanja")
+		t.FailNow()
+	}
+	err = bm.PutSpecific("testSpecific.bin", 1, 200, 100, &data3)
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("greska tokom treceg upisivanja")
+		t.FailNow()
+	}
+
+	readData1, err := bm.GetSpecific("testSpecific.bin", 1, 0, 100)
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("greska tokom prvog citanjaa")
+		t.FailNow()
+	}
+	if !reflect.DeepEqual(data1, (*readData1)) {
+		fmt.Print(data1)
+		fmt.Print(readData1)
+		t.Errorf("data1 nije isti pre i posle pisanja")
+		t.FailNow()
+	}
+
+	readData2, err := bm.GetSpecific("testSpecific.bin", 1, 100, 100)
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("greska tokom drugog citanjaa")
+		t.FailNow()
+	}
+	if !reflect.DeepEqual(data2, (*readData2)) {
+		t.Errorf("data2 nije isti pre i posle pisanja")
+		t.FailNow()
+	}
+
+	readData3, err := bm.GetSpecific("testSpecific.bin", 1, 200, 100)
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("greska tokom treceg citanjaa")
+		t.FailNow()
+	}
+	if !reflect.DeepEqual(data3, (*readData3)) {
+		t.Errorf("data3 nije isti pre i posle pisanja")
+		t.FailNow()
+	}
+
+	data4 := make([]byte, 100)
+	binary.BigEndian.PutUint16(data4, 12)
+
+	err = bm.PutSpecific("testSpecific.bin", 1, 150, 100, &data4)
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("greska tokom cetvrtog upisivanja")
+		t.FailNow()
+	}
+
+	data5 := make([]byte, 100)
+	binary.BigEndian.PutUint16(data5, 89)
+
+	err = bm.PutSpecific("testSpecific.bin", 1, 250, 100, &data5)
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("greska tokom petog upisivanja")
+		t.FailNow()
+	}
+
+	readData4, err := bm.GetSpecific("testSpecific.bin", 1, 150, 100)
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("greska tokom cetvrtog citanjaa")
+		t.FailNow()
+	}
+	if !reflect.DeepEqual(data4, (*readData4)) {
+		t.Errorf("data4 nije isti pre i posle pisanja")
+		t.FailNow()
+	}
+
+	readData5, err := bm.GetSpecific("testSpecific.bin", 1, 250, 100)
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("greska tokom petog citanjaa")
+		t.FailNow()
+	}
+	if !reflect.DeepEqual(data5, (*readData5)) {
+		t.Errorf("data5 nije isti pre i posle pisanja")
+		t.FailNow()
+	}
+
+	readData2, err = bm.GetSpecific("testSpecific.bin", 1, 100, 100)
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("greska tokom sestog citanjaa")
+		t.FailNow()
+	}
+	if reflect.DeepEqual(data2, (*readData2)) {
+		t.Errorf("data2 je isti pre i posle pisanja, a ne bi trebao da bude")
+		t.FailNow()
+	}
+}
+
+func TestAddBuffer(t *testing.T) {
+	os.Create("testBuffer.bin")
+	data1 := make([]byte, 100)
+	binary.BigEndian.PutUint64(data1, 78)
+	data2 := make([]byte, 100)
+	binary.BigEndian.PutUint32(data2, 56)
+	data3 := make([]byte, 100)
+	binary.BigEndian.PutUint16(data3, 67)
+	//inicijalizacija bufferpool-a, ciji kes je duzine 3, a velicna blokova 4
+	bm, err := NewBlockManager(2, 4)
+	if err != nil {
+		t.Errorf("greska tokom inicalizacije blockmanagera")
+		t.FailNow()
+	}
+	err = bm.PutSpecific("testBuffer.bin", 1, 0, 100, &data1)
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("greska tokom prvog upisivanja")
+		t.FailNow()
+	}
+	err = bm.PutSpecific("testBuffer.bin", 1, 100, 100, &data2)
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("greska tokom drugog upisivanja")
+		t.FailNow()
+	}
+	err = bm.PutSpecific("testBuffer.bin", 1, 200, 100, &data3)
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("greska tokom treceg upisivanja")
+		t.FailNow()
+	}
+	bm.AddBuffer("testBuffer.bin", 1)
+	remainingZeroes := make([]byte, 3796)
+	data3 = append(data3, remainingZeroes...)
+	data2 = append(data2, data3...)
+	data1 = append(data1, data2...)
+	data4, err := bm.Get("testBuffer.bin", 1)
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("greska tokom dodavanja bafera")
+		t.FailNow()
+	}
+	if !reflect.DeepEqual(data1, (*data4)) {
+		fmt.Print(data1)
+		fmt.Print("DRUGA VREDNOST:")
+		fmt.Print(data4)
+		t.Errorf("vrednost je neocekivana")
 		t.FailNow()
 	}
 }
