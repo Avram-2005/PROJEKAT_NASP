@@ -164,3 +164,8 @@ func (bm *BlockManager) AddBuffer(filepath string, blockNumber int) (*[]byte, er
 		return valueFound, nil
 	}
 }
+
+// Funkcija koja vraća veličinu blokova unutar BufferPool-a, u bajtima
+func (bm *BlockManager) GetBlockSize() int {
+	return bm.blockCache.GetBlockSize()
+}
