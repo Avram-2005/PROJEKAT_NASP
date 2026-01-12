@@ -300,3 +300,39 @@ func TestAddBuffer(t *testing.T) {
 		t.FailNow()
 	}
 }
+
+func TestGetBlockSize(t *testing.T) {
+	bm1, err := NewBlockManager(2, 4)
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("greska tokom inicijalizacije prvog blockmanager-a")
+		t.FailNow()
+	}
+	bm2, err := NewBlockManager(2, 8)
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("greska tokom inicijalizacije drugog blockmanager-a")
+		t.FailNow()
+	}
+	bm3, err := NewBlockManager(2, 16)
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("greska tokom inicijalizacije trećeg blockmanager-a")
+		t.FailNow()
+	}
+	size1 := bm1.GetBlockSize()
+	size2 := bm2.GetBlockSize()
+	size3 := bm3.GetBlockSize()
+	if size1 != 4096 {
+		t.Errorf("Velicina blokova prvog blockmanager-a je neocekivana")
+		t.FailNow()
+	}
+	if size2 != 8192 {
+		t.Errorf("Velicina blokova drugog blockmanager-a je neocekivana")
+		t.FailNow()
+	}
+	if size3 != 16384 {
+		t.Errorf("Velicina blokova trećeg blockmanager-a je neocekivana")
+		t.FailNow()
+	}
+}
