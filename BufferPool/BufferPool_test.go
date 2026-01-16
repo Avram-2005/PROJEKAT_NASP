@@ -121,3 +121,105 @@ func TestBufferPool(t *testing.T) {
 		t.FailNow()
 	}
 }
+
+func TestLru1(t *testing.T) {
+	//prvo pravimo tri niza bajtova, koje cemo da ubacujemo u fajl
+	data1 := make([]byte, 4096)
+	binary.BigEndian.PutUint64(data1, 78)
+	data2 := make([]byte, 4096)
+	binary.BigEndian.PutUint32(data2, 56)
+	data3 := make([]byte, 4096)
+	binary.BigEndian.PutUint16(data3, 67)
+	//inicijalizacija bufferpool-a, ciji kes je duzine 2, a velicna blokova 4
+	bp, err := NewBufferPool(2, 4)
+	if err != nil {
+		t.Errorf("Greska pri inicijalizaciji bufferpool-a")
+		t.FailNow()
+	}
+	bp.Put("test.bin", 1, &data1)
+	bp.Put("test.bin", 2, &data2)
+	bp.Put("test.bin", 3, &data3)
+	//Put-ovali smo 3 bloka, i zbog toga ocekujemo da back i front liste ne budu null
+	check1 := bp.lruList.Back()
+	check2 := bp.lruList.Front()
+
+	if check2 == nil {
+		t.Errorf("Front nije vratio nista")
+		t.FailNow()
+	}
+	if check1 == nil {
+		t.Errorf("Back nije vratio nista")
+		t.FailNow()
+	}
+	//Izvlacimo podatke iz same mape
+	//Check1 bi trebao da bude back liste, u ovom
+	//slucaju kljuc bloka broj 2 toest data2
+	data_from_map1 := bp.cacheMap[(*check1).Value.(string)]
+	//ocekujemo da data2 i data izvucen iz mape budu isti, iz tog razloga
+	if !reflect.DeepEqual(data2, data_from_map1) {
+		fmt.Print(data2)
+		fmt.Print((*check1))
+		t.Errorf("neocekivana vrednost za back")
+		t.FailNow()
+	}
+	//Izvlacimo podatke iz same mape
+	//Check2 bi trebao da bude back liste, u ovom
+	//slucaju kljuc bloka broj 3 toest data3
+	data_from_map2 := bp.cacheMap[(*check2).Value.(string)]
+	if !reflect.DeepEqual(data3, data_from_map2) {
+		fmt.Print(data3)
+		fmt.Print((*check2))
+		t.Errorf("neocekivana vrednost za front")
+		t.FailNow()
+	}
+
+}
+
+func TestLru2(t *testing.T) {
+	//prvo pravimo cetiri niza bajtova, koje cemo da ubacujemo u fajl
+	data1 := make([]byte, 4096)
+	binary.BigEndian.PutUint64(data1, 78)
+	data2 := make([]byte, 4096)
+	binary.BigEndian.PutUint32(data2, 56)
+	data3 := make([]byte, 4096)
+	binary.BigEndian.PutUint16(data3, 67)
+	//inicijalizacija bufferpool-a, ciji kes je duzine 3, a velicna blokova 4
+	bp, err := NewBufferPool(2, 4)
+	if err != nil {
+		t.Errorf("Greska pri inicijalizaciji bufferpool-a")
+		t.FailNow()
+	}
+	bp.Put("test.bin", 1, &data1)
+	bp.Put("test.bin", 2, &data2)
+	bp.Put("test.bin", 3, &data3)
+	get_data2, _ := bp.Get("test.bin", 2)
+	get_data3, _ := bp.Get("test.bin", 3)
+	//Getovali smo block 3 i block 2-ocekujemo da back i front ne budu nil
+	check1 := bp.lruList.Back()
+	check2 := bp.lruList.Front()
+
+	if check2 == nil {
+		t.Errorf("Front nije vratio nista")
+		t.FailNow()
+	}
+	if check1 == nil {
+		t.Errorf("Back nije vratio nista")
+		t.FailNow()
+	}
+	//Ocekujemo da podaci izvuceni iz mape budu jednaki drugom bloku-data2
+	data_from_map1 := bp.cacheMap[(*check1).Value.(string)]
+	if !reflect.DeepEqual(get_data2, data_from_map1) {
+		fmt.Print(get_data2)
+		fmt.Print(data_from_map1)
+		t.Errorf("neocekivana vrednost za back")
+		t.FailNow()
+	}
+	data_from_map2 := bp.cacheMap[(*check2).Value.(string)]
+	if !reflect.DeepEqual(get_data3, data_from_map2) {
+		fmt.Print(get_data3)
+		fmt.Print(data_from_map2)
+		t.Errorf("neocekivana vrednost za front")
+		t.FailNow()
+	}
+
+}
