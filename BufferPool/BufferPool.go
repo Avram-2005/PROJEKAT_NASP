@@ -102,7 +102,14 @@ func (bp *BufferPool) Put(filepath string, blockNumber int, writeValue *[]byte) 
 	//ako blok nije u bufferu, dodajemo ga u lru listu, mapu, i povecavamo current size
 	if !ok {
 		bp.cacheMap[key] = *writeValue
-
+		//TODO: Ispraviti!
+		//Na prvi pogled, meni se čini kao da je problem ovde
+		//Na početku rada, sama lru Lista je prazna
+		//Ako blok nije nadjen, ovde se on dodaje u cachemap,
+		//Ali onda pokusavamo da nadjemo foundElem sa vrednoscu kljuca na koji dodajemo blok
+		//A mi zbog cinjenice da smo unutar !ok bloka znamo da taj kljuc nije u listi,
+		//jer nam ok daj True kad je kljuc pronadjen, a False kada nije
+		//Proveri i get!
 		var foundElem *list.Element
 		for e := bp.lruList.Front(); e != nil; e = e.Next() {
 			if e.Value.(string) == key {
@@ -110,6 +117,8 @@ func (bp *BufferPool) Put(filepath string, blockNumber int, writeValue *[]byte) 
 				break
 			}
 		}
+		//Ovo nikad nece biti istina-found elem bi trebalo da uvek bude nil,
+		//jer u cachemap uopste nismo pronasli kljuc koji trazimo!!!
 		if foundElem != nil {
 			bp.lruList.MoveToFront(foundElem)
 		}
@@ -119,6 +128,8 @@ func (bp *BufferPool) Put(filepath string, blockNumber int, writeValue *[]byte) 
 	if bp.currentSize >= bp.maxSize {
 		bp.evictOldest()
 	}
+	//TODO: ovaj kod bi verovatno zapravo trebao da bude unutar !ok bloka
+	//zato što ovaj kod zapravo dodaje ključ i vrednost u cachemap i lruList
 	bp.cacheMap[key] = *writeValue
 	bp.lruList.PushFront(key)
 	bp.currentSize += 1
