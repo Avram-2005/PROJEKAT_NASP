@@ -23,6 +23,7 @@ type Memtable interface {
 	Size() int         //broj postojecih elem (bez tombstone elem)
 	TotalEntries() int //ukupan broj unosa
 	IsEmpty() bool
+	Clear()
 
 	GetSortedEntries() []KeyValue //povratna vred/ parovi kljuc-vred neophodni za sstable
 	RangeScan(startKey, endKey string) []KeyValue
@@ -33,7 +34,7 @@ type Memtable interface {
 	IsFull() bool
 }
 
-type MemtableStruct struct {
+type MemtableConfig struct {
 	Type              string //neka od tri strukture: hashmapa, skiplista ili b+ stablo
 	MaxSizeBytes      int    //max velicina u bajtovima
 	MaxSizeEntries    int    //max broj elemenata koji moze da primi
