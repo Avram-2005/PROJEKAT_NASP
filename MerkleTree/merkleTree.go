@@ -1,6 +1,7 @@
-package merkleTree
+package MerkleTree
 
 import (
+	"bytes"
 	"crypto/sha256" //hash funkcija
 	"fmt"
 )
@@ -67,4 +68,35 @@ func NewMerkleTree(data [][]byte) (*MerkleTree, error) {
 	return &MerkleTree{
 		root: nodes[0], //koren
 	}, nil
+}
+
+func (m *MerkleTree) Verify(expectedRoot []byte) bool {
+	if m == nil || m.root == nil {
+		return false
+	}
+	return bytes.Equal(m.root.hash, expectedRoot) // da li su hash-evi isti
+}
+
+func FindDifference(a, b *MerkleNode) *MerkleNode {
+	if a == nil || b == nil {
+		return nil
+	}
+
+	// hash-evi su isti
+	if bytes.Equal(a.hash, b.hash) {
+		return nil
+	}
+
+	// hash se razlikuje, a dosli smo do lista stabla, znaci dosli smo do izmene
+	if a.left == nil && a.right == nil {
+		return a
+	}
+
+	// proveri levo dete
+	if diff := FindDifference(a.left, b.left); diff != nil {
+		return diff
+	}
+
+	// proveri desno dete
+	return FindDifference(a.right, b.right)
 }
