@@ -124,10 +124,9 @@ func (skipList *SkipList) Delete(key string) error {
 	}
 
 	for i := 0; i < skipList.height; i++ { //brisanje elementa sa svih nivoa
-		if prev[i].next[i] != current {
-			break // izlazimo iz petlje, jer current nije na ovom nivou, pa ni na vsiim od njega
+		if prev[i].next[i] == current {
+			prev[i].next[i] = current.next[i] //prethodni clan ce pokazuje na ono sto je pokazivao obrisan element
 		}
-		prev[i].next[i] = current.next[i] //prethodni clan ce pokazuje na ono sto je pokazivao obrisan element
 	}
 
 	//proveravamo da li imamo prazne nivoe
@@ -140,10 +139,10 @@ func (skipList *SkipList) Delete(key string) error {
 }
 
 // Pretraga elemenata po kljucu
-// Vraca par (vrednost, bool)
-func (skipList *SkipList) Get(key string) ([]byte, error) {
+// Vraca touple (vrednost, bool,error)
+func (skipList *SkipList) Get(key string) ([]byte, bool, error) {
 	if key == "" {
-		return nil, errors.New("Key cannot be empty")
+		return nil, false, errors.New("Key cannot be empty")
 	}
 	current := skipList.head
 	for i := skipList.height - 1; i >= 0; i-- {
@@ -153,7 +152,92 @@ func (skipList *SkipList) Get(key string) ([]byte, error) {
 	}
 	current = current.next[0]                 //nulti nivo, gledamo cvor na koji pokazuje current
 	if current == nil || current.key != key { //proveravamo da li je pretraga uspela
-		return nil, errors.New("Key not found") //element nije pronadjen
+		return nil, false, nil //element nije pronadjen
 	}
-	return current.value, nil //element je nadjen
+	return current.value, true, nil //element je nadjen
+}
+
+func (skipList *SkipList) RangeScan(startKey, endKey string) []struct {
+	Key   string
+	Value []byte
+} {
+	var result []struct {
+		Key   string
+		Value []byte
+	}
+	//pronalazenje pocetnog cvora
+	current := skipList.head
+	for i := skipList.height - 1; i >= 0; i-- {
+		for current.next[i] != nil && current.next[i].key < startKey {
+			current = current.next[i]
+		}
+	}
+
+	current = current.next[0]
+	for current != nil && current.key <= endKey {
+		result = append(result, struct {
+			Key   string
+			Value []byte
+		}{
+			Key:   current.key,
+			Value: current.value,
+		})
+		current = current.next[0]
+	}
+	return result
+
+}
+
+func (skipList *SkipList) PrefixScan(prefix string) []struct {
+	Key   string
+	Value []byte
+} {
+	var result []struct {
+		Key   string
+		Value []byte
+	}
+	//pronalazenje prvog cvora sa kljucem koji odgovara unetom prefiksu
+	current := skipList.head
+	for i := skipList.height - 1; i >= 0; i-- {
+		for current.next[i] != nil && current.next[i].key < prefix {
+			current = current.next[i]
+		}
+	}
+
+	current = current.next[0]
+	for current != nil && startsWith(current.key, prefix) {
+		result = append(result, struct {
+			Key   string
+			Value []byte
+		}{
+			Key:   current.key,
+			Value: current.value,
+		})
+		current = current.next[0]
+	}
+	return result
+}
+
+func startsWith(str, prefix string) bool {
+	if len(str) < len(prefix) {
+		return false
+	}
+	return str[:len(prefix)] == prefix
+}
+
+func (skipList *SkipList) Size() int {
+	return skipList.size
+}
+
+func (skipList *SkipList) IsEmpty() bool {
+	return skipList.size == 0
+}
+
+func (skipList *SkipList) Clear() {
+	skipList.head = &node{
+		key:  "",
+		next: make([]*node, skipList.maxHeight),
+	}
+	skipList.height = 1
+	skipList.size = 0
 }

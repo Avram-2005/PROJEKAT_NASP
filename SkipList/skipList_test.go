@@ -29,7 +29,7 @@ func TestSkipList(t *testing.T) {
 	fmt.Println("Three elements added")
 
 	//dobavljanje postojeceg elementa
-	value, err := skipl.Get("abc")
+	value, _, err := skipl.Get("abc")
 	if err != nil {
 		t.Errorf("Element 'abc' was not found: %v", err)
 
@@ -38,9 +38,9 @@ func TestSkipList(t *testing.T) {
 	}
 
 	//dobavljanje nepostojeceg elementa
-	_, err = skipl.Get("jkl")
-	if err != nil {
-		fmt.Printf("Element 'jkl' was not found: %v\n", err)
+	_, found, _ := skipl.Get("jkl")
+	if !found {
+		fmt.Printf("Element 'jkl' was not found")
 
 	} else {
 		t.Error("Element 'jkl' was found")
@@ -51,7 +51,7 @@ func TestSkipList(t *testing.T) {
 	if err != nil {
 		t.Errorf("Failed to update element 'abc' : %v", err)
 	}
-	value, err = skipl.Get("abc")
+	value, _, err = skipl.Get("abc")
 	if err != nil {
 		t.Errorf("Failed to update 'abc': %v", err)
 	} else if string(value) == "cetvrtaVrednost" {
@@ -63,13 +63,13 @@ func TestSkipList(t *testing.T) {
 	if err != nil {
 		t.Error("Failed to delete 'def'")
 	} else {
-		fmt.Println("Element 'def' was deelted")
+		fmt.Println("Element 'def' was deleted")
 	}
 
 	//provera uspesnosti brisanja
-	_, err = skipl.Get("def")
-	if err != nil {
-		fmt.Printf("Element 'def' was not found after deletion: %v\n", err)
+	_, found, _ = skipl.Get("def")
+	if !found {
+		fmt.Printf("Element 'def' was not found after deletion")
 	} else {
 		t.Error("Element 'def' was found even though it was deleted")
 	}
@@ -77,7 +77,7 @@ func TestSkipList(t *testing.T) {
 	//brisanje nepostojeceg elementa
 	err = skipl.Delete("nepostojec")
 	if err != nil {
-		fmt.Printf("An attempt at deleting a nonexistent element returns an error: %v/n", err)
+		fmt.Printf("An attempt at deleting a nonexistent element returns an error: %v\n", err)
 
 	} else {
 		t.Error("Deletion of a nonexistent element should have returned an error")
@@ -96,5 +96,25 @@ func TestSkipList(t *testing.T) {
 		fmt.Printf("Everything works: %v\n", err)
 	} else {
 		t.Error("Nil value should have triggered an error")
+	}
+}
+
+func TestRangePrefixScan(t *testing.T) {
+	sl, _ := NewSkipList(4)
+	sl.Put("n", []byte("narandza"))
+	sl.Put("z", []byte("zebra"))
+	sl.Put("g", []byte("grozdje"))
+	sl.Put("a", []byte("ananas"))
+	sl.Put("b", []byte("banana"))
+
+	//rangeScan
+	rangesc := sl.RangeScan("g", "z")
+	if len(rangesc) != 3 || rangesc[0].Key != "g" || rangesc[2].Key != "z" {
+		t.Errorf("RangeScan is not working")
+	}
+	//prefixScan
+	prefixsc := sl.PrefixScan("g")
+	if len(prefixsc) != 1 || prefixsc[0].Key != "g" {
+		t.Errorf("PrefixScan is not working")
 	}
 }
