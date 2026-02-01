@@ -102,3 +102,40 @@ func TestHashMap(t *testing.T) {
 		fmt.Println("Contains returns false for a nonexistent key")
 	}
 }
+
+func TestSortingFunctions(t *testing.T) {
+	hm := NewHashMap()
+	hm.Put("zebra", []byte("z"))
+	hm.Put("pas", []byte("p"))
+	hm.Put("laptop", []byte("l"))
+	hm.Put("mis", []byte("m"))
+
+	sorted := hm.GetSortedEntries()
+	fmt.Println("Sorted entries: ")
+	for _, e := range sorted {
+		fmt.Printf("%s\n", e.Key)
+	}
+
+	if sorted[0].Key != "laptop" || sorted[1].Key != "mis" || sorted[2].Key != "pas" || sorted[3].Key != "zebra" {
+		t.Error("Not sorted correctly")
+	}
+
+	//RangeScan
+	rangesc := hm.RangeScan("mis", "zebra")
+	fmt.Println("RangeScan: ")
+	for _, e := range rangesc {
+		fmt.Printf("%s\n", e.Key)
+	}
+	if len(rangesc) != 3 || rangesc[0].Key != "mis" || rangesc[2].Key != "zebra" {
+		t.Error("RangeScan is not working correctly")
+	}
+	//PrefixScan
+	prefixsc := hm.PrefixScan("la")
+	fmt.Printf("PrefixScan: ")
+	for _, e := range prefixsc {
+		fmt.Printf("%s\n", e.Key)
+	}
+	if len(prefixsc) != 1 || prefixsc[0].Key != "laptop" {
+		t.Error("PrefixScan is not working correctly")
+	}
+}
