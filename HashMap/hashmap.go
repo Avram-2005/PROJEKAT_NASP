@@ -1,6 +1,9 @@
 package HashMap
 
-import "errors"
+import (
+	"errors"
+	"sort"
+)
 
 type HashMap struct {
 	data map[string][]byte //parovi kljuc-vrednost
@@ -63,8 +66,8 @@ func (hashmap *HashMap) Size() int {
 	return hashmap.size
 }
 
-//proverava da li je mapa prazna
-//Povratna vrednost-boolean
+// proverava da li je mapa prazna
+// Povratna vrednost-boolean
 func (hashmap *HashMap) IsEmpty() bool {
 	return hashmap.size == 0
 }
@@ -110,4 +113,85 @@ func (hashmap *HashMap) Items() []struct {
 		}{Key: key, Value: value})
 	}
 	return pairs
+}
+
+// Vraca sortirane kljuceve za flush na disk
+func (hashmap *HashMap) GetSortedEntries() []struct {
+	Key   string
+	Value []byte
+} {
+	keys := make([]string, 0, hashmap.size)
+	for key := range hashmap.data {
+		keys = append(keys, key)
+	}
+	//sortiranje kljuceva
+	sort.Strings(keys)
+
+	//pravljenje sortiranu listu parova
+	pairs := make([]struct {
+		Key   string
+		Value []byte
+	}, 0, hashmap.size)
+
+	for _, key := range keys {
+		pairs = append(pairs, struct {
+			Key   string
+			Value []byte
+		}{
+			Key:   key,
+			Value: hashmap.data[key],
+		})
+	}
+	return pairs
+}
+
+// vraca sortirane unose u opsegu
+// ulazni parametri - pocetni i krajnji kljjuc (string)
+func (hashmap *HashMap) RangeScan(startKey, endKey string) []struct {
+	Key   string
+	Value []byte
+} {
+	entries := hashmap.GetSortedEntries()
+	result := make([]struct {
+		Key   string
+		Value []byte
+	}, 0)
+
+	for _, entry := range entries {
+		if entry.Key >= startKey && entry.Key <= endKey {
+			result = append(result, entry)
+		} else if entry.Key > endKey {
+			break //kljucevi su sortirani
+		}
+	}
+	return result
+}
+
+// vraca sortirane unose po prefiksu
+// ulazni parametar je prefix (string)
+func (hashmap *HashMap) PrefixScan(prefix string) []struct {
+	Key   string
+	Value []byte
+} {
+	entries := hashmap.GetSortedEntries()
+	result := make([]struct {
+		Key   string
+		Value []byte
+	}, 0)
+
+	for _, entry := range entries {
+		if len(entry.Key) >= len(prefix) && entry.Key[:len(prefix)] == prefix {
+			result = append(result, entry)
+		} else if entry.Key > prefix && !startsWith(entry.Key, prefix) {
+			break //stigli do kraja
+		}
+	}
+	return result
+}
+
+func startsWith(str, prefix string) bool {
+	if len(str) < len(prefix) {
+		return false
+	}
+	return str[:len(prefix)] == prefix
 }
