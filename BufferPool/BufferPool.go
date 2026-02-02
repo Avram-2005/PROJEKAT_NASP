@@ -3,7 +3,6 @@ package BufferPool
 import (
 	"container/list"
 	"fmt"
-	"log"
 	"os"
 	"strconv"
 )
@@ -42,7 +41,7 @@ func (bp *BufferPool) Get(filepath string, blockNumber int) (*[]byte, error) {
 	if !ok {
 		file, err := os.OpenFile(filepath, os.O_RDONLY, 0644)
 		if err != nil {
-			log.Fatal(err)
+			return nil, err
 		} else {
 			//ako nismo nasli kljuc, moramo naci unutar fajla bajtove koji nam trebaju
 			defer file.Close()
@@ -54,34 +53,29 @@ func (bp *BufferPool) Get(filepath string, blockNumber int) (*[]byte, error) {
 			if err != nil {
 				return nil, err
 			}
+			//provera da li treab izabciti najsatriji
+			if bp.currentSize >= bp.maxSize {
+				bp.evictOldest()
+			}
 			//dodajemo bajtove u lru listu i mapu, i povecavamo current size
 			bp.cacheMap[key] = returnBytes
-			(*bp.lruList).PushFront(key)
+			bp.lruList.PushFront(key)
 			bp.currentSize += 1
-
-			var foundElem *list.Element
-			for e := bp.lruList.Front(); e != nil; e = e.Next() {
-				if e.Value.(string) == key {
-					foundElem = e
-					break
-				}
-			}
-			if foundElem != nil {
-				bp.lruList.MoveToFront(foundElem)
-			}
 			return &returnBytes, nil
+
 		}
 	}
 	//ako se kljuc nalazi u mapi, samo vracamo sta smo nasli
+	bp.lruList.MoveToFront(bp.findElement(key))
 	return &value, nil
 }
 
 // Funkcija koja zapisuje podatke u blok fajla, i onda dodaje taj blok u BufferPool ako nije vec tu
 func (bp *BufferPool) Put(filepath string, blockNumber int, writeValue *[]byte) error {
 	//otvaramo fajl
-	file, err := os.OpenFile(filepath, os.O_RDWR, 0644)
+	file, err := os.OpenFile(filepath, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	//fajl ce se zatvoriti kad returnujemo
 	defer file.Close()
@@ -98,43 +92,18 @@ func (bp *BufferPool) Put(filepath string, blockNumber int, writeValue *[]byte) 
 	}
 	//kad smo vec zapisali sta smo trebali, proveravamo da li je taj blok vec u bufferu
 	key := filepath + strconv.Itoa(blockNumber)
-	_, ok := bp.cacheMap[key]
-	//ako blok nije u bufferu, dodajemo ga u lru listu, mapu, i povecavamo current size
-	if !ok {
+	if elem := bp.findElement(key); elem != nil { //vec postoji u kesu, samo azuriramo i pomerimo na pocetak liste
 		bp.cacheMap[key] = *writeValue
-		//TODO: Ispraviti!
-		//Na prvi pogled, meni se čini kao da je problem ovde
-		//Na početku rada, sama lru Lista je prazna
-		//Ako blok nije nadjen, ovde se on dodaje u cachemap,
-		//Ali onda pokusavamo da nadjemo foundElem sa vrednoscu kljuca na koji dodajemo blok
-		//A mi zbog cinjenice da smo unutar !ok bloka znamo da taj kljuc nije u listi,
-		//jer nam ok daj True kad je kljuc pronadjen, a False kada nije
-		//Proveri i get!
-		var foundElem *list.Element
-		for e := bp.lruList.Front(); e != nil; e = e.Next() {
-			if e.Value.(string) == key {
-				foundElem = e
-				break
-			}
+		bp.lruList.MoveToFront(elem)
+	} else {
+		if bp.currentSize >= bp.maxSize {
+			bp.evictOldest()
 		}
-		//Ovo nikad nece biti istina-found elem bi trebalo da uvek bude nil,
-		//jer u cachemap uopste nismo pronasli kljuc koji trazimo!!!
-		if foundElem != nil {
-			bp.lruList.MoveToFront(foundElem)
-		}
-		return nil
-
+		bp.cacheMap[key] = *writeValue
+		bp.lruList.PushFront(key)
+		bp.currentSize += 1
 	}
-	if bp.currentSize >= bp.maxSize {
-		bp.evictOldest()
-	}
-	//TODO: ovaj kod bi verovatno zapravo trebao da bude unutar !ok bloka
-	//zato što ovaj kod zapravo dodaje ključ i vrednost u cachemap i lruList
-	bp.cacheMap[key] = *writeValue
-	bp.lruList.PushFront(key)
-	bp.currentSize += 1
 	return nil
-
 }
 
 // Glavna komponenta LRU algoritma
@@ -161,15 +130,8 @@ func (bp *BufferPool) Delete(filepath string, blockNumber int) error {
 	} else {
 		delete(bp.cacheMap, key)
 
-		var foundElem *list.Element
-		for e := bp.lruList.Front(); e != nil; e = e.Next() {
-			if e.Value.(string) == key {
-				foundElem = e
-				break
-			}
-		}
-		if foundElem != nil {
-			bp.lruList.Remove(foundElem)
+		if elem := bp.findElement(key); elem != nil {
+			bp.lruList.Remove(elem)
 		}
 		bp.currentSize--
 		return nil
@@ -180,4 +142,14 @@ func (bp *BufferPool) Size() int {
 }
 func (bp *BufferPool) GetBlockSize() int {
 	return bp.blockSize
+}
+
+// pronalazi element u listi
+func (bp *BufferPool) findElement(key string) *list.Element {
+	for elem := bp.lruList.Front(); elem != nil; elem = elem.Next() {
+		if elem.Value.(string) == key {
+			return elem
+		}
+	}
+	return nil
 }
