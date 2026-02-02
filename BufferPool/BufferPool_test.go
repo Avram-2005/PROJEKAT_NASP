@@ -3,6 +3,7 @@ package BufferPool
 import (
 	"encoding/binary"
 	"fmt"
+	"os"
 	"reflect"
 	"testing"
 )
@@ -176,6 +177,7 @@ func TestLru1(t *testing.T) {
 }
 
 func TestLru2(t *testing.T) {
+	os.Create("test.bin")
 	//prvo pravimo cetiri niza bajtova, koje cemo da ubacujemo u fajl
 	data1 := make([]byte, 4096)
 	binary.BigEndian.PutUint64(data1, 78)
@@ -208,14 +210,14 @@ func TestLru2(t *testing.T) {
 	}
 	//Ocekujemo da podaci izvuceni iz mape budu jednaki drugom bloku-data2
 	data_from_map1 := bp.cacheMap[(*check1).Value.(string)]
-	if !reflect.DeepEqual(get_data2, data_from_map1) {
+	if !reflect.DeepEqual((*get_data2), data_from_map1) {
 		fmt.Print(get_data2)
 		fmt.Print(data_from_map1)
 		t.Errorf("neocekivana vrednost za back")
 		t.FailNow()
 	}
 	data_from_map2 := bp.cacheMap[(*check2).Value.(string)]
-	if !reflect.DeepEqual(get_data3, data_from_map2) {
+	if !reflect.DeepEqual((*get_data3), data_from_map2) {
 		fmt.Print(get_data3)
 		fmt.Print(data_from_map2)
 		t.Errorf("neocekivana vrednost za front")
