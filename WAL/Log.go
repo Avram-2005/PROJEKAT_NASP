@@ -9,6 +9,7 @@ import (
 // Sve potrebno za WAL
 // Nisu konacne velicine
 // CRC 4B | Timestamp 8B | Tombstone 1B | KeySize 4B | ValueSize 8B | Key ... | Value ...
+// Ukupno 29B
 type Log struct {
 	CRC       uint32
 	Timestamp []byte
@@ -19,22 +20,24 @@ type Log struct {
 	Value     []byte
 }
 
+const HEADERSIZE = 4 + 8 + 1 + 8 + 8
+
 // Vraca binarni zapis
 func (r *Log) ToBinary() ([]byte, error) {
-	totalSize := 4 + 8 + 1 + 8 + 8 + r.KeySize + r.ValueSize
-	// Prostor za skladistenje celog loga
+	totalSize := HEADERSIZE + r.KeySize + r.ValueSize
+	//Prostor za skladistenje celog loga
 	buf := make([]byte, totalSize)
 	offset := 0
 
-	// CRC 4B
+	//CRC 4B
 	binary.BigEndian.PutUint32(buf[offset:offset+4], r.CRC)
 	offset += 4
 
-	// Timestamp 8B
+	//Timestamp 8B
 	copy(buf[offset:offset+8], r.Timestamp)
 	offset += 8
 
-	// Tombstone 1B
+	//Tombstone 1B
 	if r.Tombstone {
 		buf[offset] = 1
 	} else {
@@ -42,19 +45,19 @@ func (r *Log) ToBinary() ([]byte, error) {
 	}
 	offset += 1
 
-	// KeySize 4B
+	//KeySize 4B
 	binary.BigEndian.PutUint64(buf[offset:offset+8], r.KeySize)
 	offset += 8
 
-	// ValueSize 8B
+	//ValueSize 8B
 	binary.BigEndian.PutUint64(buf[offset:offset+8], r.ValueSize)
 	offset += 8
 
-	// Key
+	//Key
 	copy(buf[offset:offset+int(r.KeySize)], r.Key)
 	offset += int(r.KeySize)
 
-	// Value
+	//Value
 	copy(buf[offset:offset+int(r.ValueSize)], r.Value)
 
 	return buf, nil
@@ -62,7 +65,7 @@ func (r *Log) ToBinary() ([]byte, error) {
 
 // Konstruktor
 func NewLog(key string, value []byte, tombstone bool, timestamp time.Time) (*Log, error) {
-	// Pretvaranje time -> []byte
+	//Pretvaranje time -> []byte
 	ts := make([]byte, 8)
 	binary.BigEndian.PutUint64(ts, uint64(timestamp.UnixNano()))
 
