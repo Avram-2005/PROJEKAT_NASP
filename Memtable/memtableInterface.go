@@ -1,4 +1,4 @@
-package Memtable
+package memtable
 
 type KeyValue struct {
 	Key       string
@@ -30,7 +30,7 @@ type Memtable interface {
 	PrefixScan(prefix string) []KeyValue
 
 	Iterator() Iterator
-	CheckIfShouldFlush() bool //provera da li je vreme za flush u SSTable
+	ShouldFlush() bool //provera da li je vreme za flush u SSTable
 	IsFull() bool
 }
 

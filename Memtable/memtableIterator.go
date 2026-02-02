@@ -1,4 +1,4 @@
-package Memtable
+package memtable
 
 type BaseIterator struct { //osnovna struktura/implementacija iteratora
 	entries []KeyValue
@@ -6,7 +6,7 @@ type BaseIterator struct { //osnovna struktura/implementacija iteratora
 	err     error
 }
 
-func NewBaseImplIterator(entries []KeyValue) *BaseIterator {
+func NewBaseIterator(entries []KeyValue) *BaseIterator {
 	return &BaseIterator{
 		entries: entries,
 		current: -1,
