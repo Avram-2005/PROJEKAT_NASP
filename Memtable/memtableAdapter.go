@@ -1,4 +1,4 @@
-package Memtable
+package memtable
 
 /*import (
 	"fmt"
@@ -15,10 +15,10 @@ type MemtableAdapter struct{
 	dataStructure interface{}
 	structureType string
 
-	getFunction func(key string) ([]byte,bool,error)
-	putFunction func(key string, value []byte) error
-	deleteFunction func(key string) (bool,error)
-	clearFunction func()
+	getFunc func(key string) ([]byte,bool,error)
+	putFunc func(key string, value []byte) error
+	deleteFunc func(key string) (bool,error)
+	clearFunc func()
 
 }
 
@@ -55,7 +55,229 @@ func NewMemtableAdapter(config MemtableConfig) (*MemtableAdapter,error){
 		return nil,fmt.Errorf("Memtable type: %s, was not recognized",config.Type)
 	}
 	return adapter,nil
-}*/
+}
+//Implementacija HashMape
+func (adapt *MemtableAdapter) initHashMap(hm *HashMap.HashMap){
+		adapt.getFunc=func(key string)([]byte,bool,error){
+			value,err:=hm.Get(key)
+			if err !=nil{
+				return nil,false,nil
+			}
+			return value,true,nil
+		}
+		adapt.putFunc=func(key string, value []byte) error{
+			_,err:=hm.Get(key) //provera da li kljuc postoji
+			exists := err==nil
+			err=hm.Put(key,value)
+			if err !=nil{
+				return err
+			}
+			if !exists{
+				adapt.size++
+			}
+			adapt.total++
+			retrun nil
+		}
+		adapt.deleteFunc=func(key string)(bool,error){
+			_,err:=hm.Get(key)
+			if err != nil{
+				return false,nil
+			}
+			err = hm.Delete(key)
+			if err != nil{
+				return false,err
+			}
+			adapt.size--
+			return true,nil
+		}
+		adapt.clearFunc=func(){
+			hm=HashMap.NewHashMap()
+			adapt.size=0
+			adapt.total=0
+		}
 
-//TODO1: INIT IMPLEMENTACIJA ZA SVE TIPOVE + SCANS
-//TODO2: Implementacija emmtable interfejsa, put,get,delete,size,total,isempty,clear,iterator,shoulFLush,isfull
+}
+
+//implementacija skipliste
+func (adapt *MemtableAdapter) initSkipList(sl *SkipList.SkipList){
+	adapt.getFunc=func(key string)([]byte, bool, error){
+		return sl.Get(key)
+	}
+	adapt.putFunc=func(key string, value []byte)error{
+		_,found,_:=sl.Get(key)
+		err:=sl.Put(key,value)
+		if err != nil{
+			return err
+		}
+		if !found{
+			adapt.size==
+		}
+		adapt.total++
+		return nil
+	}
+	adapt.deleteFunc=func(key string)(bool,error){
+		_,found,_:=sl.Get(key)
+		if !found{
+			return false,nil
+		}
+		err :=sl.Delete(key)
+		if err !=nil{
+			return false,err
+		}
+		adapt.size--
+		return true,nil
+	}
+	adapt.clearFunc = func(){
+		sl.Clear()
+		adapt.size=0
+		adapt.total=0
+	}
+}
+
+//implementacija b+ stabla
+func(adapt *MemtableAdapter)initBPlusTree(bpt *BPlusTree.BPlusTree){
+	adapt.getFunc=func(key string)([]byte,bool,error){
+		value, found := bpt.Search(key)
+		return value,found,nil
+	}
+	adapt.putFunc=func(key string, value []byte) error{
+		_,found:=bpt.Search(key)
+		err:=bpt.Insert(key,value)
+		if err!=nil{
+			return err
+		}
+		if !found{
+			adapt.size++
+		}
+		adapt.total++
+		return nil
+	}
+	adapt.deleteFunc=func(key string)(bool,error){
+		deleted:=bpt.Delete(key)
+		if deleted{
+			adapt.size--
+		}
+		return deleted, nil
+	}
+	adapt.clearFunc=func(){
+		bpt,_=BPlusTree.NewBPlusTree(adapt.config.BPlusTreeDegree)
+		adapt.size=0
+		adapt.total=0
+
+	}
+}
+
+//Implementacija rangeScan
+func (adapt *MemtableAdapter) RangeScan(startKey,endKey string)[]KeyValue{
+	switch adapt.structureType{
+	case "hashmap":
+		hm:=adapt.dataStructure.(*HashMap.HashMap)
+		hmEntries := hm.RangeScan(startKey,endKey)
+		return convertToKeyValue(hmEntries)
+	case "skip_list":
+		sl:=adapt.dataStructure.(*SkipList.SkipList)
+		slEntries := sl.RangeScan(startKey,endKey)
+		return convertToKeyValue(slEntries)
+	case "b_plus_tree":
+		bpt:=adapt.dataStructure.(*BPlusTree.BPlusTree)
+		bptEntries:=bpt.RangeScan(startKey,endKey)
+		retrun convertToKeyValue(bptEntries)
+	default:
+		return []KeyValue{}
+	}
+}
+//Implementacija PrefixScan
+func(adapt *MemtableAdapter)PrefixScan(prefix scan)[]KeyValue{
+	switch adapt.structureType{
+	case "hashmap":
+		hm:=adapt.dataStructure.(*HashMap.HashMap)
+		hmEntries := hm.PrefixScan(prefix)
+		return convertToKeyValue(hmEntries)
+	case "skip_list":
+		sl:=adapt.dataStructure.(*SkipList.SkipList)
+		slEntries := sl.PrefixScan(prefix)
+		return convertToKeyValue(slEntries)
+	case "b_plus_tree":
+		bpt:=adapt.dataStructure.(*BPlusTree.BPlusTree)
+		bptEntries:=bpt.PrefixScan(prefix)
+		retrun convertToKeyValue(bptEntries)
+	default:
+		return []KeyValue{}
+	}
+}
+
+//Implementacija dobavljanja sortiranih podataka
+func (adapt *MemtableAdapter)GetSortedEntries() []KeyValue{
+	switch adapt.structureType{
+	case "hashmap":
+		hm:=adapt.dataStructure.(*HashMap.HashMap)
+		hmEntries := hm.GetSortedEntries()
+		return convertToKeyValue(hmEntries)
+	case "skip_list": //vec je sortirana
+		sl:=adapt.dataStructure.(*SkipList.SkipList)
+		slEntries := sl.RangeScan("","zzzzzzzzz")
+		return convertToKeyValue(slEntries)
+	case "b_plus_tree": //vec je sortirano
+		bpt:=adapt.dataStructure.(*BPlusTree.BPlusTree)
+		bptEntries:=bpt.RangeScan("","zzzzzzzzz")
+		retrun convertToKeyValue(bptEntries)
+	default:
+		return []KeyValue{}
+	}
+}
+
+func convertToKeyValue(entries []struct{
+	Key string
+	Value []byte
+})[]KeyValue{
+	result := make([]KeyValue,len(entires))
+	for i,r:=range entries{
+		result[i]=KeyValue{
+			Key:e.Key,
+			Value:e.Value,
+			Tombstone: e.Value==nil,
+		}
+	}
+	return result
+}
+
+func (adapt *MemtableAdapter)Put(key string,value []byte)error{
+	return adapt.putFunc(key,value)
+}
+func (adapt *MemtableAdapter)Get(key string)([]byte,bool,error){
+	return adapt.getFunc(key)
+}
+func (adapt *MemtableAdapter)Delete(key string)(bool,error){
+	return adapt.deleteFunc(key)
+}
+func (adapt *MemtableAdapter)Size() int{
+	return adapt.size
+}
+func (adapt *MemtableAdapter)TotalEntries()int{
+	return adapt.total
+}
+func (adapt *MemtabelAdapter)IsEmpty()bool{
+	return adapt.size==0
+}
+func (adapt *MemtableAdapter)Clear(){
+	adapt.clearFunc()
+}
+func(adapt *MemtableAdapter)Iterator() Iterator{
+	entires:=adapt.GetSortedEntries()
+	return NewBaseIterator(entries)
+}
+func(adapt *MemtableAdapter)ShouldFlush()bool{
+	if adapt.config.MaxSizeBytes > 0{
+		estimatedSize:=adapt.total*100
+		return estimatedSize>=adapt.config.MaxSizeBytes
+	}
+	if adapt.config.MaxSizeEntries>0{
+		return adapt.total>=adapt.config.MaxSizeEntries
+	}
+	return false
+}
+
+func (adapt *MemtableAdapter)IsFull()bool{
+	return adapt.ShouldFlush()
+}
+*/
