@@ -185,8 +185,51 @@ func (wal *WAL) appendLog(newLog *Log) error {
 func (wal *WAL) ClearWAL() {
 }
 
-// Cita sve WAL zapise =(
+// Cita sve WAL zapise i radi X sa njima
 func (wal *WAL) ReadAll() {
+	blockSize := wal.blockManager.GetBlockSize()
+	for _, segment := range wal.segmentList {
+		blockNumber := 0
+		offset := 0
+
+		//Kao neki while(true)
+		for {
+			block, err := wal.blockManager.Get(segment, blockNumber)
+			if err != nil || block == nil {
+				break
+			}
+
+			if offset+HEADER_SIZE > blockSize {
+				blockNumber++
+				offset = 0
+				continue
+			}
+
+			header := (*block)[offset : offset+HEADER_SIZE]
+
+			keySize := binary.BigEndian.Uint64(header[13:21])
+			valueSize := binary.BigEndian.Uint64(header[21:29])
+			recordSize := HEADER_SIZE + int(keySize) + int(valueSize)
+
+			if offset+recordSize > blockSize {
+				blockNumber++
+				offset = 0
+				continue
+			}
+
+			data := (*block)[offset : offset+recordSize]
+
+			logEntry, err := FromBinary(data)
+			if err != nil {
+				break
+			}
+
+			//Treba da radi nesta
+			fmt.Println(logEntry)
+
+			offset += recordSize
+		}
+	}
 }
 
 // Cita samo zapise za dati kljuc =(
