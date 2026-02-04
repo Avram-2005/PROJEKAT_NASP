@@ -2,9 +2,7 @@ package sstable
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
-	"runtime/pprof"
 	"testing"
 
 	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
@@ -20,9 +18,9 @@ func testFlush(t *testing.T, mem Memtable, numFlush int) error {
 	// tempDir := filepath.Join(".", "testdata", "sstable_flush_tests")
 	SetupDirectory(tempDir)
 
-	f, _ := os.Create(filepath.Join(tempDir, fmt.Sprintf("cpu_profile_flush_%d.prof", numFlush)))
-	pprof.StartCPUProfile(f)
-	defer pprof.StopCPUProfile()
+	// f, _ := os.Create(filepath.Join(tempDir, fmt.Sprintf("cpu_profile_flush_%d.prof", numFlush)))
+	// pprof.StartCPUProfile(f)
+	// defer pprof.StopCPUProfile()
 
 	err = Flush(mem, numFlush, bm)
 	if err != nil {
