@@ -11,7 +11,12 @@ import (
 // Ovi testovi su direktna kopija testova iz bufferpoola,
 // koji proveravaju samo da li blockmanager zapravo funkcionise kao interfejs sa bufferpool-om
 func TestBlockManager(t *testing.T) {
-	os.Create("test.bin")
+	file, err := os.Create("test.bin")
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("greska tokom stvaranja fajla")
+		t.FailNow()
+	}
 	//prvo pravimo cetiri niza bajtova, koje cemo da ubacujemo u fajl
 	data1 := make([]byte, 4096)
 	binary.BigEndian.PutUint64(data1, 78)
@@ -26,7 +31,7 @@ func TestBlockManager(t *testing.T) {
 		t.FailNow()
 	}
 	//ubacujemo prvi niz bajtova u prvi blok fajla test.bin
-	err = bm.Put("test.bin", 1, &data1)
+	err = bm.Put(file, 0, &data1)
 
 	if err != nil {
 		fmt.Print(err)
@@ -34,7 +39,7 @@ func TestBlockManager(t *testing.T) {
 		t.FailNow()
 	}
 	//citamo prvi blok fajla test.bin
-	readData1, err := bm.Get("test.bin", 1)
+	readData1, err := bm.Get(file, 0)
 	if err != nil {
 		fmt.Print(err)
 		t.Errorf("greska tokom prvog citanja")
@@ -48,14 +53,14 @@ func TestBlockManager(t *testing.T) {
 		t.FailNow()
 	}
 	//ubacujemo drugi niz bajtova
-	err = bm.Put("test.bin", 2, &data2)
+	err = bm.Put(file, 1, &data2)
 	if err != nil {
 		fmt.Print(err)
 		t.Errorf("greska tokom drugog pisanja")
 		t.FailNow()
 	}
 	//citamo drugi blok fajla
-	readData2, err := bm.Get("test.bin", 2)
+	readData2, err := bm.Get(file, 1)
 	if err != nil {
 		fmt.Print(err)
 		t.Errorf("greska tokom drugog citanja")
@@ -69,14 +74,14 @@ func TestBlockManager(t *testing.T) {
 		t.FailNow()
 	}
 	//upisujemo podatke u treci blok
-	err = bm.Put("test.bin", 3, &data3)
+	err = bm.Put(file, 2, &data3)
 	if err != nil {
 		fmt.Print(err)
 		t.Errorf("greska tokom treceg pisanja")
 		t.FailNow()
 	}
 	//citamo treci blok
-	readData3, err := bm.Get("test.bin", 3)
+	readData3, err := bm.Get(file, 2)
 	if err != nil {
 		fmt.Print(err)
 		t.Errorf("greska tokom treceg citanja")
@@ -92,14 +97,14 @@ func TestBlockManager(t *testing.T) {
 	data4 := make([]byte, 4096)
 	binary.BigEndian.PutUint32(data4, 45)
 	//velicina buffer-a je 3, a sad upisujemo cetvrtu stvar-prva stvar u bufferu bi trebala da se izbaci!
-	err = bm.Put("test.bin", 4, &data4)
+	err = bm.Put(file, 3, &data4)
 	if err != nil {
 		fmt.Print(err)
 		t.Errorf("greska tokom cetvrtog pisanja")
 		t.FailNow()
 	}
 
-	readData4, err := bm.Get("test.bin", 4)
+	readData4, err := bm.Get(file, 3)
 	if err != nil {
 		fmt.Print(err)
 		t.Errorf("greska tokom cetvrtog citanja")
@@ -112,7 +117,7 @@ func TestBlockManager(t *testing.T) {
 		t.Errorf("data4 nije isto pre i posle citanja")
 		t.FailNow()
 	}
-	readData1, err = bm.Get("test.bin", 1)
+	readData1, err = bm.Get(file, 0)
 	if err != nil {
 		fmt.Print(err)
 		t.Errorf("greska tokom petog citanja")
@@ -124,10 +129,28 @@ func TestBlockManager(t *testing.T) {
 		t.Errorf("data1 nije isto pre i posle drugog citanja")
 		t.FailNow()
 	}
+	err = file.Close()
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("Greska tokom zatvaranja fajla")
+		t.FailNow()
+	}
+
+	err = os.Remove("test.bin")
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("Greska tokom brisanja fajla")
+		t.FailNow()
+	}
 }
 
 func TestSpecific(t *testing.T) {
-	os.Create("testSpecific.bin")
+	file, err := os.Create("test.bin")
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("greska tokom stvaranja fajla")
+		t.FailNow()
+	}
 	//prvo pravimo cetiri niza bajtova, koje cemo da ubacujemo u fajl
 	data1 := make([]byte, 100)
 	binary.BigEndian.PutUint64(data1, 78)
@@ -141,26 +164,26 @@ func TestSpecific(t *testing.T) {
 		t.Errorf("greska tokom inicalizacije blockmanagera")
 		t.FailNow()
 	}
-	err = bm.PutSpecific("testSpecific.bin", 1, 0, 100, &data1)
+	err = bm.PutSpecific(file, 0, 0, 100, &data1)
 	if err != nil {
 		fmt.Print(err)
 		t.Errorf("greska tokom prvog upisivanja")
 		t.FailNow()
 	}
-	err = bm.PutSpecific("testSpecific.bin", 1, 100, 100, &data2)
+	err = bm.PutSpecific(file, 0, 100, 100, &data2)
 	if err != nil {
 		fmt.Print(err)
 		t.Errorf("greska tokom drugog upisivanja")
 		t.FailNow()
 	}
-	err = bm.PutSpecific("testSpecific.bin", 1, 200, 100, &data3)
+	err = bm.PutSpecific(file, 0, 200, 100, &data3)
 	if err != nil {
 		fmt.Print(err)
 		t.Errorf("greska tokom treceg upisivanja")
 		t.FailNow()
 	}
 
-	readData1, err := bm.GetSpecific("testSpecific.bin", 1, 0, 100)
+	readData1, err := bm.GetSpecific(file, 0, 0, 100)
 	if err != nil {
 		fmt.Print(err)
 		t.Errorf("greska tokom prvog citanjaa")
@@ -173,7 +196,7 @@ func TestSpecific(t *testing.T) {
 		t.FailNow()
 	}
 
-	readData2, err := bm.GetSpecific("testSpecific.bin", 1, 100, 100)
+	readData2, err := bm.GetSpecific(file, 0, 100, 100)
 	if err != nil {
 		fmt.Print(err)
 		t.Errorf("greska tokom drugog citanjaa")
@@ -184,7 +207,7 @@ func TestSpecific(t *testing.T) {
 		t.FailNow()
 	}
 
-	readData3, err := bm.GetSpecific("testSpecific.bin", 1, 200, 100)
+	readData3, err := bm.GetSpecific(file, 0, 200, 100)
 	if err != nil {
 		fmt.Print(err)
 		t.Errorf("greska tokom treceg citanjaa")
@@ -198,7 +221,7 @@ func TestSpecific(t *testing.T) {
 	data4 := make([]byte, 100)
 	binary.BigEndian.PutUint16(data4, 12)
 
-	err = bm.PutSpecific("testSpecific.bin", 1, 150, 100, &data4)
+	err = bm.PutSpecific(file, 0, 150, 100, &data4)
 	if err != nil {
 		fmt.Print(err)
 		t.Errorf("greska tokom cetvrtog upisivanja")
@@ -208,14 +231,14 @@ func TestSpecific(t *testing.T) {
 	data5 := make([]byte, 100)
 	binary.BigEndian.PutUint16(data5, 89)
 
-	err = bm.PutSpecific("testSpecific.bin", 1, 250, 100, &data5)
+	err = bm.PutSpecific(file, 0, 250, 100, &data5)
 	if err != nil {
 		fmt.Print(err)
 		t.Errorf("greska tokom petog upisivanja")
 		t.FailNow()
 	}
 
-	readData4, err := bm.GetSpecific("testSpecific.bin", 1, 150, 100)
+	readData4, err := bm.GetSpecific(file, 0, 150, 100)
 	if err != nil {
 		fmt.Print(err)
 		t.Errorf("greska tokom cetvrtog citanjaa")
@@ -226,7 +249,7 @@ func TestSpecific(t *testing.T) {
 		t.FailNow()
 	}
 
-	readData5, err := bm.GetSpecific("testSpecific.bin", 1, 250, 100)
+	readData5, err := bm.GetSpecific(file, 0, 250, 100)
 	if err != nil {
 		fmt.Print(err)
 		t.Errorf("greska tokom petog citanjaa")
@@ -237,7 +260,7 @@ func TestSpecific(t *testing.T) {
 		t.FailNow()
 	}
 
-	readData2, err = bm.GetSpecific("testSpecific.bin", 1, 100, 100)
+	readData2, err = bm.GetSpecific(file, 0, 100, 100)
 	if err != nil {
 		fmt.Print(err)
 		t.Errorf("greska tokom sestog citanjaa")
@@ -247,10 +270,28 @@ func TestSpecific(t *testing.T) {
 		t.Errorf("data2 je isti pre i posle pisanja, a ne bi trebao da bude")
 		t.FailNow()
 	}
+	err = file.Close()
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("Greska tokom zatvaranja fajla")
+		t.FailNow()
+	}
+
+	err = os.Remove("test.bin")
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("Greska tokom brisanja fajla")
+		t.FailNow()
+	}
 }
 
 func TestAddBuffer(t *testing.T) {
-	os.Create("testBuffer.bin")
+	file, err := os.Create("test.bin")
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("greska tokom stvaranja fajla")
+		t.FailNow()
+	}
 	data1 := make([]byte, 100)
 	binary.BigEndian.PutUint64(data1, 78)
 	data2 := make([]byte, 100)
@@ -263,30 +304,30 @@ func TestAddBuffer(t *testing.T) {
 		t.Errorf("greska tokom inicalizacije blockmanagera")
 		t.FailNow()
 	}
-	err = bm.PutSpecific("testBuffer.bin", 1, 0, 100, &data1)
+	err = bm.PutSpecific(file, 0, 0, 100, &data1)
 	if err != nil {
 		fmt.Print(err)
 		t.Errorf("greska tokom prvog upisivanja")
 		t.FailNow()
 	}
-	err = bm.PutSpecific("testBuffer.bin", 1, 100, 100, &data2)
+	err = bm.PutSpecific(file, 0, 100, 100, &data2)
 	if err != nil {
 		fmt.Print(err)
 		t.Errorf("greska tokom drugog upisivanja")
 		t.FailNow()
 	}
-	err = bm.PutSpecific("testBuffer.bin", 1, 200, 100, &data3)
+	err = bm.PutSpecific(file, 0, 200, 100, &data3)
 	if err != nil {
 		fmt.Print(err)
 		t.Errorf("greska tokom treceg upisivanja")
 		t.FailNow()
 	}
-	bm.AddBuffer("testBuffer.bin", 1)
+	bm.AddBuffer(file, 0)
 	remainingZeroes := make([]byte, 3796)
 	data3 = append(data3, remainingZeroes...)
 	data2 = append(data2, data3...)
 	data1 = append(data1, data2...)
-	data4, err := bm.Get("testBuffer.bin", 1)
+	data4, err := bm.Get(file, 0)
 	if err != nil {
 		fmt.Print(err)
 		t.Errorf("greska tokom dodavanja bafera")
@@ -297,6 +338,19 @@ func TestAddBuffer(t *testing.T) {
 		fmt.Print("DRUGA VREDNOST:")
 		fmt.Print(data4)
 		t.Errorf("vrednost je neocekivana")
+		t.FailNow()
+	}
+	err = file.Close()
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("Greska tokom zatvaranja fajla")
+		t.FailNow()
+	}
+
+	err = os.Remove("test.bin")
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("Greska tokom brisanja fajla")
 		t.FailNow()
 	}
 }

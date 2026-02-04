@@ -9,6 +9,12 @@ import (
 )
 
 func TestBufferPool(t *testing.T) {
+	file, err := os.Create("test.bin")
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("greska tokom stvaranja fajla")
+		t.FailNow()
+	}
 	//prvo pravimo cetiri niza bajtova, koje cemo da ubacujemo u fajl
 	data1 := make([]byte, 4096)
 	binary.BigEndian.PutUint64(data1, 78)
@@ -22,8 +28,9 @@ func TestBufferPool(t *testing.T) {
 		t.Errorf("greska tokom inicalizacije bufferpoola")
 		t.FailNow()
 	}
+
 	//ubacujemo prvi niz bajtova u prvi blok fajla test.bin
-	err = bp.Put("test.bin", 1, &data1)
+	err = bp.Put(file, 0, &data1)
 
 	if err != nil {
 		fmt.Print(err)
@@ -31,7 +38,7 @@ func TestBufferPool(t *testing.T) {
 		t.FailNow()
 	}
 	//citamo prvi blok fajla test.bin
-	readData1, err := bp.Get("test.bin", 1)
+	readData1, err := bp.Get(file, 0)
 	if err != nil {
 		fmt.Print(err)
 		t.Errorf("greska tokom prvog citanja")
@@ -45,14 +52,14 @@ func TestBufferPool(t *testing.T) {
 		t.FailNow()
 	}
 	//ubacujemo drugi niz bajtova
-	err = bp.Put("test.bin", 2, &data2)
+	err = bp.Put(file, 1, &data2)
 	if err != nil {
 		fmt.Print(err)
 		t.Errorf("greska tokom drugog pisanja")
 		t.FailNow()
 	}
 	//citamo drugi blok fajla
-	readData2, err := bp.Get("test.bin", 2)
+	readData2, err := bp.Get(file, 1)
 	if err != nil {
 		fmt.Print(err)
 		t.Errorf("greska tokom drugog citanja")
@@ -66,14 +73,14 @@ func TestBufferPool(t *testing.T) {
 		t.FailNow()
 	}
 	//upisujemo podatke u treci blok
-	err = bp.Put("test.bin", 3, &data3)
+	err = bp.Put(file, 2, &data3)
 	if err != nil {
 		fmt.Print(err)
 		t.Errorf("greska tokom treceg pisanja")
 		t.FailNow()
 	}
 	//citamo treci blok
-	readData3, err := bp.Get("test.bin", 3)
+	readData3, err := bp.Get(file, 2)
 	if err != nil {
 		fmt.Print(err)
 		t.Errorf("greska tokom treceg citanja")
@@ -89,14 +96,14 @@ func TestBufferPool(t *testing.T) {
 	data4 := make([]byte, 4096)
 	binary.BigEndian.PutUint32(data4, 45)
 	//velicina buffer-a je 3, a sad upisujemo cetvrtu stvar-prva stvar u bufferu bi trebala da se izbaci!
-	err = bp.Put("test.bin", 4, &data4)
+	err = bp.Put(file, 3, &data4)
 	if err != nil {
 		fmt.Print(err)
 		t.Errorf("greska tokom cetvrtog pisanja")
 		t.FailNow()
 	}
 
-	readData4, err := bp.Get("test.bin", 4)
+	readData4, err := bp.Get(file, 3)
 	if err != nil {
 		fmt.Print(err)
 		t.Errorf("greska tokom cetvrtog citanja")
@@ -109,7 +116,7 @@ func TestBufferPool(t *testing.T) {
 		t.Errorf("data4 nije isto pre i posle citanja")
 		t.FailNow()
 	}
-	readData1, err = bp.Get("test.bin", 1)
+	readData1, err = bp.Get(file, 0)
 	if err != nil {
 		fmt.Print(err)
 		t.Errorf("greska tokom petog citanja")
@@ -121,9 +128,28 @@ func TestBufferPool(t *testing.T) {
 		t.Errorf("data1 nije isto pre i posle drugog citanja")
 		t.FailNow()
 	}
+	err = file.Close()
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("Greska tokom zatvaranja fajla")
+		t.FailNow()
+	}
+
+	err = os.Remove("test.bin")
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("Greska tokom brisanja fajla")
+		t.FailNow()
+	}
 }
 
 func TestLru1(t *testing.T) {
+	file, err := os.Create("test.bin")
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("greska tokom stvaranja fajla")
+		t.FailNow()
+	}
 	//prvo pravimo tri niza bajtova, koje cemo da ubacujemo u fajl
 	data1 := make([]byte, 4096)
 	binary.BigEndian.PutUint64(data1, 78)
@@ -137,9 +163,9 @@ func TestLru1(t *testing.T) {
 		t.Errorf("Greska pri inicijalizaciji bufferpool-a")
 		t.FailNow()
 	}
-	bp.Put("test.bin", 1, &data1)
-	bp.Put("test.bin", 2, &data2)
-	bp.Put("test.bin", 3, &data3)
+	bp.Put(file, 0, &data1)
+	bp.Put(file, 1, &data2)
+	bp.Put(file, 2, &data3)
 	//Put-ovali smo 3 bloka, i zbog toga ocekujemo da back i front liste ne budu null
 	check1 := bp.lruList.Back()
 	check2 := bp.lruList.Front()
@@ -173,11 +199,28 @@ func TestLru1(t *testing.T) {
 		t.Errorf("neocekivana vrednost za front")
 		t.FailNow()
 	}
+	err = file.Close()
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("Greska tokom zatvaranja fajla")
+		t.FailNow()
+	}
 
+	err = os.Remove("test.bin")
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("Greska tokom brisanja fajla")
+		t.FailNow()
+	}
 }
 
 func TestLru2(t *testing.T) {
-	os.Create("test.bin")
+	file, err := os.Create("test.bin")
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("greska tokom stvaranja fajla")
+		t.FailNow()
+	}
 	//prvo pravimo cetiri niza bajtova, koje cemo da ubacujemo u fajl
 	data1 := make([]byte, 4096)
 	binary.BigEndian.PutUint64(data1, 78)
@@ -191,11 +234,11 @@ func TestLru2(t *testing.T) {
 		t.Errorf("Greska pri inicijalizaciji bufferpool-a")
 		t.FailNow()
 	}
-	bp.Put("test.bin", 1, &data1)
-	bp.Put("test.bin", 2, &data2)
-	bp.Put("test.bin", 3, &data3)
-	get_data2, _ := bp.Get("test.bin", 2)
-	get_data3, _ := bp.Get("test.bin", 3)
+	bp.Put(file, 0, &data1)
+	bp.Put(file, 1, &data2)
+	bp.Put(file, 2, &data3)
+	get_data2, _ := bp.Get(file, 1)
+	get_data3, _ := bp.Get(file, 2)
 	//Getovali smo block 3 i block 2-ocekujemo da back i front ne budu nil
 	check1 := bp.lruList.Back()
 	check2 := bp.lruList.Front()
@@ -223,5 +266,17 @@ func TestLru2(t *testing.T) {
 		t.Errorf("neocekivana vrednost za front")
 		t.FailNow()
 	}
+	err = file.Close()
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("Greska tokom zatvaranja fajla")
+		t.FailNow()
+	}
 
+	err = os.Remove("test.bin")
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("Greska tokom brisanja fajla")
+		t.FailNow()
+	}
 }
