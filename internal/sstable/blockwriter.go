@@ -1,27 +1,31 @@
 package sstable
 
-import "github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
+import (
+	"os"
+
+	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
+)
 
 type blockWriter struct {
 	block        []byte
 	currBlockNum int
 	currByte     int
-	filename     string
+	file         *os.File
 	bm           *BlockManager.BlockManager
 }
 
-func newBlockWriter(filename string, bm *BlockManager.BlockManager) *blockWriter {
+func newBlockWriter(file *os.File, bm *BlockManager.BlockManager) *blockWriter {
 	return &blockWriter{
 		block:        make([]byte, bm.GetBlockSize()),
-		currBlockNum: 1,
+		currBlockNum: 0,
 		currByte:     0,
-		filename:     filename,
+		file:         file,
 		bm:           bm,
 	}
 }
 
 func (bw *blockWriter) flush() {
-	bw.bm.Put(bw.filename, bw.currBlockNum, &bw.block)
+	bw.bm.Put(bw.file, bw.currBlockNum, &bw.block)
 	bw.currBlockNum += 1
 	bw.currByte = 0
 }
@@ -53,6 +57,6 @@ func (bw *blockWriter) Write(data []byte) int {
 func (bw *blockWriter) Finalize() {
 	if bw.currByte > 0 {
 		block := bw.block[:bw.currByte]
-		bw.bm.Put(bw.filename, bw.currBlockNum, &block)
+		bw.bm.Put(bw.file, bw.currBlockNum, &block)
 	}
 }
