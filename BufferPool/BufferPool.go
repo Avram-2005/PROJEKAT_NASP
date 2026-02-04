@@ -82,7 +82,9 @@ func (bp *BufferPool) Put(file *os.File, blockNumber int, writeValue *[]byte) er
 	}
 	//kad smo vec zapisali sta smo trebali, proveravamo da li je taj blok vec u bufferu
 	key := file.Name() + strconv.Itoa(blockNumber)
-	if elem := bp.findElement(key); elem != nil { //vec postoji u kesu, samo azuriramo i pomerimo na pocetak liste
+	_, ok := bp.cacheMap[key]
+	if ok { //vec postoji u kesu, samo azuriramo i pomerimo na pocetak liste
+		elem := bp.findElement(key)
 		bp.cacheMap[key] = *writeValue
 		bp.lruList.MoveToFront(elem)
 	} else {
