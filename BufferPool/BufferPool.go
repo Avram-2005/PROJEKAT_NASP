@@ -18,7 +18,7 @@ type BufferPool struct {
 // konstruktor za buffer pool - validne vrednosti za block size su: 4, 8, 16KB, koje unutar konstruktora bivaju prebacene u bajtove
 func NewBufferPool(maxSize int, blockSize int) (*BufferPool, error) {
 	//u dokumentaciji pise da block size mogu biti 4, 8, ili 16-ako nisu, bacamo error
-	if blockSize != 4 && blockSize != 8 && blockSize != 16 { //PREDLOG - umesto KB da stavimo u bajtovima, jer sa njima i radimo , to bi onda bilo 4096,8192,16384
+	if blockSize != 4 && blockSize != 8 && blockSize != 16 {
 		return nil, fmt.Errorf("block size must be either 4, 8, or 16")
 	}
 	//instanciramo cachemap
@@ -33,37 +33,31 @@ func NewBufferPool(maxSize int, blockSize int) (*BufferPool, error) {
 }
 
 // Funkcija koja dobavlja informacije zapisane u odredjenom bloku nekog fajla
-func (bp *BufferPool) Get(filepath string, blockNumber int) (*[]byte, error) {
+func (bp *BufferPool) Get(file *os.File, blockNumber int) (*[]byte, error) {
 	//konkateniramo broj trazenog bloka na path fajla da bi dobili vrednost kljuca
-	key := filepath + strconv.Itoa(blockNumber)
+	key := file.Name() + strconv.Itoa(blockNumber)
 	//proveravamo da li se kljuc nalazi u mapi
 	value, ok := bp.cacheMap[key]
 	if !ok {
-		file, err := os.OpenFile(filepath, os.O_RDONLY, 0644)
+		//ako nismo nasli kljuc, moramo naci unutar fajla bajtove koji nam trebaju
+		//idemo do bajtova koji nam trebaju
+		block := int64(blockNumber * bp.blockSize)
+		file.Seek(block, 0)
+		returnBytes := make([]byte, bp.blockSize)
+		_, err := file.Read(returnBytes)
 		if err != nil {
 			return nil, err
-		} else {
-			//ako nismo nasli kljuc, moramo naci unutar fajla bajtove koji nam trebaju
-			defer file.Close()
-			//idemo do bajtova koji nam trebaju
-			block := int64((blockNumber - 1) * bp.blockSize)
-			file.Seek(block, 0)
-			returnBytes := make([]byte, bp.blockSize)
-			_, err := file.Read(returnBytes)
-			if err != nil {
-				return nil, err
-			}
-			//provera da li treab izabciti najsatriji
-			if bp.currentSize >= bp.maxSize {
-				bp.evictOldest()
-			}
-			//dodajemo bajtove u lru listu i mapu, i povecavamo current size
-			bp.cacheMap[key] = returnBytes
-			bp.lruList.PushFront(key)
-			bp.currentSize += 1
-			return &returnBytes, nil
-
 		}
+		//provera da li treab izabciti najsatriji
+		if bp.currentSize >= bp.maxSize {
+			bp.evictOldest()
+		}
+		//dodajemo bajtove u lru listu i mapu, i povecavamo current size
+		bp.cacheMap[key] = returnBytes
+		bp.lruList.PushFront(key)
+		bp.currentSize += 1
+		return &returnBytes, nil
+
 	}
 	//ako se kljuc nalazi u mapi, samo vracamo sta smo nasli
 	bp.lruList.MoveToFront(bp.findElement(key))
@@ -71,18 +65,14 @@ func (bp *BufferPool) Get(filepath string, blockNumber int) (*[]byte, error) {
 }
 
 // Funkcija koja zapisuje podatke u blok fajla, i onda dodaje taj blok u BufferPool ako nije vec tu
-func (bp *BufferPool) Put(filepath string, blockNumber int, writeValue *[]byte) error {
+func (bp *BufferPool) Put(file *os.File, blockNumber int, writeValue *[]byte) error {
 	//otvaramo fajl
-	file, err := os.OpenFile(filepath, os.O_RDWR|os.O_CREATE, 0644)
-	if err != nil {
-		return err
-	}
-	//fajl ce se zatvoriti kad returnujemo
-	defer file.Close()
-	//idemo do bloka koji trazimo
-	block := int64((blockNumber - 1) * bp.blockSize)
 
-	_, err = file.Seek(block, 0)
+	//idemo do bloka koji trazimo
+	block := int64(blockNumber * bp.blockSize)
+
+	_, err := file.Seek(block, 0)
+	file.Name()
 	if err != nil {
 		return err
 	}
@@ -91,7 +81,7 @@ func (bp *BufferPool) Put(filepath string, blockNumber int, writeValue *[]byte) 
 		return err
 	}
 	//kad smo vec zapisali sta smo trebali, proveravamo da li je taj blok vec u bufferu
-	key := filepath + strconv.Itoa(blockNumber)
+	key := file.Name() + strconv.Itoa(blockNumber)
 	if elem := bp.findElement(key); elem != nil { //vec postoji u kesu, samo azuriramo i pomerimo na pocetak liste
 		bp.cacheMap[key] = *writeValue
 		bp.lruList.MoveToFront(elem)

@@ -3,6 +3,7 @@ package BlockManager
 import (
 	"fmt"
 	"io"
+	"os"
 
 	BufferPool "github.com/Avram-2005/PROJEKAT_NASP/BufferPool"
 )
@@ -40,8 +41,8 @@ func NewBlockManager(maxSize int, blockSize int) (*BlockManager, error) {
 // funkcija vraca niz bajtova, i error u slucaju da je nesto poslo po zlu
 //
 // BITNO: funkcija vam vraca CEO SADRZAJ BLOKA, na vama je da nadjete sta vam treba unutar njega
-func (bm *BlockManager) Get(filepath string, blockNumber int) (*[]byte, error) {
-	valueFound, err := bm.blockCache.Get(filepath, blockNumber)
+func (bm *BlockManager) Get(file *os.File, blockNumber int) (*[]byte, error) {
+	valueFound, err := bm.blockCache.Get(file, blockNumber)
 	if err != nil {
 		return nil, err
 	}
@@ -59,8 +60,8 @@ func (bm *BlockManager) Get(filepath string, blockNumber int) (*[]byte, error) {
 //
 // BITNO:funkcija vraca error za negativan offset, i ako se zbog offseta i size-a izadje van
 // opsega podataka koji su trenutno zapisani na tom bloku
-func (bm *BlockManager) GetSpecific(filepath string, blockNumber int, offset int, size int) (*[]byte, error) {
-	valueFound, err := bm.blockCache.Get(filepath, blockNumber)
+func (bm *BlockManager) GetSpecific(file *os.File, blockNumber int, offset int, size int) (*[]byte, error) {
+	valueFound, err := bm.blockCache.Get(file, blockNumber)
 	if err != nil {
 		return nil, err
 	}
@@ -83,8 +84,8 @@ func (bm *BlockManager) GetSpecific(filepath string, blockNumber int, offset int
 //
 // BITNO: kada upisujete nesto u fajl ovom metodom, CEO SADRZAJ BLOKA se override-uje
 // na vam je da unutar vasih struktura regulisete kako se vasi zapisi dele po blokovima.
-func (bm *BlockManager) Put(filepath string, blockNumber int, writeValue *[]byte) error {
-	err := bm.blockCache.Put(filepath, blockNumber, writeValue)
+func (bm *BlockManager) Put(file *os.File, blockNumber int, writeValue *[]byte) error {
+	err := bm.blockCache.Put(file, blockNumber, writeValue)
 	return err
 }
 
@@ -98,14 +99,14 @@ func (bm *BlockManager) Put(filepath string, blockNumber int, writeValue *[]byte
 //
 // BITNO:funkcija vraca error za negativan offset, i ako se zbog offseta i size-a izadje van
 // opsega samog bloka
-func (bm *BlockManager) PutSpecific(filepath string, blockNumber int, offset int, size int, writeValue *[]byte) error {
+func (bm *BlockManager) PutSpecific(file *os.File, blockNumber int, offset int, size int, writeValue *[]byte) error {
 	if offset < 0 {
 		return fmt.Errorf("offset ne sme biti negativan")
 	}
-	valueFound, err := bm.blockCache.Get(filepath, blockNumber)
+	valueFound, err := bm.blockCache.Get(file, blockNumber)
 	if err != nil {
 		if err == io.EOF {
-			err = bm.blockCache.Put(filepath, blockNumber, writeValue)
+			err = bm.blockCache.Put(file, blockNumber, writeValue)
 			return err
 		} else {
 			return err
@@ -128,12 +129,12 @@ func (bm *BlockManager) PutSpecific(filepath string, blockNumber int, offset int
 	if size+offset > len(*valueFound) {
 		remainingBytes := (*writeValue)[i:size]
 		finalWriteValue := append(*valueFound, remainingBytes...)
-		err = bm.blockCache.Put(filepath, blockNumber, &finalWriteValue)
+		err = bm.blockCache.Put(file, blockNumber, &finalWriteValue)
 		return err
 	} else {
 		//Ako je sve stalo pri inicijalnom prolasku kroz oba niza, nista ne konkateniramo
 		//nego zapisujemo nas izmenjeni valueFound
-		err = bm.blockCache.Put(filepath, blockNumber, valueFound)
+		err = bm.blockCache.Put(file, blockNumber, valueFound)
 		return err
 	}
 
@@ -146,8 +147,8 @@ func (bm *BlockManager) PutSpecific(filepath string, blockNumber int, offset int
 // i konkatenira onoliko nula koliko je potrebno.
 //
 // Posle toga upisuje blok u fajl, i vraca vrednost koja je upisana, radi provere
-func (bm *BlockManager) AddBuffer(filepath string, blockNumber int) (*[]byte, error) {
-	valueFound, err := bm.blockCache.Get(filepath, blockNumber)
+func (bm *BlockManager) AddBuffer(file *os.File, blockNumber int) (*[]byte, error) {
+	valueFound, err := bm.blockCache.Get(file, blockNumber)
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +156,7 @@ func (bm *BlockManager) AddBuffer(filepath string, blockNumber int) (*[]byte, er
 		zeroesToAdd := bm.blockCache.GetBlockSize() - len(*valueFound)
 		zeroBytes := make([]byte, zeroesToAdd)
 		returnValue := append(*valueFound, zeroBytes...)
-		err = bm.Put(filepath, blockNumber, &returnValue)
+		err = bm.Put(file, blockNumber, &returnValue)
 		if err != nil {
 			return nil, err
 		}
