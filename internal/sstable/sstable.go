@@ -1,6 +1,13 @@
 package sstable
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
+)
 
 // FIXME: DELETE AFTER Memtable MERGE /
 // ////////////////////////////////////
@@ -18,12 +25,6 @@ type Memtable interface {
 //////////////////////////////////////
 
 // TODO: Compression (1.3[DZ3])
-type dataBlock struct {
-	crc       uint32
-	blockSize uint16
-	timestamp uint32
-	data      []byte
-}
 
 // TODO: Save to multiple files (Cassandra) or in one file (LevelDB) (1.3[DZ2])
 type SSTable struct {
@@ -35,6 +36,30 @@ func (sst *SSTable) Get(key string) ([]byte, error) {
 	return nil, errors.New("not implemented")
 }
 
-func Flush(mem *Memtable) (*SSTable, error) {
-	return nil, errors.New("not implemented")
+// FIXME: Delete this after DB structure is done
+var tablesRoot string
+
+func SetupDirectory(root string) error {
+	tablesRoot = filepath.Join(root, "tables")
+	return os.MkdirAll(tablesRoot, os.ModePerm)
+}
+
+func Flush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) error {
+	filename := filepath.Join(tablesRoot, fmt.Sprintf("usertable-%d-Data.txt", tableNum))
+	if _, err := os.Stat(filename); err == nil {
+		return fmt.Errorf("file %s already exists", filename)
+	}
+
+	f, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	dw := newDataBlockWriter(filename, bm.GetBlockSize())
+	for _, entry := range mem.GetSortedEntries() {
+		dw.Write(entry, bm)
+	}
+	dw.Finalize(bm)
+	return nil
 }
