@@ -2,6 +2,7 @@ package sstable
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -28,7 +29,11 @@ func testFlush(t *testing.T, mem Memtable, numFlush int) error {
 	}
 
 	filename := filepath.Join(tempDir, "tables", fmt.Sprintf("usertable-%d-Data.txt", numFlush))
-	_, err = bm.Get(filename, 1)
+	file, err := os.OpenFile(filename, os.O_RDWR, 0644)
+	if err != nil {
+		return err
+	}
+	_, err = bm.Get(file, 1)
 	if err != nil {
 		return err
 	}

@@ -42,17 +42,17 @@ func SetupDirectory(root string) error {
 	return os.MkdirAll(tablesRoot, os.ModePerm)
 }
 
-func createSSTableFile(fileType string, tableNum int) (*os.File, string, error) {
+func createSSTableFile(fileType string, tableNum int) (*os.File, error) {
 	filename := filepath.Join(tablesRoot, fmt.Sprintf("usertable-%d-%s.txt", tableNum, fileType))
 	if _, err := os.Stat(filename); err == nil {
-		return nil, filename, fmt.Errorf("file %s already exists", filename)
+		return nil, fmt.Errorf("file %s already exists", filename)
 	}
 	f, err := os.Create(filename)
 	if err != nil {
-		return nil, filename, err
+		return nil, err
 	}
 
-	return f, filename, nil
+	return f, nil
 }
 
 const (
@@ -107,22 +107,22 @@ const SUMMARY_INTERVAL = 100
 
 func Flush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) error {
 	// FIXME: Fix after BlockManager file handle fix
-	_, dataFilename, err := createSSTableFile("Data", tableNum)
+	dataFile, err := createSSTableFile("Data", tableNum)
 	if err != nil {
 		return err
 	}
-	_, indexFilename, err := createSSTableFile("Index", tableNum)
+	indexFile, err := createSSTableFile("Index", tableNum)
 	if err != nil {
 		return err
 	}
-	_, summaryFilename, err := createSSTableFile("Summary", tableNum)
+	summaryFile, err := createSSTableFile("Summary", tableNum)
 	if err != nil {
 		return err
 	}
 
-	dataWriter := newBlockWriter(dataFilename, bm)
-	indexWriter := newBlockWriter(indexFilename, bm)
-	summaryWriter := newBlockWriter(summaryFilename, bm)
+	dataWriter := newBlockWriter(dataFile, bm)
+	indexWriter := newBlockWriter(indexFile, bm)
+	summaryWriter := newBlockWriter(summaryFile, bm)
 	for i, entry := range mem.GetSortedEntries() {
 		offset := writeData(dataWriter, entry)
 		writeIndex(indexWriter, entry.Key, offset)
