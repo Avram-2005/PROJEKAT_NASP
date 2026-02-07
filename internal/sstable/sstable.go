@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
+	"github.com/Avram-2005/PROJEKAT_NASP/internal/bloom_filter"
 )
 
 // FIXME: DELETE AFTER Memtable MERGE /
@@ -131,25 +132,41 @@ func multipleFilesFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManage
 	if err != nil {
 		return fmt.Errorf("failed to create summary file: %v", err)
 	}
+	filterFile, err := createSSTableFile("Filter", tableNum)
+	if err != nil {
+		return fmt.Errorf("failed to create filter file: %v", err)
+	}
+
+	bf, err := bloom_filter.NewBloomFilter(uint(len(mem.GetSortedEntries())), 0.01)
+	if err != nil {
+		return err
+	}
 
 	// FIXME: Summary also needs the first / last keys in its header
 
 	dataWriter := newBlockWriter(dataFile, bm)
 	indexWriter := newBlockWriter(indexFile, bm)
 	summaryWriter := newBlockWriter(summaryFile, bm)
+	filterWriter := newBlockWriter(filterFile, bm)
+
 	for i, entry := range mem.GetSortedEntries() {
+		bf.Set([]byte(entry.Key)) // dodaj kljuc u filter
 		offset := writeData(dataWriter, entry)
 		offset = writeIndex(indexWriter, entry.Key, offset)
 		if i%summaryInterval == 0 {
 			writeIndex(summaryWriter, entry.Key, offset)
 		}
 	}
+	filterWriter.Write(bf.Dump())
+
 	dataWriter.Finalize()
 	indexWriter.Finalize()
 	summaryWriter.Finalize()
+	filterWriter.Finalize()
 	if dataWriter.currBlockNum == 0 && dataWriter.currByte == 0 {
 		return fmt.Errorf("memtable is empty, no data written")
 	}
+
 	return nil
 }
 
@@ -167,6 +184,19 @@ func oneFileFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) err
 	defer f.Close()
 
 	writer := newBlockWriter(f, bm)
+
+	bf, err := bloom_filter.NewBloomFilter(uint(len(mem.GetSortedEntries())), 0.01)
+	if err != nil {
+		return err
+	}
+
+	for _, entry := range mem.GetSortedEntries() {
+		bf.Set([]byte(entry.Key))
+	}
+
+	filterStart := writer.CurrOffset()
+	filterData := bf.Dump()
+	writer.Write(filterData)
 
 	// FIXME: Summary also needs the first / last keys in its header
 
@@ -202,9 +232,10 @@ func oneFileFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) err
 		return fmt.Errorf("memtable is empty, no data written")
 	}
 
-	var footrerBuf [2 * OFFSET_L]byte
+	var footrerBuf [3 * OFFSET_L]byte
 	binary.LittleEndian.PutUint64(footrerBuf[0:], uint64(summaryStart))
 	binary.LittleEndian.PutUint64(footrerBuf[OFFSET_L:], uint64(indexStart))
+	binary.LittleEndian.PutUint64(footrerBuf[2*OFFSET_L:], uint64(filterStart))
 	writer.Write(footrerBuf[:])
 
 	writer.Finalize()
@@ -253,6 +284,32 @@ func searchIndex(indexType string, tableNum int, key string, bm *BlockManager.Bl
 	return searchForKey(key, summaryReader)
 }
 
+func searchFilter(indexType string, tableNum int, key string, bm *BlockManager.BlockManager, oldOffset uint64) (bool, error) {
+	filterFilename := sstableFilename(tableNum, indexType)
+	filterFile, err := os.Open(filterFilename)
+	if err != nil {
+		return false, fmt.Errorf("failed to open filter file: %v", err)
+	}
+	defer filterFile.Close()
+
+	stat, err := filterFile.Stat()
+	if err != nil {
+		return false, err
+	}
+
+	filterReader := newBlockReader(filterFile, bm, oldOffset)
+	filterData := make([]byte, stat.Size())
+	_, err = filterReader.Read(filterData)
+	if err != nil {
+		return false, err
+	}
+
+	bf := bloom_filter.LoadBloomFilter(filterData)
+
+	return bf.IsFound([]byte(key)), nil
+
+}
+
 func Get(key string, tableNum int, bm *BlockManager.BlockManager) ([]byte, error) {
 	if multipleFiles {
 		return getMultipleFiles(key, tableNum, bm)
@@ -264,7 +321,17 @@ func Get(key string, tableNum int, bm *BlockManager.BlockManager) ([]byte, error
 func getMultipleFiles(key string, tableNum int, bm *BlockManager.BlockManager) ([]byte, error) {
 	offset := uint64(0)
 
-	offset, err := searchIndex("Summary", tableNum, key, bm, offset)
+	found, err := searchFilter("Filter", tableNum, key, bm, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read boom filter: %v", err)
+	}
+
+	// kljuc se ne nalazi u sstable
+	if !found {
+		return nil, nil
+	}
+
+	offset, err = searchIndex("Summary", tableNum, key, bm, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search summary file: %v", err)
 	}
