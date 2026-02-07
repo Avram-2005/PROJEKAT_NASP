@@ -2,7 +2,6 @@ package sstable
 
 import (
 	"io"
-	"log"
 	"os"
 
 	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
@@ -30,6 +29,7 @@ func (bw *blockWriter) flush() {
 	bw.bm.Put(bw.file, bw.currBlockNum, &bw.block)
 	bw.currBlockNum += 1
 	bw.currByte = 0
+	bw.block = make([]byte, cap(bw.block))
 }
 
 func (bw *blockWriter) copyToBlock(data []byte, offset int) int {
@@ -85,11 +85,6 @@ func newBlockReader(file *os.File, bm *BlockManager.BlockManager, offset uint64)
 
 func (br *blockReader) readBlock() error {
 	block, err := br.bm.Get(br.file, br.currBlockNum)
-	/*
-		if br.currByte > 0 {
-			br.currByte--
-		}
-	*/
 	if err != nil {
 		return err
 	}
@@ -110,12 +105,10 @@ func (br *blockReader) Read(dest []byte) (int, error) {
 			} else if err != nil {
 				return totalRead, err
 			}
-			log.Printf("Loaded block %d into memory", br.currBlockNum)
 			br.currByte = 0
 		}
 
 		n := copy(dest[totalRead:], br.block[br.currByte:])
-		log.Printf("Read %d bytes from block %d at byte offset %d", n, br.currBlockNum, br.currByte)
 		br.currByte += n
 		totalRead += n
 		toRead -= n

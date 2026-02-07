@@ -3,7 +3,6 @@ package sstable
 import (
 	"encoding/binary"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -148,7 +147,6 @@ func searchForKey(key string, reader *blockReader) (uint64, error) {
 	for {
 		var indexHeaderBuf [INDEX_HEADER_L]byte
 		n, err := reader.Read(indexHeaderBuf[:])
-		log.Printf("Read index header: % x, bytes read: %d", indexHeaderBuf[:n], n)
 		if err != nil {
 			return 0, fmt.Errorf("failed to read index header: %v", err)
 		}
@@ -167,7 +165,6 @@ func searchForKey(key string, reader *blockReader) (uint64, error) {
 			return lastOffset, nil
 		}
 		readKey := string(keyBuf)
-		log.Printf("Read key: %s, offset: %d", readKey, offset)
 		if key <= readKey {
 			return offset, nil
 		}
@@ -175,34 +172,28 @@ func searchForKey(key string, reader *blockReader) (uint64, error) {
 	}
 }
 
+func searchIndex(indexType string, tableNum int, key string, bm *BlockManager.BlockManager, oldOffset uint64) (uint64, error) {
+	summaryFilename := sstableFilename(tableNum, indexType)
+	summaryFile, err := os.Open(summaryFilename)
+	if err != nil {
+		return 0, fmt.Errorf("failed to open summary file: %v", err)
+	}
+	defer summaryFile.Close()
+	summaryReader := newBlockReader(summaryFile, bm, oldOffset)
+
+	return searchForKey(key, summaryReader)
+}
+
 // TODO: Consider doing this zero-copy
 func Get(key string, tableNum int, bm *BlockManager.BlockManager) ([]byte, error) {
 	offset := uint64(0)
 
-	summaryFilename := sstableFilename(tableNum, "Summary")
-	summaryFile, err := os.Open(summaryFilename)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open summary file: %v", err)
-	}
-	defer summaryFile.Close()
-	summaryReader := newBlockReader(summaryFile, bm, offset)
-
-	offset, err = searchForKey(key, summaryReader)
-	log.Printf("Summary search returned offset: %d", offset)
+	offset, err := searchIndex("Summary", tableNum, key, bm, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search summary file: %v", err)
 	}
 
-	indexFilename := sstableFilename(tableNum, "Index")
-	indexFile, err := os.Open(indexFilename)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open index file: %v", err)
-	}
-	defer indexFile.Close()
-	indexReader := newBlockReader(indexFile, bm, offset)
-
-	offset, err = searchForKey(key, indexReader)
-	log.Printf("Index search returned offset: %d", offset)
+	offset, err = searchIndex("Index", tableNum, key, bm, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search index file: %v", err)
 	}
