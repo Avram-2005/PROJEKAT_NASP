@@ -25,6 +25,10 @@ func newBlockWriter(file *os.File, bm *BlockManager.BlockManager) *blockWriter {
 	}
 }
 
+func (bw *blockWriter) CurrOffset() uint64 {
+	return uint64(bw.currBlockNum*cap(bw.block) + bw.currByte)
+}
+
 func (bw *blockWriter) flush() {
 	bw.bm.Put(bw.file, bw.currBlockNum, &bw.block)
 	bw.currBlockNum += 1
@@ -81,6 +85,10 @@ func newBlockReader(file *os.File, bm *BlockManager.BlockManager, offset uint64)
 	}
 	br.readBlock()
 	return &br
+}
+
+func (br *blockReader) CurrOffset() uint64 {
+	return uint64(br.currBlockNum*cap(br.block) + br.currByte)
 }
 
 func (br *blockReader) readBlock() error {

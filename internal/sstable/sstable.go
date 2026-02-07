@@ -25,20 +25,23 @@ type Memtable interface {
 
 //////////////////////////////////////
 
-// TODO: Compression (1.3[DZ3])
-
-// TODO: Save to multiple files (Cassandra) or in one file (LevelDB) (1.3[DZ2])
-
-// FIXME: Delete this after DB structure is done
+// FIXME: Delete this after config is done
 var tablesRoot string
+var summaryInterval int
+var multipleFiles bool
 
-func SetupDirectory(root string) error {
+func SetupSSTable(root string, summaryInt int, multFiles bool) error {
+	summaryInterval = summaryInt
+	multipleFiles = multFiles
 	tablesRoot = filepath.Join(root, "tables")
 	return os.MkdirAll(tablesRoot, os.ModePerm)
 }
 
 func sstableFilename(tableNum int, fileType string) string {
-	return filepath.Join(tablesRoot, fmt.Sprintf("usertable-%d-%s.txt", tableNum, fileType))
+	if multipleFiles {
+		return filepath.Join(tablesRoot, fmt.Sprintf("usertable-%d-%s.txt", tableNum, fileType))
+	}
+	return filepath.Join(tablesRoot, fmt.Sprintf("sstable%d", tableNum))
 }
 
 func createSSTableFile(fileType string, tableNum int) (*os.File, error) {
@@ -63,10 +66,11 @@ const (
 	OFFSET_L       = 8
 	DATA_HEADER_L  = CRC_L + TIMESTAMP_L + TOMBSTONE_L + KEY_SIZE_L + VALUE_SIZE_L
 	INDEX_HEADER_L = KEY_SIZE_L + OFFSET_L
+	FOOTER_L       = 2 * OFFSET_L
 )
 
 func writeData(writer *blockWriter, entry KeyValue) int {
-	oldOffset := writer.currBlockNum*cap(writer.block) + writer.currByte
+	oldOffset := writer.CurrOffset()
 	bytesWritten := 0
 
 	var dataHeaderBuf [DATA_HEADER_L]byte
@@ -91,7 +95,7 @@ func writeData(writer *blockWriter, entry KeyValue) int {
 	writer.Write([]byte(entry.Key))
 	writer.Write(entry.Value)
 	// FIXME: Calculate and write CRC
-	return oldOffset
+	return int(oldOffset)
 }
 
 func writeIndex(writer *blockWriter, key string, offset int) int {
@@ -105,9 +109,15 @@ func writeIndex(writer *blockWriter, key string, offset int) int {
 	return oldOffset
 }
 
-const SUMMARY_INTERVAL = 100
-
+// TODO: Compression (1.3[DZ3])
 func Flush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) error {
+	if multipleFiles {
+		return multipleFilesFlush(mem, tableNum, bm)
+	}
+	return oneFileFlush(mem, tableNum, bm)
+}
+
+func multipleFilesFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) error {
 	// FIXME: Fix after BlockManager file handle fix
 	dataFile, err := createSSTableFile("Data", tableNum)
 	if err != nil {
@@ -122,13 +132,15 @@ func Flush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) error {
 		return fmt.Errorf("failed to create summary file: %v", err)
 	}
 
+	// FIXME: Summary also needs the first / last keys in its header
+
 	dataWriter := newBlockWriter(dataFile, bm)
 	indexWriter := newBlockWriter(indexFile, bm)
 	summaryWriter := newBlockWriter(summaryFile, bm)
 	for i, entry := range mem.GetSortedEntries() {
 		offset := writeData(dataWriter, entry)
 		offset = writeIndex(indexWriter, entry.Key, offset)
-		if i%SUMMARY_INTERVAL == 0 {
+		if i%summaryInterval == 0 {
 			writeIndex(summaryWriter, entry.Key, offset)
 		}
 	}
@@ -141,9 +153,66 @@ func Flush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) error {
 	return nil
 }
 
+type indexEntry struct {
+	Key    string
+	Offset int
+}
+
+func oneFileFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) error {
+	sstableFilename := filepath.Join(tablesRoot, fmt.Sprintf("sstable%d", tableNum))
+	f, err := os.Create(sstableFilename)
+	if err != nil {
+		return fmt.Errorf("failed to create SSTable file: %v", err)
+	}
+	defer f.Close()
+
+	writer := newBlockWriter(f, bm)
+
+	// FIXME: Summary also needs the first / last keys in its header
+
+	index := make([]indexEntry, 0)
+	for _, entry := range mem.GetSortedEntries() {
+		offset := writeData(writer, entry)
+		index = append(index, indexEntry{
+			Key:    entry.Key,
+			Offset: offset,
+		})
+	}
+
+	indexStart := writer.CurrOffset()
+	summaryOffsets := make([]indexEntry, 0, len(index)/summaryInterval+1)
+	i := 0
+	for _, entry := range index {
+		indexOffset := writeIndex(writer, entry.Key, entry.Offset)
+		if i%summaryInterval == 0 {
+			summaryOffsets = append(summaryOffsets, indexEntry{
+				Key:    entry.Key,
+				Offset: indexOffset,
+			})
+		}
+		i++
+	}
+
+	summaryStart := writer.CurrOffset()
+	for _, entry := range summaryOffsets {
+		writeIndex(writer, entry.Key, entry.Offset)
+	}
+
+	if writer.currBlockNum == 0 && writer.currByte == 0 {
+		return fmt.Errorf("memtable is empty, no data written")
+	}
+
+	var footrerBuf [2 * OFFSET_L]byte
+	binary.LittleEndian.PutUint64(footrerBuf[0:], uint64(summaryStart))
+	binary.LittleEndian.PutUint64(footrerBuf[OFFSET_L:], uint64(indexStart))
+	writer.Write(footrerBuf[:])
+
+	writer.Finalize()
+	return nil
+}
+
 func searchForKey(key string, reader *blockReader) (uint64, error) {
-	blockSize := uint64(cap(reader.block))
-	lastOffset := blockSize*uint64(reader.currBlockNum) + uint64(reader.currByte)
+	lastOffset := reader.CurrOffset()
 	for {
 		var indexHeaderBuf [INDEX_HEADER_L]byte
 		n, err := reader.Read(indexHeaderBuf[:])
@@ -184,8 +253,15 @@ func searchIndex(indexType string, tableNum int, key string, bm *BlockManager.Bl
 	return searchForKey(key, summaryReader)
 }
 
-// TODO: Consider doing this zero-copy
 func Get(key string, tableNum int, bm *BlockManager.BlockManager) ([]byte, error) {
+	if multipleFiles {
+		return getMultipleFiles(key, tableNum, bm)
+	}
+	return getOneFile(key, tableNum, bm)
+}
+
+// TODO: Consider doing this zero-copy
+func getMultipleFiles(key string, tableNum int, bm *BlockManager.BlockManager) ([]byte, error) {
 	offset := uint64(0)
 
 	offset, err := searchIndex("Summary", tableNum, key, bm, offset)
@@ -234,4 +310,8 @@ func Get(key string, tableNum int, bm *BlockManager.BlockManager) ([]byte, error
 		return nil, fmt.Errorf("failed to read value: %v", err)
 	}
 	return valueBuf, nil
+}
+
+func getOneFile(key string, tableNum int, bm *BlockManager.BlockManager) ([]byte, error) {
+	return nil, fmt.Errorf("multiple files get not implemented yet")
 }
