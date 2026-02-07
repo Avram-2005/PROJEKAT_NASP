@@ -4,46 +4,53 @@ import (
 	"testing"
 )
 
-var flushed bool
-
-func flush(t *testing.T) {
-	SetupDirectory(t.TempDir())
+func flush(t *testing.T, multFiles bool) {
+	SetupSSTable(t.TempDir(), 100, multFiles)
 	mem := manySmallKeyKVMemtable{}
 	err := Flush(mem, 100, bm)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
-	flushed = true
 }
 
-func TestGetFirstKey(t *testing.T) {
-	flush(t)
+func testGet(t *testing.T, key string, expectedValue string, multFiles bool) {
+	flush(t, multFiles)
 
-	val, err := Get("key000", 100, bm)
+	val, err := Get(key, 100, bm)
 	if err != nil {
-		t.Fatalf("Failed to get key 'key000': %v", err)
+		t.Fatalf("Failed to get key '%s': %v", key, err)
 	}
-	expectedValue := "value000"
 	if string(val) != expectedValue {
-		t.Fatalf("Expected value '%s' for key 'key000', but got %s", expectedValue, val)
+		t.Fatalf("Expected value '%s' for key '%s', but got %s", expectedValue, key, val)
 	}
 }
 
-func TestGetLastKey(t *testing.T) {
-	flush(t)
-
-	val, err := Get("key999", 100, bm)
-	if err != nil {
-		t.Fatalf("Failed to get key 'key999': %v", err)
-	}
-	expectedValue := "value999"
-	if string(val) != expectedValue {
-		t.Fatalf("Expected value '%s' for key 'key999', but got %s", expectedValue, val)
-	}
+func TestGetFirstKeyMultipleFiles(t *testing.T) {
+	testGet(t, "key000", "value000", true)
 }
 
-func TestGetNonExistentKey(t *testing.T) {
-	flush(t)
+func TestGetFirstKeyOneFile(t *testing.T) {
+	testGet(t, "key000", "value000", false)
+}
+
+func TestGetLastKeyMultipleFiles(t *testing.T) {
+	testGet(t, "key999", "value999", true)
+}
+
+func TestGetLastKeyOneFile(t *testing.T) {
+	testGet(t, "key999", "value999", false)
+}
+
+func TestGetMiddleKeyMultipleFiles(t *testing.T) {
+	testGet(t, "key500", "value500", true)
+}
+
+func TestGetMiddleKeyOneFile(t *testing.T) {
+	testGet(t, "key500", "value500", false)
+}
+
+func TestGetNonExistentKeyMultipleFiles(t *testing.T) {
+	flush(t, true)
 
 	_, err := Get("nonexistent", 100, bm)
 	if err == nil {
@@ -51,15 +58,11 @@ func TestGetNonExistentKey(t *testing.T) {
 	}
 }
 
-func TestGetSummaryIntervalKey(t *testing.T) {
-	flush(t)
+func TestGetNonExistentKeyOneFile(t *testing.T) {
+	flush(t, false)
 
-	val, err := Get("key500", 100, bm)
-	if err != nil {
-		t.Fatalf("Failed to get key 'key500': %v", err)
-	}
-	expectedValue := "value500"
-	if string(val) != expectedValue {
-		t.Fatalf("Expected value '%s' for key 'key500', but got %s", expectedValue, val)
+	_, err := Get("nonexistent", 100, bm)
+	if err == nil {
+		t.Fatalf("Expected error when getting non-existent key, but got none")
 	}
 }
