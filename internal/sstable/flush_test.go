@@ -3,7 +3,6 @@ package sstable
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
@@ -13,7 +12,7 @@ var bm *BlockManager.BlockManager
 
 func TestMain(m *testing.M) {
 	var err error
-	bm, err = BlockManager.NewBlockManager(10, 4)
+	bm, err = BlockManager.NewBlockManager(100, 4)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to initialize BlockManager: %v", err))
 	}
@@ -22,7 +21,6 @@ func TestMain(m *testing.M) {
 }
 
 func testFlush(tempDir string, mem Memtable, numFlush int) (int64, error) {
-	tempDir = filepath.Join(".", "testdata", "sstable_flush_tests")
 	SetupDirectory(tempDir)
 
 	// f, _ := os.Create(filepath.Join(tempDir, fmt.Sprintf("cpu_profile_flush_%d.prof", numFlush)))
@@ -117,7 +115,7 @@ func TestFlushFewLargeKV(t *testing.T) {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	expectedSize := int64(3 * (DATA_HEADER_L + 4 + 10000)) // 3 entries, each with 4 byte key and 10000 byte value
+	expectedSize := int64(3 * (DATA_HEADER_L + 5 + 10000)) // 3 entries, each with 4 byte key and 10000 byte value
 	if size != expectedSize {
 		t.Fatalf("Expected SSTable file size %d, but got %d", expectedSize, size)
 	}

@@ -23,7 +23,7 @@ func TestGetFirstKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to get key 'key000': %v", err)
 	}
-	expectedValue := "value0"
+	expectedValue := "value000"
 	if string(val) != expectedValue {
 		t.Fatalf("Expected value '%s' for key 'key000', but got %s", expectedValue, val)
 	}
