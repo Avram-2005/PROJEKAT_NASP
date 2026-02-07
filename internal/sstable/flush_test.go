@@ -2,6 +2,7 @@ package sstable
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"testing"
 
@@ -57,11 +58,18 @@ func calcSummarySectionSize(count int, keyLen int) int64 {
 	return int64((count/summaryInterval + 1) * (INDEX_HEADER_L + keyLen))
 }
 
+func calcFilterSectionSize(count int) int64 {
+	p := 0.01
+	m := (-float64(count) * math.Log(p)) / (math.Ln2 * math.Ln2)
+	return int64(math.Ceil(m / 8.0))
+}
+
 func oneFileSize(keyCount int, keyLen int, valueLen int) int64 {
 	size := int64(2 * (KEY_SIZE_L + keyLen)) // first and last key in index
 	size += calcDataSectionSize(keyCount, keyLen, valueLen)
 	size += calcIndexSectionSize(keyCount, keyLen)
 	size += calcSummarySectionSize(keyCount, keyLen)
+	size += calcFilterSectionSize(keyCount)
 	return size
 }
 
@@ -128,6 +136,10 @@ func TestFlushFewSmallKVMultipleFiles(t *testing.T) {
 	summaryFilename := sstableFilename(1, "Summary")
 	expectedSize = calcSummarySectionSize(3, 1) // 1 entry in summary, with 1 byte key and 8 byte offset
 	testFileSize(t, summaryFilename, expectedSize)
+
+	filterFilename := sstableFilename(1, "Filter")
+	expectedSize = calcFilterSectionSize(3)
+	testFileSize(t, filterFilename, expectedSize)
 }
 
 func TestFlushFewSmallKVOneFile(t *testing.T) {
@@ -186,6 +198,10 @@ func TestFlushFewLargeKVMultipleFiles(t *testing.T) {
 	summaryFilename := sstableFilename(2, "Summary")
 	expectedSize = calcSummarySectionSize(3, 5) // 1 entry in summary, with 5 byte key and 8 byte offset
 	testFileSize(t, summaryFilename, expectedSize)
+
+	filterFilename := sstableFilename(2, "Filter")
+	expectedSize = calcFilterSectionSize(3)
+	testFileSize(t, filterFilename, expectedSize)
 }
 
 func TestFlushFewLargeKVOneFile(t *testing.T) {
@@ -218,6 +234,10 @@ func TestFlushManySmallKVMultipleFiles(t *testing.T) {
 	summaryFilename := sstableFilename(3, "Summary")
 	expectedSize = calcSummarySectionSize(1000, 6) // 1 entry in summary, with 6 byte key and 8 byte offset
 	testFileSize(t, summaryFilename, expectedSize)
+
+	filterFilename := sstableFilename(3, "Filter")
+	expectedSize = calcFilterSectionSize(1000)
+	testFileSize(t, filterFilename, expectedSize)
 }
 
 func TestFlushManySmallKVOneFile(t *testing.T) {
@@ -269,6 +289,10 @@ func TestFlushManyLargeKVMultipleFIles(t *testing.T) {
 	summaryFilename := sstableFilename(4, "Summary")
 	expectedSize = calcSummarySectionSize(10000, 11) // 1 entry in summary, with 11 byte key and 8 byte offset
 	testFileSize(t, summaryFilename, expectedSize)
+
+	filterFilename := sstableFilename(4, "Filter")
+	expectedSize = calcFilterSectionSize(10000)
+	testFileSize(t, filterFilename, expectedSize)
 }
 
 func TestFlushManyLargeKVOneFile(t *testing.T) {
