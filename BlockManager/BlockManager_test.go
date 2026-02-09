@@ -220,6 +220,12 @@ func TestSpecific(t *testing.T) {
 
 	data4 := make([]byte, 100)
 	binary.BigEndian.PutUint16(data4, 12)
+	// Inicijalizacija novog blockmanager-a, cime simuliramo prestanak rada aplikacije i ponovno pokretanje
+	bm, err = NewBlockManager(2, 4)
+	if err != nil {
+		t.Errorf("greska tokom inicalizacije drugog blockmanagera")
+		t.FailNow()
+	}
 
 	err = bm.PutSpecific(file, 0, 150, 100, &data4)
 	if err != nil {
