@@ -132,6 +132,7 @@ func (bm *BlockManager) PutSpecific(file *os.File, blockNumber int, offset int, 
 		err = bm.blockCache.Put(file, blockNumber, &finalWriteValue)
 		return err
 	} else {
+		*valueFound = (*valueFound)[:(size + offset)]
 		//Ako je sve stalo pri inicijalnom prolasku kroz oba niza, nista ne konkateniramo
 		//nego zapisujemo nas izmenjeni valueFound
 		err = bm.blockCache.Put(file, blockNumber, valueFound)
