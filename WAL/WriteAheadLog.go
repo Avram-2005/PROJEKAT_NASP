@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,8 +17,8 @@ import (
 // CRC 4B | Timestamp 8B | Tombstone 1B | KeySize 4B | ValueSize 8B | Key ... | Value ...
 type WAL struct {
 	segmentList          []string //lista WAL segmenata
-	readFile             string   //putanja trenutno aktivnog fajla za čitanje
-	writeFile            string   //putanja trenutno aktivnog fajla za pisanje
+	readFile             *os.File //putanja trenutno aktivnog fajla za čitanje
+	writeFile            *os.File //putanja trenutno aktivnog fajla za pisanje
 	currentWritePosition int      //pozicija gde se sledeći log upisuje
 	currentReadPosition  int      //pozicija za čitanje
 	segmentSize          int      //maksimalna veličina segmenta
@@ -34,16 +33,23 @@ const (
 	HEADER_SIZE    = 29
 )
 
+func openFile(path string) (*os.File, error) {
+	return os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
+}
+
+func openFileRead(path string) (*os.File, error) {
+	return os.Open(path)
+}
+
 // Kreira novi WAL ili ucitava postojeci sa diska
 func CreatNewWAL(sizeSegment int, blocksize int) (*WAL, error) {
-	bm, err := BlockManager.NewBlockManager(sizeSegment, blocksize)
+	bm, err := BlockManager.NewBlockManager(2, blocksize)
 	if err != nil {
 		return nil, err
 	}
 
 	segments := make([]string, 0)
 
-	//Ucitavanje svih WAL segmenata iz foldera
 	entries, err := os.ReadDir(FILE_PATH)
 	if err != nil {
 		return nil, err
@@ -53,55 +59,45 @@ func CreatNewWAL(sizeSegment int, blocksize int) (*WAL, error) {
 		if entry.IsDir() {
 			continue
 		}
-
 		if strings.HasPrefix(entry.Name(), SEGMENT_NAME) {
 			segments = append(segments, filepath.Join(FILE_PATH, entry.Name()))
 		}
 	}
 
-	var readFile string
-	var writeFile string
-	var currentWritePosition int
-
-	//Ako nema nijednog segmenta, odnosno pravi se prvi put
+	// Ako nema segmenata – napravi prvi
 	if len(segments) == 0 {
 		firstSegment := filepath.Join(FILE_PATH, fmt.Sprintf("%s0000%s", SEGMENT_NAME, FILE_EXTENSION))
-
-		_, err := os.OpenFile(firstSegment, os.O_CREATE|os.O_RDWR, 0644)
+		file, err := openFile(firstSegment)
 		if err != nil {
 			return nil, err
 		}
-
+		file.Close()
 		segments = append(segments, firstSegment)
-		readFile = firstSegment
-		writeFile = firstSegment
-		currentWritePosition = 0
-	} else {
-		//Prvi segment se koristi za citanje
-		readFile = segments[0]
+	}
 
-		//Poslednji segment se koristi za pisanje
-		writeFile = segments[len(segments)-1]
+	readPath := segments[0]
+	writePath := segments[len(segments)-1]
 
-		//Pozicija pisanja se postavlja na kraj fajla
-		file, err := os.Open(writeFile)
-		if err != nil {
-			log.Fatal(err)
-		}
-		pos, err := file.Seek(0, io.SeekEnd)
-		if err != nil {
-			return nil, err
-		}
-		defer file.Close()
+	readFile, err := openFileRead(readPath)
+	if err != nil {
+		return nil, err
+	}
 
-		currentWritePosition = int(pos)
+	writeFile, err := openFile(writePath)
+	if err != nil {
+		return nil, err
+	}
+
+	pos, err := writeFile.Seek(0, io.SeekEnd)
+	if err != nil {
+		return nil, err
 	}
 
 	return &WAL{
 		segmentList:          segments,
 		readFile:             readFile,
 		writeFile:            writeFile,
-		currentWritePosition: currentWritePosition,
+		currentWritePosition: int(pos),
 		currentReadPosition:  0,
 		segmentSize:          sizeSegment,
 		blockManager:         bm,
@@ -143,29 +139,29 @@ func (wal *WAL) appendLog(newLog *Log) error {
 		return err
 	}
 
-	//Ako nema mesta u trenutnom segmentu pravi se novi
-	//Poraditi na logici
+	// Ako nema mesta → rotacija segmenta
 	if wal.currentWritePosition+len(binaryData) > wal.segmentSize {
+		wal.writeFile.Close()
+
 		newIndex := len(wal.segmentList)
 		newSegment := filepath.Join(FILE_PATH, fmt.Sprintf("%s%04d%s", SEGMENT_NAME, newIndex, FILE_EXTENSION))
 
-		file, err := os.OpenFile(newSegment, os.O_CREATE|os.O_RDWR, 0644)
+		file, err := openFile(newSegment)
 		if err != nil {
 			return err
 		}
-		file.Close()
 
 		wal.segmentList = append(wal.segmentList, newSegment)
-		wal.writeFile = newSegment
+		wal.writeFile = file
 		wal.currentWritePosition = 0
 	}
 
-	//Racunanje bloka i offseta
-	blockSize := wal.blockManager.GetBlockSize()
-	blockNumber := wal.currentWritePosition / blockSize
-	offset := wal.currentWritePosition % blockSize
-
-	//Upis podataka
+	blockNumber := wal.currentWritePosition / wal.blockManager.GetBlockSize()
+	if (wal.currentWritePosition+len(binaryData))/wal.blockManager.GetBlockSize() > blockNumber {
+		blockNumber++
+	}
+	fmt.Println(wal.currentWritePosition, wal.blockManager.GetBlockSize(), blockNumber)
+	offset := wal.currentWritePosition % wal.blockManager.GetBlockSize()
 	err = wal.blockManager.PutSpecific(
 		wal.writeFile,
 		blockNumber,
@@ -178,6 +174,10 @@ func (wal *WAL) appendLog(newLog *Log) error {
 	}
 
 	wal.currentWritePosition += len(binaryData)
+	err = wal.writeFile.Sync()
+	if err != nil {
+		panic(err)
+	}
 	return nil
 }
 
@@ -188,13 +188,19 @@ func (wal *WAL) ClearWAL() {
 // Cita sve WAL zapise i radi X sa njima
 func (wal *WAL) ReadAll() {
 	blockSize := wal.blockManager.GetBlockSize()
-	for _, segment := range wal.segmentList {
+
+	for _, segmentPath := range wal.segmentList {
+		file, err := openFileRead(segmentPath)
+		if err != nil {
+			fmt.Println("Greška pri otvaranju:", err)
+			continue
+		}
+
 		blockNumber := 0
 		offset := 0
 
-		//Kao neki while(true)
 		for {
-			block, err := wal.blockManager.Get(segment, blockNumber)
+			block, err := wal.blockManager.Get(file, blockNumber)
 			if err != nil || block == nil {
 				break
 			}
@@ -210,7 +216,9 @@ func (wal *WAL) ReadAll() {
 			keySize := binary.BigEndian.Uint64(header[13:21])
 			valueSize := binary.BigEndian.Uint64(header[21:29])
 			recordSize := HEADER_SIZE + int(keySize) + int(valueSize)
-
+			if keySize == 0 && valueSize == 0 {
+				break
+			}
 			if offset+recordSize > blockSize {
 				blockNumber++
 				offset = 0
@@ -224,11 +232,11 @@ func (wal *WAL) ReadAll() {
 				break
 			}
 
-			//Treba da radi nesta
 			fmt.Println(logEntry)
-
 			offset += recordSize
 		}
+
+		file.Close()
 	}
 }
 
@@ -290,4 +298,13 @@ func FromBinary(data []byte) (*Log, error) {
 }
 
 func (wal *WAL) Recovery() {
+}
+
+func (wal *WAL) Close() {
+	if wal.readFile != nil {
+		wal.readFile.Close()
+	}
+	if wal.writeFile != nil {
+		wal.writeFile.Close()
+	}
 }
