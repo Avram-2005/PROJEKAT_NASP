@@ -5,6 +5,29 @@ import (
 	"fmt"
 )
 
+type SSTable struct {
+	ssmap map[string][]byte
+}
+
+func NewSSTable() *SSTable {
+	return &SSTable{
+		ssmap: make(map[string][]byte),
+	}
+}
+
+func (sst *SSTable) Put(key string, value []byte) error {
+	sst.ssmap[key] = value
+	return nil
+}
+
+func (sst *SSTable) Get(key string) (*[]byte, error) {
+	value, err := sst.ssmap[key]
+	if !err {
+		return nil, fmt.Errorf("value not found in sstable")
+	}
+	return &value, nil
+}
+
 type Cache struct {
 	maxSize     int               //maksimalna velicina cache-a
 	currentSize int               //trenutna velicina cache-a
@@ -48,10 +71,16 @@ func (ch *Cache) Put(key string, value *[]byte) error {
 	return nil
 }
 
-func (ch *Cache) Get(key string) (*[]byte, error) {
+func (ch *Cache) Get(key string, sst *SSTable) (*[]byte, error) {
 	value, ok := ch.cacheMap[key]
 	if !ok {
-		return nil, fmt.Errorf("tried getting a nonexistent elemnt")
+		returnValue, err := sst.Get(key)
+		if err != nil {
+			return nil, err
+		}
+		ch.Put(key, returnValue)
+
+		return returnValue, nil
 	}
 	elem, err := ch.findElement(key)
 	if err != nil {
