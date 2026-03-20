@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
-	"github.com/Avram-2005/PROJEKAT_NASP/internal/bloom_filter"
+	"github.com/Avram-2005/PROJEKAT_NASP/BloomFilter"
 )
 
 // FIXME: DELETE AFTER Memtable MERGE /
@@ -137,7 +137,7 @@ func multipleFilesFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManage
 		return fmt.Errorf("failed to create filter file: %v", err)
 	}
 
-	bf, err := bloom_filter.NewBloomFilter(uint(len(mem.GetSortedEntries())), 0.01)
+	bf, err := BloomFilter.NewBloomFilter(uint(len(mem.GetSortedEntries())), 0.01)
 	if err != nil {
 		return err
 	}
@@ -185,7 +185,7 @@ func oneFileFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) err
 
 	writer := newBlockWriter(f, bm)
 
-	bf, err := bloom_filter.NewBloomFilter(uint(len(mem.GetSortedEntries())), 0.01)
+	bf, err := BloomFilter.NewBloomFilter(uint(len(mem.GetSortedEntries())), 0.01)
 	if err != nil {
 		return err
 	}
@@ -304,7 +304,7 @@ func searchFilter(indexType string, tableNum int, key string, bm *BlockManager.B
 		return false, err
 	}
 
-	bf := bloom_filter.LoadBloomFilter(filterData)
+	bf := BloomFilter.LoadBloomFilter(filterData)
 
 	return bf.IsFound([]byte(key)), nil
 
