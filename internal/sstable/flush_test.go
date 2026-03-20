@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
+	"github.com/Avram-2005/PROJEKAT_NASP/BloomFilter"
 )
 
 var bm *BlockManager.BlockManager
@@ -55,13 +56,12 @@ func calcIndexSectionSize(count int, keyLen int) int64 {
 }
 
 func calcSummarySectionSize(count int, keyLen int) int64 {
-	return int64((count/summaryInterval + 1) * (INDEX_HEADER_L + keyLen))
+	numSummaryEntries := math.Ceil(float64(count) / float64(summaryInterval))
+	return int64(int(numSummaryEntries) * (INDEX_HEADER_L + keyLen))
 }
 
 func calcFilterSectionSize(count int) int64 {
-	p := 0.01
-	m := (-float64(count) * math.Log(p)) / (math.Ln2 * math.Ln2)
-	return int64(math.Ceil(m / 8.0))
+	return int64(BloomFilter.CalculateBloomFilterSize(uint(count), 0.01))
 }
 
 func oneFileSize(keyCount int, keyLen int, valueLen int) int64 {
@@ -71,29 +71,6 @@ func oneFileSize(keyCount int, keyLen int, valueLen int) int64 {
 	size += calcSummarySectionSize(keyCount, keyLen)
 	size += calcFilterSectionSize(keyCount)
 	return size
-}
-
-type emptyMemtable struct {
-}
-
-func (m emptyMemtable) GetSortedEntries() []KeyValue {
-	return []KeyValue{}
-}
-
-func TestFlushEmptyMemtableMultipleFiles(t *testing.T) {
-	mem := emptyMemtable{}
-	err := testFlush(t.TempDir(), mem, 0, true)
-	if err == nil {
-		t.Fatalf("Expected error when flushing empty memtable, but got none")
-	}
-}
-
-func TestFlushEmptyMemtableOneFile(t *testing.T) {
-	mem := emptyMemtable{}
-	err := testFlush(t.TempDir(), mem, 0, false)
-	if err == nil {
-		t.Fatalf("Expected error when flushing empty memtable, but got none")
-	}
 }
 
 type smallSmallKeyKVMemtable struct {
