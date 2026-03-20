@@ -137,7 +137,8 @@ func multipleFilesFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManage
 		return fmt.Errorf("failed to create filter file: %v", err)
 	}
 
-	bf, err := BloomFilter.NewBloomFilter(uint(len(mem.GetSortedEntries())), 0.01)
+	sortedEntries := mem.GetSortedEntries()
+	bf, err := BloomFilter.NewBloomFilter(uint(len(sortedEntries)), 0.01)
 	if err != nil {
 		return err
 	}
@@ -149,7 +150,7 @@ func multipleFilesFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManage
 	summaryWriter := newBlockWriter(summaryFile, bm)
 	filterWriter := newBlockWriter(filterFile, bm)
 
-	for i, entry := range mem.GetSortedEntries() {
+	for i, entry := range sortedEntries {
 		bf.Set([]byte(entry.Key)) // dodaj kljuc u filter
 		offset := writeData(dataWriter, entry)
 		offset = writeIndex(indexWriter, entry.Key, offset)
@@ -163,9 +164,6 @@ func multipleFilesFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManage
 	indexWriter.Finalize()
 	summaryWriter.Finalize()
 	filterWriter.Finalize()
-	if dataWriter.currBlockNum == 0 && dataWriter.currByte == 0 {
-		return fmt.Errorf("memtable is empty, no data written")
-	}
 
 	return nil
 }
@@ -284,8 +282,8 @@ func searchIndex(indexType string, tableNum int, key string, bm *BlockManager.Bl
 	return searchForKey(key, summaryReader)
 }
 
-func searchFilter(indexType string, tableNum int, key string, bm *BlockManager.BlockManager, oldOffset uint64) (bool, error) {
-	filterFilename := sstableFilename(tableNum, indexType)
+func searchFilter(tableNum int, key string, bm *BlockManager.BlockManager) (bool, error) {
+	filterFilename := sstableFilename(tableNum, "Filter")
 	filterFile, err := os.Open(filterFilename)
 	if err != nil {
 		return false, fmt.Errorf("failed to open filter file: %v", err)
@@ -297,7 +295,7 @@ func searchFilter(indexType string, tableNum int, key string, bm *BlockManager.B
 		return false, err
 	}
 
-	filterReader := newBlockReader(filterFile, bm, oldOffset)
+	filterReader := newBlockReader(filterFile, bm, 0)
 	filterData := make([]byte, stat.Size())
 	_, err = filterReader.Read(filterData)
 	if err != nil {
@@ -321,7 +319,7 @@ func Get(key string, tableNum int, bm *BlockManager.BlockManager) ([]byte, error
 func getMultipleFiles(key string, tableNum int, bm *BlockManager.BlockManager) ([]byte, error) {
 	offset := uint64(0)
 
-	found, err := searchFilter("Filter", tableNum, key, bm, offset)
+	found, err := searchFilter(tableNum, key, bm)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read boom filter: %v", err)
 	}
