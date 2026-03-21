@@ -137,7 +137,7 @@ func TestFlushFewSmallKVOneFile(t *testing.T) {
 		}
 	}
 
-	filename := sstableFilename(1, "sstable")
+	filename := sstableFilenameOneFile(1)
 	expectedSize := oneFileSize(3, 1, 6) // 3 entries, each with 1 byte key and 6 byte value
 	testFileSize(t, filename, expectedSize)
 }
@@ -188,7 +188,7 @@ func TestFlushFewLargeKVOneFile(t *testing.T) {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	filename := sstableFilename(2, "sstable")
+	filename := sstableFilenameOneFile(2)
 	expectedSize := oneFileSize(3, 5, 10000) // 3 entries, each with 5 byte key and 10000 byte value
 	testFileSize(t, filename, expectedSize)
 }
@@ -224,7 +224,7 @@ func TestFlushManySmallKVOneFile(t *testing.T) {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	filename := sstableFilename(3, "sstable")
+	filename := sstableFilenameOneFile(3)
 	expectedSize := oneFileSize(1000, 6, 8) // 1000 entries, each with 6 byte key and 8 byte value
 	testFileSize(t, filename, expectedSize)
 }
@@ -279,7 +279,7 @@ func TestFlushManyLargeKVOneFile(t *testing.T) {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	filename := sstableFilename(4, "sstable")
+	filename := sstableFilenameOneFile(4)
 	expectedSize := oneFileSize(10000, 11, 10000) // 10000 entries, each with 11 byte key and 10000 byte value
 	testFileSize(t, filename, expectedSize)
 }

@@ -39,9 +39,10 @@ func SetupSSTable(root string, summaryInt int, multFiles bool) error {
 }
 
 func sstableFilename(tableNum int, fileType string) string {
-	if multipleFiles {
-		return filepath.Join(tablesRoot, fmt.Sprintf("usertable-%d-%s.txt", tableNum, fileType))
-	}
+	return filepath.Join(tablesRoot, fmt.Sprintf("usertable-%d-%s.txt", tableNum, fileType))
+}
+
+func sstableFilenameOneFile(tableNum int) string {
 	return filepath.Join(tablesRoot, fmt.Sprintf("sstable%d", tableNum))
 }
 
@@ -184,7 +185,7 @@ type indexEntry struct {
 }
 
 func oneFileFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) error {
-	sstableFilename := filepath.Join(tablesRoot, fmt.Sprintf("sstable%d", tableNum))
+	sstableFilename := sstableFilenameOneFile(tableNum)
 	f, err := os.Create(sstableFilename)
 	if err != nil {
 		return fmt.Errorf("failed to create SSTable file: %v", err)
@@ -354,21 +355,22 @@ func searchFilter(tableNum int, key string, bm *BlockManager.BlockManager) (bool
 }
 
 func Get(key string, tableNum int, bm *BlockManager.BlockManager) ([]byte, error) {
-	if multipleFiles {
-		return getMultipleFiles(key, tableNum, bm)
+	oneFileTableFilename := sstableFilenameOneFile(tableNum)
+	if _, err := os.Stat(oneFileTableFilename); err == nil {
+		return getOneFile(key, tableNum, bm)
 	}
-	return getOneFile(key, tableNum, bm)
+	return getMultipleFiles(key, tableNum, bm)
 }
 
 // TODO: Consider doing this zero-copy
 func getMultipleFiles(key string, tableNum int, bm *BlockManager.BlockManager) ([]byte, error) {
-	found, err := searchFilter(tableNum, key, bm)
+	isFound, err := searchFilter(tableNum, key, bm)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read boom filter: %v", err)
 	}
 
 	// kljuc se ne nalazi u sstable
-	if !found {
+	if !isFound {
 		return nil, nil
 	}
 
