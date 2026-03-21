@@ -57,7 +57,7 @@ func calcIndexSectionSize(count int, keyLen int) int64 {
 
 func calcSummarySectionSize(count int, keyLen int) int64 {
 	numSummaryEntries := math.Ceil(float64(count) / float64(summaryInterval))
-	return int64(int(numSummaryEntries) * (INDEX_HEADER_L + keyLen))
+	return int64(int(numSummaryEntries)*(INDEX_HEADER_L+keyLen)) + 2*int64(KEY_SIZE_L+keyLen)
 }
 
 func calcFilterSectionSize(count int) int64 {
@@ -65,11 +65,11 @@ func calcFilterSectionSize(count int) int64 {
 }
 
 func oneFileSize(keyCount int, keyLen int, valueLen int) int64 {
-	size := int64(2 * (KEY_SIZE_L + keyLen)) // first and last key in index
+	size := calcFilterSectionSize(keyCount)
 	size += calcDataSectionSize(keyCount, keyLen, valueLen)
 	size += calcIndexSectionSize(keyCount, keyLen)
 	size += calcSummarySectionSize(keyCount, keyLen)
-	size += calcFilterSectionSize(keyCount)
+	size += 3 * OFFSET_L // 3 offsets for the sections
 	return size
 }
 

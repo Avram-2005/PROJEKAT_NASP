@@ -110,6 +110,16 @@ func writeIndex(writer *blockWriter, key string, offset int) int {
 	return oldOffset
 }
 
+func writeSummaryHeader(writer *blockWriter, firstKey string, lastKey string) {
+	var summaryHeaderBuf [2 * KEY_SIZE_L]byte
+	binary.LittleEndian.PutUint32(summaryHeaderBuf[0:], uint32(len(firstKey)))
+	binary.LittleEndian.PutUint32(summaryHeaderBuf[KEY_SIZE_L:], uint32(len(lastKey)))
+
+	writer.Write(summaryHeaderBuf[:])
+	writer.Write([]byte(firstKey))
+	writer.Write([]byte(lastKey))
+}
+
 // TODO: Compression (1.3[DZ3])
 func Flush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) error {
 	if multipleFiles {
@@ -119,7 +129,6 @@ func Flush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) error {
 }
 
 func multipleFilesFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) error {
-	// FIXME: Fix after BlockManager file handle fix
 	dataFile, err := createSSTableFile("Data", tableNum)
 	if err != nil {
 		return fmt.Errorf("failed to create data file: %v", err)
@@ -143,12 +152,13 @@ func multipleFilesFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManage
 		return err
 	}
 
-	// FIXME: Summary also needs the first / last keys in its header
-
 	dataWriter := newBlockWriter(dataFile, bm)
 	indexWriter := newBlockWriter(indexFile, bm)
 	summaryWriter := newBlockWriter(summaryFile, bm)
 	filterWriter := newBlockWriter(filterFile, bm)
+
+	firstEntry, lastEntry := sortedEntries[0], sortedEntries[len(sortedEntries)-1]
+	writeSummaryHeader(summaryWriter, firstEntry.Key, lastEntry.Key)
 
 	for i, entry := range sortedEntries {
 		bf.Set([]byte(entry.Key)) // dodaj kljuc u filter
@@ -196,8 +206,6 @@ func oneFileFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) err
 	filterData := bf.Dump()
 	writer.Write(filterData)
 
-	// FIXME: Summary also needs the first / last keys in its header
-
 	index := make([]indexEntry, 0)
 	for _, entry := range mem.GetSortedEntries() {
 		offset := writeData(writer, entry)
@@ -222,6 +230,8 @@ func oneFileFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) err
 	}
 
 	summaryStart := writer.CurrOffset()
+	firstEntry, lastEntry := summaryOffsets[0], summaryOffsets[len(summaryOffsets)-1]
+	writeSummaryHeader(writer, firstEntry.Key, lastEntry.Key)
 	for _, entry := range summaryOffsets {
 		writeIndex(writer, entry.Key, entry.Offset)
 	}
@@ -270,8 +280,8 @@ func searchForKey(key string, reader *blockReader) (uint64, error) {
 	}
 }
 
-func searchIndex(indexType string, tableNum int, key string, bm *BlockManager.BlockManager, oldOffset uint64) (uint64, error) {
-	summaryFilename := sstableFilename(tableNum, indexType)
+func searchIndex(tableNum int, key string, bm *BlockManager.BlockManager, oldOffset uint64) (uint64, error) {
+	summaryFilename := sstableFilename(tableNum, "Index")
 	summaryFile, err := os.Open(summaryFilename)
 	if err != nil {
 		return 0, fmt.Errorf("failed to open summary file: %v", err)
@@ -280,6 +290,42 @@ func searchIndex(indexType string, tableNum int, key string, bm *BlockManager.Bl
 	summaryReader := newBlockReader(summaryFile, bm, oldOffset)
 
 	return searchForKey(key, summaryReader)
+}
+
+func searchSummary(tableNum int, key string, bm *BlockManager.BlockManager) (bool, uint64, error) {
+	summaryFilename := sstableFilename(tableNum, "Summary")
+	summaryFile, err := os.Open(summaryFilename)
+	if err != nil {
+		return false, 0, fmt.Errorf("failed to open summary file: %v", err)
+	}
+	defer summaryFile.Close()
+	summaryReader := newBlockReader(summaryFile, bm, 0)
+
+	var summaryHeaderBuf [2 * KEY_SIZE_L]byte
+	_, err = summaryReader.Read(summaryHeaderBuf[:])
+	if err != nil {
+		return false, 0, fmt.Errorf("failed to read summary header: %v", err)
+	}
+	firstKeySize := binary.LittleEndian.Uint32(summaryHeaderBuf[0:])
+	lastKeySize := binary.LittleEndian.Uint32(summaryHeaderBuf[KEY_SIZE_L:])
+	firstKeyBuf := make([]byte, firstKeySize)
+	lastKeyBuf := make([]byte, lastKeySize)
+	_, err = summaryReader.Read(firstKeyBuf)
+	if err != nil {
+		return false, 0, fmt.Errorf("failed to read first key from summary header: %v", err)
+	}
+	_, err = summaryReader.Read(lastKeyBuf)
+	if err != nil {
+		return false, 0, fmt.Errorf("failed to read last key from summary header: %v", err)
+	}
+	firstKey := string(firstKeyBuf)
+	lastKey := string(lastKeyBuf)
+	if key < firstKey || key > lastKey {
+		return false, 0, nil
+	}
+
+	offset, err := searchForKey(key, summaryReader)
+	return true, offset, err
 }
 
 func searchFilter(tableNum int, key string, bm *BlockManager.BlockManager) (bool, error) {
@@ -305,7 +351,6 @@ func searchFilter(tableNum int, key string, bm *BlockManager.BlockManager) (bool
 	bf := BloomFilter.LoadBloomFilter(filterData)
 
 	return bf.IsFound([]byte(key)), nil
-
 }
 
 func Get(key string, tableNum int, bm *BlockManager.BlockManager) ([]byte, error) {
@@ -317,8 +362,6 @@ func Get(key string, tableNum int, bm *BlockManager.BlockManager) ([]byte, error
 
 // TODO: Consider doing this zero-copy
 func getMultipleFiles(key string, tableNum int, bm *BlockManager.BlockManager) ([]byte, error) {
-	offset := uint64(0)
-
 	found, err := searchFilter(tableNum, key, bm)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read boom filter: %v", err)
@@ -329,12 +372,15 @@ func getMultipleFiles(key string, tableNum int, bm *BlockManager.BlockManager) (
 		return nil, nil
 	}
 
-	offset, err = searchIndex("Summary", tableNum, key, bm, offset)
+	isFound, offset, err := searchSummary(tableNum, key, bm)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search summary file: %v", err)
 	}
+	if !isFound {
+		return nil, nil
+	}
 
-	offset, err = searchIndex("Index", tableNum, key, bm, offset)
+	offset, err = searchIndex(tableNum, key, bm, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search index file: %v", err)
 	}
@@ -378,5 +424,5 @@ func getMultipleFiles(key string, tableNum int, bm *BlockManager.BlockManager) (
 }
 
 func getOneFile(key string, tableNum int, bm *BlockManager.BlockManager) ([]byte, error) {
-	return nil, fmt.Errorf("multiple files get not implemented yet")
+	return nil, fmt.Errorf("one file get not implemented yet")
 }
