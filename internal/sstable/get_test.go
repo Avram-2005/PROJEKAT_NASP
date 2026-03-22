@@ -1,10 +1,18 @@
 package sstable
 
 import (
+	"fmt"
+	"math/rand"
 	"testing"
 )
 
-func flush(t *testing.T, multFiles bool) {
+type testHelper interface {
+	Helper()
+	Fatalf(format string, args ...any)
+	TempDir() string
+}
+
+func flush(t testHelper, multFiles bool) {
 	SetupSSTable(t.TempDir(), 100, multFiles)
 	mem := manySmallKeyKVMemtable{}
 	err := Flush(mem, 100, bm)
@@ -31,6 +39,14 @@ func TestGetFirstKeyMultipleFiles(t *testing.T) {
 
 func TestGetFirstKeyOneFile(t *testing.T) {
 	testGet(t, "key000", "value000", false)
+}
+
+func TestGetSecondKeyMultipleFiles(t *testing.T) {
+	testGet(t, "key001", "value001", true)
+}
+
+func TestGetSecondKeyOneFile(t *testing.T) {
+	testGet(t, "key001", "value001", false)
 }
 
 func TestGetLastKeyMultipleFiles(t *testing.T) {
@@ -71,4 +87,34 @@ func TestGetNonExistentKeyOneFile(t *testing.T) {
 	if value != nil {
 		t.Fatalf("Expected nil value when getting non-existent key, but got %s", value)
 	}
+}
+
+func genKeys(n int) []string {
+	keys := make([]string, n)
+	for i := 0; i < n; i++ {
+		keys[i] = fmt.Sprintf("key%03d", i)
+	}
+	return keys
+}
+
+func benchmarkGet(b *testing.B, multFiles bool) {
+	r := rand.New(rand.NewSource(42))
+	flush(b, true)
+
+	keys := genKeys(1000)
+	for b.Loop() {
+		key := keys[r.Intn(len(keys))]
+		_, err := Get(key, 100, bm)
+		if err != nil {
+			b.Fatalf("Error when getting key: %v", err)
+		}
+	}
+}
+
+func BenchmarkGetMultipleFiles(b *testing.B) {
+	benchmarkGet(b, true)
+}
+
+func BenchmarkGetOneFile(b *testing.B) {
+	benchmarkGet(b, false)
 }

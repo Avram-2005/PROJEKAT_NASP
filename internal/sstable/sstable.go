@@ -253,16 +253,17 @@ func oneFileFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) err
 	return nil
 }
 
-func searchForKey(key string, reader *blockReader) (uint64, error) {
-	lastOffset := reader.CurrOffset()
+func searchForKey(key string, reader *blockReader) (uint64, uint64, error) {
+	lastOffset := uint64(0)
+	seenFirstEntry := false
 	for {
 		var indexHeaderBuf [INDEX_HEADER_L]byte
 		n, err := reader.Read(indexHeaderBuf[:])
 		if err != nil {
-			return 0, fmt.Errorf("failed to read index header: %v", err)
+			return 0, 0, fmt.Errorf("failed to read index header: %v", err)
 		}
 		if n == 0 {
-			return lastOffset, nil
+			return lastOffset, lastOffset, nil
 		}
 		keySize := binary.BigEndian.Uint32(indexHeaderBuf[0:])
 		offset := binary.BigEndian.Uint64(indexHeaderBuf[KEY_SIZE_L:])
@@ -270,16 +271,20 @@ func searchForKey(key string, reader *blockReader) (uint64, error) {
 		keyBuf := make([]byte, keySize)
 		n, err = reader.Read(keyBuf)
 		if err != nil {
-			return 0, fmt.Errorf("failed to read key: %v", err)
+			return 0, 0, fmt.Errorf("failed to read key: %v", err)
 		}
 		if n == 0 {
-			return lastOffset, nil
+			return lastOffset, lastOffset, nil
 		}
 		readKey := string(keyBuf)
 		if key <= readKey {
-			return offset, nil
+			if !seenFirstEntry && key == readKey {
+				return offset, offset, nil
+			}
+			return offset, lastOffset, nil
 		}
 		lastOffset = offset
+		seenFirstEntry = true
 	}
 }
 
@@ -291,7 +296,8 @@ func searchIndex(indexFilename string, key string, bm *BlockManager.BlockManager
 	defer indexFile.Close()
 	summaryReader := newBlockReader(indexFile, bm, oldOffset)
 
-	return searchForKey(key, summaryReader)
+	offset, _, err := searchForKey(key, summaryReader)
+	return offset, err
 }
 
 func searchSummary(summaryFilename string, offset uint64, key string, bm *BlockManager.BlockManager) (bool, uint64, error) {
@@ -325,7 +331,7 @@ func searchSummary(summaryFilename string, offset uint64, key string, bm *BlockM
 		return false, 0, nil
 	}
 
-	offset, err = searchForKey(key, summaryReader)
+	_, offset, err = searchForKey(key, summaryReader)
 	return true, offset, err
 }
 
