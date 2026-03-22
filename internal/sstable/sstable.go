@@ -79,7 +79,7 @@ func writeData(writer *blockWriter, entry KeyValue) int {
 
 	bytesWritten += CRC_L // Placeholder for CRC
 
-	binary.LittleEndian.PutUint64(dataHeaderBuf[bytesWritten:], uint64(time.Now().UnixNano()))
+	binary.BigEndian.PutUint64(dataHeaderBuf[bytesWritten:], uint64(time.Now().UnixNano()))
 	bytesWritten += TIMESTAMP_L
 	if entry.Tombstone {
 		dataHeaderBuf[CRC_L+TIMESTAMP_L] = 1
@@ -88,9 +88,9 @@ func writeData(writer *blockWriter, entry KeyValue) int {
 	}
 	bytesWritten += TOMBSTONE_L
 
-	binary.LittleEndian.PutUint32(dataHeaderBuf[bytesWritten:], uint32(len(entry.Key)))
+	binary.BigEndian.PutUint32(dataHeaderBuf[bytesWritten:], uint32(len(entry.Key)))
 	bytesWritten += KEY_SIZE_L
-	binary.LittleEndian.PutUint32(dataHeaderBuf[bytesWritten:], uint32(len(entry.Value)))
+	binary.BigEndian.PutUint32(dataHeaderBuf[bytesWritten:], uint32(len(entry.Value)))
 	bytesWritten += VALUE_SIZE_L
 
 	writer.Write(dataHeaderBuf[:])
@@ -103,8 +103,8 @@ func writeData(writer *blockWriter, entry KeyValue) int {
 func writeIndex(writer *blockWriter, key string, offset int) int {
 	oldOffset := writer.currBlockNum*cap(writer.block) + writer.currByte
 	var indexHeaderBuf [INDEX_HEADER_L]byte
-	binary.LittleEndian.PutUint32(indexHeaderBuf[0:], uint32(len(key)))
-	binary.LittleEndian.PutUint64(indexHeaderBuf[KEY_SIZE_L:], uint64(offset))
+	binary.BigEndian.PutUint32(indexHeaderBuf[0:], uint32(len(key)))
+	binary.BigEndian.PutUint64(indexHeaderBuf[KEY_SIZE_L:], uint64(offset))
 
 	writer.Write(indexHeaderBuf[:])
 	writer.Write([]byte(key))
@@ -113,8 +113,8 @@ func writeIndex(writer *blockWriter, key string, offset int) int {
 
 func writeSummaryHeader(writer *blockWriter, firstKey string, lastKey string) {
 	var summaryHeaderBuf [2 * KEY_SIZE_L]byte
-	binary.LittleEndian.PutUint32(summaryHeaderBuf[0:], uint32(len(firstKey)))
-	binary.LittleEndian.PutUint32(summaryHeaderBuf[KEY_SIZE_L:], uint32(len(lastKey)))
+	binary.BigEndian.PutUint32(summaryHeaderBuf[0:], uint32(len(firstKey)))
+	binary.BigEndian.PutUint32(summaryHeaderBuf[KEY_SIZE_L:], uint32(len(lastKey)))
 
 	writer.Write(summaryHeaderBuf[:])
 	writer.Write([]byte(firstKey))
@@ -199,13 +199,15 @@ func oneFileFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) err
 		return err
 	}
 
-	for _, entry := range mem.GetSortedEntries() {
+	// TODO: Consider doing this in a single pass
+	sortedEntries := mem.GetSortedEntries()
+	for _, entry := range sortedEntries {
 		bf.Set([]byte(entry.Key))
 	}
 
-	filterStart := writer.CurrOffset()
 	filterData := bf.Dump()
 	writer.Write(filterData)
+	dataStart := writer.CurrOffset()
 
 	index := make([]indexEntry, 0)
 	for _, entry := range mem.GetSortedEntries() {
@@ -231,7 +233,7 @@ func oneFileFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) err
 	}
 
 	summaryStart := writer.CurrOffset()
-	firstEntry, lastEntry := summaryOffsets[0], summaryOffsets[len(summaryOffsets)-1]
+	firstEntry, lastEntry := sortedEntries[0], sortedEntries[len(sortedEntries)-1]
 	writeSummaryHeader(writer, firstEntry.Key, lastEntry.Key)
 	for _, entry := range summaryOffsets {
 		writeIndex(writer, entry.Key, entry.Offset)
@@ -242,9 +244,9 @@ func oneFileFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) err
 	}
 
 	var footrerBuf [3 * OFFSET_L]byte
-	binary.LittleEndian.PutUint64(footrerBuf[0:], uint64(summaryStart))
-	binary.LittleEndian.PutUint64(footrerBuf[OFFSET_L:], uint64(indexStart))
-	binary.LittleEndian.PutUint64(footrerBuf[2*OFFSET_L:], uint64(filterStart))
+	binary.BigEndian.PutUint64(footrerBuf[0:], uint64(summaryStart))
+	binary.BigEndian.PutUint64(footrerBuf[OFFSET_L:], uint64(indexStart))
+	binary.BigEndian.PutUint64(footrerBuf[2*OFFSET_L:], uint64(dataStart))
 	writer.Write(footrerBuf[:])
 
 	writer.Finalize()
@@ -262,8 +264,8 @@ func searchForKey(key string, reader *blockReader) (uint64, error) {
 		if n == 0 {
 			return lastOffset, nil
 		}
-		keySize := binary.LittleEndian.Uint32(indexHeaderBuf[0:])
-		offset := binary.LittleEndian.Uint64(indexHeaderBuf[KEY_SIZE_L:])
+		keySize := binary.BigEndian.Uint32(indexHeaderBuf[0:])
+		offset := binary.BigEndian.Uint64(indexHeaderBuf[KEY_SIZE_L:])
 
 		keyBuf := make([]byte, keySize)
 		n, err = reader.Read(keyBuf)
@@ -281,34 +283,32 @@ func searchForKey(key string, reader *blockReader) (uint64, error) {
 	}
 }
 
-func searchIndex(tableNum int, key string, bm *BlockManager.BlockManager, oldOffset uint64) (uint64, error) {
-	summaryFilename := sstableFilename(tableNum, "Index")
-	summaryFile, err := os.Open(summaryFilename)
+func searchIndex(indexFilename string, key string, bm *BlockManager.BlockManager, oldOffset uint64) (uint64, error) {
+	indexFile, err := os.Open(indexFilename)
 	if err != nil {
 		return 0, fmt.Errorf("failed to open summary file: %v", err)
 	}
-	defer summaryFile.Close()
-	summaryReader := newBlockReader(summaryFile, bm, oldOffset)
+	defer indexFile.Close()
+	summaryReader := newBlockReader(indexFile, bm, oldOffset)
 
 	return searchForKey(key, summaryReader)
 }
 
-func searchSummary(tableNum int, key string, bm *BlockManager.BlockManager) (bool, uint64, error) {
-	summaryFilename := sstableFilename(tableNum, "Summary")
+func searchSummary(summaryFilename string, offset uint64, key string, bm *BlockManager.BlockManager) (bool, uint64, error) {
 	summaryFile, err := os.Open(summaryFilename)
 	if err != nil {
 		return false, 0, fmt.Errorf("failed to open summary file: %v", err)
 	}
 	defer summaryFile.Close()
-	summaryReader := newBlockReader(summaryFile, bm, 0)
+	summaryReader := newBlockReader(summaryFile, bm, offset)
 
 	var summaryHeaderBuf [2 * KEY_SIZE_L]byte
 	_, err = summaryReader.Read(summaryHeaderBuf[:])
 	if err != nil {
 		return false, 0, fmt.Errorf("failed to read summary header: %v", err)
 	}
-	firstKeySize := binary.LittleEndian.Uint32(summaryHeaderBuf[0:])
-	lastKeySize := binary.LittleEndian.Uint32(summaryHeaderBuf[KEY_SIZE_L:])
+	firstKeySize := binary.BigEndian.Uint32(summaryHeaderBuf[0:])
+	lastKeySize := binary.BigEndian.Uint32(summaryHeaderBuf[KEY_SIZE_L:])
 	firstKeyBuf := make([]byte, firstKeySize)
 	lastKeyBuf := make([]byte, lastKeySize)
 	_, err = summaryReader.Read(firstKeyBuf)
@@ -325,25 +325,27 @@ func searchSummary(tableNum int, key string, bm *BlockManager.BlockManager) (boo
 		return false, 0, nil
 	}
 
-	offset, err := searchForKey(key, summaryReader)
+	offset, err = searchForKey(key, summaryReader)
 	return true, offset, err
 }
 
-func searchFilter(tableNum int, key string, bm *BlockManager.BlockManager) (bool, error) {
-	filterFilename := sstableFilename(tableNum, "Filter")
+func searchFilter(filterFilename string, offset uint64, readSize uint64, key string, bm *BlockManager.BlockManager) (bool, error) {
 	filterFile, err := os.Open(filterFilename)
 	if err != nil {
 		return false, fmt.Errorf("failed to open filter file: %v", err)
 	}
 	defer filterFile.Close()
 
-	stat, err := filterFile.Stat()
-	if err != nil {
-		return false, err
+	if readSize == 0 {
+		stat, err := filterFile.Stat()
+		if err != nil {
+			return false, err
+		}
+		readSize = uint64(stat.Size())
 	}
 
-	filterReader := newBlockReader(filterFile, bm, 0)
-	filterData := make([]byte, stat.Size())
+	filterReader := newBlockReader(filterFile, bm, offset)
+	filterData := make([]byte, readSize)
 	_, err = filterReader.Read(filterData)
 	if err != nil {
 		return false, err
@@ -354,40 +356,7 @@ func searchFilter(tableNum int, key string, bm *BlockManager.BlockManager) (bool
 	return bf.IsFound([]byte(key)), nil
 }
 
-func Get(key string, tableNum int, bm *BlockManager.BlockManager) ([]byte, error) {
-	oneFileTableFilename := sstableFilenameOneFile(tableNum)
-	if _, err := os.Stat(oneFileTableFilename); err == nil {
-		return getOneFile(key, tableNum, bm)
-	}
-	return getMultipleFiles(key, tableNum, bm)
-}
-
-// TODO: Consider doing this zero-copy
-func getMultipleFiles(key string, tableNum int, bm *BlockManager.BlockManager) ([]byte, error) {
-	isFound, err := searchFilter(tableNum, key, bm)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read boom filter: %v", err)
-	}
-
-	// kljuc se ne nalazi u sstable
-	if !isFound {
-		return nil, nil
-	}
-
-	isFound, offset, err := searchSummary(tableNum, key, bm)
-	if err != nil {
-		return nil, fmt.Errorf("failed to search summary file: %v", err)
-	}
-	if !isFound {
-		return nil, nil
-	}
-
-	offset, err = searchIndex(tableNum, key, bm, offset)
-	if err != nil {
-		return nil, fmt.Errorf("failed to search index file: %v", err)
-	}
-
-	dataFilename := sstableFilename(tableNum, "Data")
+func parseData(dataFilename string, offset uint64, key string, bm *BlockManager.BlockManager) ([]byte, error) {
 	dataFile, err := os.Open(dataFilename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open data file: %v", err)
@@ -400,13 +369,12 @@ func getMultipleFiles(key string, tableNum int, bm *BlockManager.BlockManager) (
 	if err != nil {
 		return nil, fmt.Errorf("failed to read data header: %v", err)
 	}
-
 	// FIXME: Verify CRC
 	// crc := dataHeaderBuf[0:CRC_L]
 	currByte := CRC_L + TIMESTAMP_L + TOMBSTONE_L
-	keySize := binary.LittleEndian.Uint32(dataHeaderBuf[currByte:])
+	keySize := binary.BigEndian.Uint32(dataHeaderBuf[currByte:])
 	currByte += KEY_SIZE_L
-	valueSize := binary.LittleEndian.Uint32(dataHeaderBuf[currByte:])
+	valueSize := binary.BigEndian.Uint32(dataHeaderBuf[currByte:])
 
 	valueBuf := make([]byte, valueSize)
 	keyBuf := make([]byte, keySize)
@@ -425,6 +393,103 @@ func getMultipleFiles(key string, tableNum int, bm *BlockManager.BlockManager) (
 	return valueBuf, nil
 }
 
+func Get(key string, tableNum int, bm *BlockManager.BlockManager) ([]byte, error) {
+	oneFileTableFilename := sstableFilenameOneFile(tableNum)
+	if _, err := os.Stat(oneFileTableFilename); err == nil {
+		return getOneFile(key, tableNum, bm)
+	}
+	return getMultipleFiles(key, tableNum, bm)
+}
+
+// TODO: Consider doing this zero-copy
+func getMultipleFiles(key string, tableNum int, bm *BlockManager.BlockManager) ([]byte, error) {
+	filterFilename := sstableFilename(tableNum, "Filter")
+	isFound, err := searchFilter(filterFilename, 0, 0, key, bm)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read boom filter: %v", err)
+	}
+
+	// kljuc se ne nalazi u sstable
+	if !isFound {
+		return nil, nil
+	}
+
+	summaryFilename := sstableFilename(tableNum, "Summary")
+	isFound, offset, err := searchSummary(summaryFilename, 0, key, bm)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search summary file: %v", err)
+	}
+	if !isFound {
+		return nil, nil
+	}
+
+	indexFilename := sstableFilename(tableNum, "Index")
+	offset, err = searchIndex(indexFilename, key, bm, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search index file: %v", err)
+	}
+
+	dataFilename := sstableFilename(tableNum, "Data")
+	return parseData(dataFilename, offset, key, bm)
+}
+
+func readOneFileFooter(tableNum int, bm *BlockManager.BlockManager) (uint64, uint64, error) {
+	oneFileTableFilename := sstableFilenameOneFile(tableNum)
+	f, err := os.Open(oneFileTableFilename)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to open SSTable file: %v", err)
+	}
+	defer f.Close()
+
+	stat, err := f.Stat()
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to stat SSTable file: %v", err)
+	}
+	if stat.Size() < 3*OFFSET_L {
+		return 0, 0, fmt.Errorf("file size is too small to contain footer")
+	}
+	offset := uint64(stat.Size() - 3*OFFSET_L)
+	reader := newBlockReader(f, bm, offset)
+
+	var footerBuf [3 * OFFSET_L]byte
+	_, err = reader.Read(footerBuf[:])
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to read footer: %v", err)
+	}
+	summaryStart := binary.BigEndian.Uint64(footerBuf[0:])
+	dataStart := binary.BigEndian.Uint64(footerBuf[2*OFFSET_L:])
+	return summaryStart, dataStart, nil
+}
+
 func getOneFile(key string, tableNum int, bm *BlockManager.BlockManager) ([]byte, error) {
-	return nil, fmt.Errorf("one file get not implemented yet")
+	summaryStart, dataStart, err := readOneFileFooter(tableNum, bm)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read footer: %v", err)
+	}
+
+	sstableFileFilename := sstableFilenameOneFile(tableNum)
+	isFound, err := searchFilter(sstableFileFilename, 0, dataStart, key, bm)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read boom filter: %v", err)
+	}
+
+	// kljuc se ne nalazi u sstable
+	if !isFound {
+		return nil, nil
+	}
+
+	isFound, offset, err := searchSummary(sstableFileFilename, summaryStart, key, bm)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search summary file: %v", err)
+	}
+	if !isFound {
+		return nil, nil
+	}
+
+	offset, err = searchIndex(sstableFileFilename, key, bm, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search index file: %v", err)
+	}
+
+	return parseData(sstableFileFilename, offset, key, bm)
 }

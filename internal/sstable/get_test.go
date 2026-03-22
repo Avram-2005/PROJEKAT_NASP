@@ -64,8 +64,11 @@ func TestGetNonExistentKeyMultipleFiles(t *testing.T) {
 func TestGetNonExistentKeyOneFile(t *testing.T) {
 	flush(t, false)
 
-	_, err := Get("nonexistent", 100, bm)
-	if err == nil {
-		t.Fatalf("Expected error when getting non-existent key, but got none")
+	value, err := Get("nonexistent", 100, bm)
+	if err != nil {
+		t.Fatalf("Error when getting non-existent key: %v", err)
+	}
+	if value != nil {
+		t.Fatalf("Expected nil value when getting non-existent key, but got %s", value)
 	}
 }
