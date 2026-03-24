@@ -3,12 +3,14 @@ package sstable
 import (
 	"encoding/binary"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
 	"github.com/Avram-2005/PROJEKAT_NASP/BloomFilter"
+	merkleTree "github.com/Avram-2005/PROJEKAT_NASP/MerkleTree"
 )
 
 // FIXME: DELETE AFTER Memtable MERGE /
@@ -68,7 +70,7 @@ const (
 	OFFSET_L       = 8
 	DATA_HEADER_L  = CRC_L + TIMESTAMP_L + TOMBSTONE_L + KEY_SIZE_L + VALUE_SIZE_L
 	INDEX_HEADER_L = KEY_SIZE_L + OFFSET_L
-	FOOTER_L       = 2 * OFFSET_L
+	FOOTER_L       = 4 * OFFSET_L
 )
 
 func writeData(writer *blockWriter, entry KeyValue) int {
@@ -169,6 +171,7 @@ func multipleFilesFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManage
 			writeIndex(summaryWriter, entry.Key, offset)
 		}
 	}
+
 	filterWriter.Write(bf.Dump())
 
 	dataWriter.Finalize()
@@ -209,8 +212,11 @@ func oneFileFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) err
 	writer.Write(filterData)
 	dataStart := writer.CurrOffset()
 
+	var merkleData [][]byte
+
 	index := make([]indexEntry, 0)
 	for _, entry := range mem.GetSortedEntries() {
+		merkleData = append(merkleData, entry.Value)
 		offset := writeData(writer, entry)
 		index = append(index, indexEntry{
 			Key:    entry.Key,
@@ -239,14 +245,23 @@ func oneFileFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) err
 		writeIndex(writer, entry.Key, entry.Offset)
 	}
 
+	metadataStart := writer.CurrOffset()
+	tree, err := merkleTree.NewMerkleTree(merkleData)
+	if err != nil {
+		return err
+	}
+	serializedTree := tree.Serialize()
+	writer.Write(serializedTree)
+
 	if writer.currBlockNum == 0 && writer.currByte == 0 {
 		return fmt.Errorf("memtable is empty, no data written")
 	}
 
-	var footrerBuf [3 * OFFSET_L]byte
+	var footrerBuf [4 * OFFSET_L]byte
 	binary.BigEndian.PutUint64(footrerBuf[0:], uint64(summaryStart))
 	binary.BigEndian.PutUint64(footrerBuf[OFFSET_L:], uint64(indexStart))
 	binary.BigEndian.PutUint64(footrerBuf[2*OFFSET_L:], uint64(dataStart))
+	binary.BigEndian.PutUint64(footrerBuf[3*OFFSET_L:], uint64(metadataStart))
 	writer.Write(footrerBuf[:])
 
 	writer.Finalize()
@@ -439,36 +454,38 @@ func getMultipleFiles(key string, tableNum int, bm *BlockManager.BlockManager) (
 	return parseData(dataFilename, offset, key, bm)
 }
 
-func readOneFileFooter(tableNum int, bm *BlockManager.BlockManager) (uint64, uint64, error) {
+func readOneFileFooter(tableNum int, bm *BlockManager.BlockManager) (uint64, uint64, uint64, uint64, error) {
 	oneFileTableFilename := sstableFilenameOneFile(tableNum)
 	f, err := os.Open(oneFileTableFilename)
 	if err != nil {
-		return 0, 0, fmt.Errorf("failed to open SSTable file: %v", err)
+		return 0, 0, 0, 0, fmt.Errorf("failed to open SSTable file: %v", err)
 	}
 	defer f.Close()
 
 	stat, err := f.Stat()
 	if err != nil {
-		return 0, 0, fmt.Errorf("failed to stat SSTable file: %v", err)
+		return 0, 0, 0, 0, fmt.Errorf("failed to stat SSTable file: %v", err)
 	}
-	if stat.Size() < 3*OFFSET_L {
-		return 0, 0, fmt.Errorf("file size is too small to contain footer")
+	if stat.Size() < 4*OFFSET_L {
+		return 0, 0, 0, 0, fmt.Errorf("file size is too small to contain footer")
 	}
-	offset := uint64(stat.Size() - 3*OFFSET_L)
+	offset := uint64(stat.Size() - 4*OFFSET_L)
 	reader := newBlockReader(f, bm, offset)
 
-	var footerBuf [3 * OFFSET_L]byte
+	var footerBuf [4 * OFFSET_L]byte
 	_, err = reader.Read(footerBuf[:])
 	if err != nil {
-		return 0, 0, fmt.Errorf("failed to read footer: %v", err)
+		return 0, 0, 0, 0, fmt.Errorf("failed to read footer: %v", err)
 	}
 	summaryStart := binary.BigEndian.Uint64(footerBuf[0:])
+	indexStart := binary.BigEndian.Uint64(footerBuf[OFFSET_L:])
 	dataStart := binary.BigEndian.Uint64(footerBuf[2*OFFSET_L:])
-	return summaryStart, dataStart, nil
+	metadataStart := binary.BigEndian.Uint64(footerBuf[3*OFFSET_L:])
+	return summaryStart, indexStart, dataStart, metadataStart, nil
 }
 
 func getOneFile(key string, tableNum int, bm *BlockManager.BlockManager) ([]byte, error) {
-	summaryStart, dataStart, err := readOneFileFooter(tableNum, bm)
+	summaryStart, _, dataStart, _, err := readOneFileFooter(tableNum, bm)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read footer: %v", err)
 	}
@@ -498,4 +515,89 @@ func getOneFile(key string, tableNum int, bm *BlockManager.BlockManager) ([]byte
 	}
 
 	return parseData(sstableFileFilename, offset, key, bm)
+}
+
+func ValidateSSTable(tableNum int, bm *BlockManager.BlockManager) (bool, [][]byte, error) {
+	oneFileTableFilename := sstableFilenameOneFile(tableNum)
+	if _, err := os.Stat(oneFileTableFilename); err == nil {
+		return validateOneFile(tableNum, bm)
+	}
+	return validateMultipleFiles(tableNum, bm)
+}
+
+func validateOneFile(tableNum int, bm *BlockManager.BlockManager) (bool, [][]byte, error) {
+	_, indexStart, dataStart, metadataStart, err := readOneFileFooter(tableNum, bm)
+	if err != nil {
+		return false, nil, err
+	}
+
+	sstableFilename := sstableFilenameOneFile(tableNum)
+	f, err := os.Open(sstableFilename)
+	if err != nil {
+		return false, nil, fmt.Errorf("failed to open SSTable file: %v", err)
+	}
+	defer f.Close()
+
+	metadataReader := newBlockReader(f, bm, metadataStart)
+
+	stat, _ := f.Stat()
+	footerStart := uint64(stat.Size()) - FOOTER_L
+	metadataSize := footerStart - metadataStart
+
+	metadataData := make([]byte, metadataSize)
+	_, err = metadataReader.Read(metadataData)
+	if err != nil && err != io.EOF {
+		return false, nil, err
+	}
+
+	originalTree := merkleTree.Deserialize(metadataData)
+	if originalTree == nil {
+		return false, nil, fmt.Errorf("failed to deserialize merkle tree")
+	}
+
+	dataReader := newBlockReader(f, bm, dataStart)
+
+	var currentData [][]byte
+	for {
+		currentOffset := dataReader.CurrOffset()
+		if currentOffset >= indexStart {
+			break
+		}
+
+		var dataHeaderBuf [DATA_HEADER_L]byte
+		_, err := dataReader.Read(dataHeaderBuf[:])
+		if err != nil {
+			break
+		}
+
+		currByte := CRC_L + TIMESTAMP_L + TOMBSTONE_L
+		keySize := binary.BigEndian.Uint32(dataHeaderBuf[currByte:])
+		currByte += KEY_SIZE_L
+		valueSize := binary.BigEndian.Uint32(dataHeaderBuf[currByte:])
+
+		keyBuf := make([]byte, keySize)
+		dataReader.Read(keyBuf)
+
+		valueBuf := make([]byte, valueSize)
+		dataReader.Read(valueBuf)
+
+		currentData = append(currentData, valueBuf)
+	}
+
+	currentTree, err := merkleTree.NewMerkleTree(currentData)
+	if err != nil {
+		return false, nil, err
+	}
+
+	if originalTree.Verify(currentTree.RootHash()) {
+		return true, nil, nil
+	}
+
+	diffs := merkleTree.FindDifference(originalTree.Root(), currentTree.Root())
+
+	return false, diffs, nil
+}
+
+func validateMultipleFiles(tableNum int, bm *BlockManager.BlockManager) (bool, [][]byte, error) {
+	return false, nil, nil
 }

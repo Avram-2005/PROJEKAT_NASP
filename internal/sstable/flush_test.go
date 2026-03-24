@@ -64,12 +64,18 @@ func calcFilterSectionSize(count int) int64 {
 	return int64(BloomFilter.CalculateBloomFilterSize(uint(count), 0.01))
 }
 
+func calcMetadataSectionSize(count int) int64 {
+	nodes := 2*count - 1
+	return int64(nodes * 32)
+}
+
 func oneFileSize(keyCount int, keyLen int, valueLen int) int64 {
 	size := calcFilterSectionSize(keyCount)
 	size += calcDataSectionSize(keyCount, keyLen, valueLen)
 	size += calcIndexSectionSize(keyCount, keyLen)
 	size += calcSummarySectionSize(keyCount, keyLen)
-	size += 3 * OFFSET_L // 3 offsets for the sections
+	size += calcMetadataSectionSize(keyCount)
+	size += 4 * OFFSET_L // 4 offsets for the sections
 	return size
 }
 
@@ -282,4 +288,49 @@ func TestFlushManyLargeKVOneFile(t *testing.T) {
 	filename := sstableFilenameOneFile(4)
 	expectedSize := oneFileSize(10000, 11, 10000) // 10000 entries, each with 11 byte key and 10000 byte value
 	testFileSize(t, filename, expectedSize)
+}
+
+func TestMetadataValidationOneFile(t *testing.T) {
+	mem := smallSmallKeyKVMemtable{}
+	err := testFlush(t.TempDir(), mem, 1, false)
+	if err != nil {
+		t.Fatalf("Flush failed: %v", err)
+	}
+
+	isValid, corruptedData, err := ValidateSSTable(1, bm)
+	if err != nil {
+		t.Fatalf("Validation error: %v", err)
+	}
+	if !isValid {
+		t.Fatalf("Merkle validation failed, corruption data count: %d", len(corruptedData))
+	}
+}
+
+func TestMetadataCorruptionOneFile(t *testing.T) {
+	mem := smallSmallKeyKVMemtable{}
+	err := testFlush(t.TempDir(), mem, 2, false)
+	if err != nil {
+		t.Fatalf("Flush failed: %v", err)
+	}
+
+	file := sstableFilenameOneFile(2)
+
+	f, err := os.OpenFile(file, os.O_RDWR, 0644)
+	if err != nil {
+		t.Fatalf("Open file error: %v", err)
+	}
+
+	f.WriteAt([]byte{0xFF}, 50)
+	f.Close()
+
+	isValid, corruptedData, err := ValidateSSTable(2, bm)
+	if err != nil {
+		t.Fatalf("Validation error: %v", err)
+	}
+	if isValid {
+		t.Fatalf("Merkle failed to detect change")
+	}
+	if len(corruptedData) == 0 {
+		t.Fatalf("Corrupted data not detected")
+	}
 }
