@@ -148,6 +148,10 @@ func multipleFilesFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManage
 	if err != nil {
 		return fmt.Errorf("failed to create filter file: %v", err)
 	}
+	metadataFile, err := createSSTableFile("Metadata", tableNum)
+	if err != nil {
+		return fmt.Errorf("failed to create metadata file: %v", err)
+	}
 
 	sortedEntries := mem.GetSortedEntries()
 	bf, err := BloomFilter.NewBloomFilter(uint(len(sortedEntries)), 0.01)
@@ -159,12 +163,16 @@ func multipleFilesFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManage
 	indexWriter := newBlockWriter(indexFile, bm)
 	summaryWriter := newBlockWriter(summaryFile, bm)
 	filterWriter := newBlockWriter(filterFile, bm)
+	metadataWriter := newBlockWriter(metadataFile, bm)
 
 	firstEntry, lastEntry := sortedEntries[0], sortedEntries[len(sortedEntries)-1]
 	writeSummaryHeader(summaryWriter, firstEntry.Key, lastEntry.Key)
 
+	var merkleData [][]byte
+
 	for i, entry := range sortedEntries {
 		bf.Set([]byte(entry.Key)) // dodaj kljuc u filter
+		merkleData = append(merkleData, entry.Value)
 		offset := writeData(dataWriter, entry)
 		offset = writeIndex(indexWriter, entry.Key, offset)
 		if i%summaryInterval == 0 {
@@ -174,10 +182,18 @@ func multipleFilesFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManage
 
 	filterWriter.Write(bf.Dump())
 
+	tree, err := merkleTree.NewMerkleTree(merkleData)
+	if err != nil {
+		return err
+	}
+	serializedTree := tree.Serialize()
+	metadataWriter.Write(serializedTree)
+
 	dataWriter.Finalize()
 	indexWriter.Finalize()
 	summaryWriter.Finalize()
 	filterWriter.Finalize()
+	metadataWriter.Finalize()
 
 	return nil
 }
@@ -576,10 +592,16 @@ func validateOneFile(tableNum int, bm *BlockManager.BlockManager) (bool, [][]byt
 		valueSize := binary.BigEndian.Uint32(dataHeaderBuf[currByte:])
 
 		keyBuf := make([]byte, keySize)
-		dataReader.Read(keyBuf)
+		_, err = dataReader.Read(keyBuf)
+		if err != nil {
+			return false, nil, fmt.Errorf("failed to read key: %v", err)
+		}
 
 		valueBuf := make([]byte, valueSize)
-		dataReader.Read(valueBuf)
+		_, err = dataReader.Read(valueBuf)
+		if err != nil {
+			return false, nil, fmt.Errorf("failed to read value: %v", err)
+		}
 
 		currentData = append(currentData, valueBuf)
 	}
@@ -599,5 +621,74 @@ func validateOneFile(tableNum int, bm *BlockManager.BlockManager) (bool, [][]byt
 }
 
 func validateMultipleFiles(tableNum int, bm *BlockManager.BlockManager) (bool, [][]byte, error) {
-	return false, nil, nil
+	metadataFilename := sstableFilename(tableNum, "Metadata")
+	metadataFile, err := os.Open(metadataFilename)
+	if err != nil {
+		return false, nil, fmt.Errorf("failed to open metadata file: %v", err)
+	}
+	defer metadataFile.Close()
+
+	stat, _ := metadataFile.Stat()
+
+	metadataReader := newBlockReader(metadataFile, bm, 0)
+	metadataData := make([]byte, stat.Size())
+	_, err = metadataReader.Read(metadataData)
+	if err != nil {
+		return false, nil, err
+	}
+
+	originalTree := merkleTree.Deserialize(metadataData)
+	if originalTree == nil {
+		return false, nil, fmt.Errorf("failed to deserialize merkle tree")
+	}
+
+	dataFilename := sstableFilename(tableNum, "Data")
+	dataFile, err := os.Open(dataFilename)
+	if err != nil {
+		return false, nil, fmt.Errorf("failed to open data file: %v", err)
+	}
+	defer dataFile.Close()
+	dataReader := newBlockReader(dataFile, bm, 0)
+
+	var currentData [][]byte
+
+	for {
+		var dataHeaderBuf [DATA_HEADER_L]byte
+		_, err := dataReader.Read(dataHeaderBuf[:])
+		if err != nil {
+			break
+		}
+
+		currByte := CRC_L + TIMESTAMP_L + TOMBSTONE_L
+		keySize := binary.BigEndian.Uint32(dataHeaderBuf[currByte:])
+		currByte += KEY_SIZE_L
+		valueSize := binary.BigEndian.Uint32(dataHeaderBuf[currByte:])
+
+		keyBuf := make([]byte, keySize)
+		_, err = dataReader.Read(keyBuf)
+		if err != nil {
+			return false, nil, fmt.Errorf("failed to read key: %v", err)
+		}
+
+		valueBuf := make([]byte, valueSize)
+		_, err = dataReader.Read(valueBuf)
+		if err != nil {
+			return false, nil, fmt.Errorf("failed to read value: %v", err)
+		}
+
+		currentData = append(currentData, valueBuf)
+	}
+
+	currentTree, err := merkleTree.NewMerkleTree(currentData)
+	if err != nil {
+		return false, nil, err
+	}
+
+	if originalTree.Verify(currentTree.RootHash()) {
+		return true, nil, nil
+	}
+
+	diffs := merkleTree.FindDifference(originalTree.Root(), currentTree.Root())
+
+	return false, diffs, nil
 }
