@@ -123,6 +123,10 @@ func TestFlushFewSmallKVMultipleFiles(t *testing.T) {
 	filterFilename := sstableFilename(1, "Filter")
 	expectedSize = calcFilterSectionSize(3)
 	testFileSize(t, filterFilename, expectedSize)
+
+	metadataFilename := sstableFilename(1, "Metadata")
+	expectedSize = calcMetadataSectionSize(3)
+	testFileSize(t, metadataFilename, expectedSize)
 }
 
 func TestFlushFewSmallKVOneFile(t *testing.T) {
@@ -185,6 +189,10 @@ func TestFlushFewLargeKVMultipleFiles(t *testing.T) {
 	filterFilename := sstableFilename(2, "Filter")
 	expectedSize = calcFilterSectionSize(3)
 	testFileSize(t, filterFilename, expectedSize)
+
+	metadataFilename := sstableFilename(2, "Metadata")
+	expectedSize = calcMetadataSectionSize(3)
+	testFileSize(t, metadataFilename, expectedSize)
 }
 
 func TestFlushFewLargeKVOneFile(t *testing.T) {
@@ -221,6 +229,10 @@ func TestFlushManySmallKVMultipleFiles(t *testing.T) {
 	filterFilename := sstableFilename(3, "Filter")
 	expectedSize = calcFilterSectionSize(1000)
 	testFileSize(t, filterFilename, expectedSize)
+
+	metadataFilename := sstableFilename(3, "Metadata")
+	expectedSize = calcMetadataSectionSize(1000)
+	testFileSize(t, metadataFilename, expectedSize)
 }
 
 func TestFlushManySmallKVOneFile(t *testing.T) {
@@ -276,6 +288,10 @@ func TestFlushManyLargeKVMultipleFIles(t *testing.T) {
 	filterFilename := sstableFilename(4, "Filter")
 	expectedSize = calcFilterSectionSize(10000)
 	testFileSize(t, filterFilename, expectedSize)
+
+	metadataFilename := sstableFilename(4, "Metadata")
+	expectedSize = calcMetadataSectionSize(10000)
+	testFileSize(t, metadataFilename, expectedSize)
 }
 
 func TestFlushManyLargeKVOneFile(t *testing.T) {
@@ -320,6 +336,53 @@ func TestMetadataCorruptionOneFile(t *testing.T) {
 		t.Fatalf("Open file error: %v", err)
 	}
 
+	// korupcija
+	f.WriteAt([]byte{0xFF}, 50)
+	f.Close()
+
+	isValid, corruptedData, err := ValidateSSTable(2, bm)
+	if err != nil {
+		t.Fatalf("Validation error: %v", err)
+	}
+	if isValid {
+		t.Fatalf("Merkle failed to detect change")
+	}
+	if len(corruptedData) == 0 {
+		t.Fatalf("Corrupted data not detected")
+	}
+}
+
+func TestMetadataValidationMultipleFiles(t *testing.T) {
+	mem := smallSmallKeyKVMemtable{}
+	err := testFlush(t.TempDir(), mem, 1, true)
+	if err != nil {
+		t.Fatalf("Flush failed: %v", err)
+	}
+
+	isValid, corruptedData, err := ValidateSSTable(1, bm)
+	if err != nil {
+		t.Fatalf("Validation error: %v", err)
+	}
+	if !isValid {
+		t.Fatalf("Merkle validation failed, corruption data count: %d", len(corruptedData))
+	}
+}
+
+func TestMetadataCorruptionMultipleFiles(t *testing.T) {
+	mem := smallSmallKeyKVMemtable{}
+	err := testFlush(t.TempDir(), mem, 2, true)
+	if err != nil {
+		t.Fatalf("Flush failed: %v", err)
+	}
+
+	dataFile := sstableFilename(2, "Data")
+
+	f, err := os.OpenFile(dataFile, os.O_RDWR, 0644)
+	if err != nil {
+		t.Fatalf("Open file error: %v", err)
+	}
+
+	// korupcija
 	f.WriteAt([]byte{0xFF}, 50)
 	f.Close()
 
