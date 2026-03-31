@@ -184,3 +184,17 @@ func deserializeNode(data []byte, offset int) (*MerkleNode, int) {
 
 	return n, offset
 }
+
+func (m *MerkleTree) Root() *MerkleNode {
+	if m == nil {
+		return nil
+	}
+	return m.root
+}
+
+func (m *MerkleTree) RootHash() []byte {
+	if m == nil || m.root == nil {
+		return nil
+	}
+	return m.root.hash
+}
