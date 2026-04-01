@@ -1,129 +1,94 @@
-package Snapshot
+package snapshot
 
 import (
 	"encoding/binary"
 	"fmt"
+	"os"
 	"reflect"
 	"testing"
+	"time"
+
+	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
 )
 
-func TestBufferPool(t *testing.T) {
-	sp, err := NewSnapshot()
+func TestSnapshot(t *testing.T) {
+	filepath := "test.bin"
+	file, err := os.Create(filepath)
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("greska tokom incijalizacije snapshot-a")
+		t.Errorf("greska tokom stvaranja fajla")
 		t.FailNow()
 	}
-	//Dodavanje svih vrednosti za testiranje
-	value1 := make([]byte, 8)
-	binary.BigEndian.PutUint16(value1, 16)
-	value2 := make([]byte, 8)
-	binary.BigEndian.PutUint16(value2, 12)
-	value3 := make([]byte, 8)
-	binary.BigEndian.PutUint16(value3, 56)
-	value4 := make([]byte, 8)
-	binary.BigEndian.PutUint16(value4, 64)
-	fmt.Print(value1, "\n")
-	fmt.Print(value2, "\n")
-	fmt.Print(value3, "\n")
-	fmt.Print(value4, "\n")
-	sp.Add("key1", &value1)
-	sp.Add("key1", &value2)
-	sp.Add("key1", &value3)
-	sp.Add("key2", &value4)
-	// Provera broja verzija posle dodavanja
-	number, err := sp.GetVersionCount("key1")
+	bm, err := BlockManager.NewBlockManager(4, 4)
 	if err != nil {
-		fmt.Print(err)
-		t.Errorf("greska tokom trazenja broja verzija prvog kljuca")
-		t.FailNow()
-	}
-	if number != 3 {
-		fmt.Print(err)
-		t.Errorf("pogresan broj verzija prvog kljuca")
-		t.FailNow()
-	}
-	number, err = sp.GetVersionCount("key2")
-	if err != nil {
-		fmt.Print(err)
-		t.Errorf("greska tokom trazenja broja verzija drugog kljuca")
-		t.FailNow()
-	}
-	if number != 1 {
-		fmt.Print(err)
-		t.Errorf("pogresan broj verzija drugog kljuca")
-		t.FailNow()
-	}
-	//proveravanje metode getlatest
-	compare1, err := sp.GetLatest("key1")
-	if err != nil {
-		fmt.Print(err)
-		t.Errorf("greska tokom trazenja poslednje verzije prvog kljuca")
-		t.FailNow()
-	}
-	if !reflect.DeepEqual(value3, (*compare1)) {
-		fmt.Print(value3, (*compare1))
-		t.Errorf("pogresna poslednja verzija prvog kljuca")
-		t.FailNow()
-	}
-	compare2, err := sp.GetLatest("key2")
-	if err != nil {
-		fmt.Print(err)
-		t.Errorf("greska tokom trazenja poslednje verzije drugog kljuca")
-		t.FailNow()
-	}
-	if !reflect.DeepEqual(value4, (*compare2)) {
-		fmt.Print(value4, (*compare2))
-		t.Errorf("pogresna poslednja verzija drugog kljuca")
-		t.FailNow()
-	}
-	//Proveravanje metode getfirst
-	compare1, err = sp.GetFirst("key1")
-	if err != nil {
-		fmt.Print(err)
-		t.Errorf("greska tokom trazenja prve verzije prvog kljuca")
-		t.FailNow()
-	}
-	if !reflect.DeepEqual(value1, (*compare1)) {
-		fmt.Print(value1, (*compare1))
-		t.Errorf("pogresna poslednja verzija prvog kljuca")
-		t.FailNow()
-	}
-	compare2, err = sp.GetFirst("key2")
-	if err != nil {
-		fmt.Print(err)
-		t.Errorf("greska tokom trazenja prve verzije drugog kljuca")
-		t.FailNow()
-	}
-	if !reflect.DeepEqual(value4, (*compare2)) {
-		fmt.Print(value4, (*compare2))
-		t.Errorf("pogresna prva verzija drugog kljuca")
-		t.FailNow()
-	}
-
-	compare3, err := sp.Get("key1", 1)
-	if err != nil {
-		fmt.Print(err)
-		t.Errorf("greska tokom trazenja druge verzije prvog kljuca")
-		t.FailNow()
-	}
-	if !reflect.DeepEqual(value2, (*compare3)) {
-		fmt.Print(value2, (*compare3))
-		t.Errorf("pogresna druga verzija prvog kljuca")
-		t.FailNow()
-	}
-
-	err = sp.Free("key1")
-	if err != nil {
-		fmt.Print(err)
-		t.Errorf("greska tokom oslobadjanja kljuca")
-		t.FailNow()
-	}
-	// posle oslobadjanja memorije za key1, ocekujemo error ako pokusamo da ga nadjemo
-	_, err = sp.GetVersionCount("key1")
-	if err == nil {
 		fmt.Print(err)
 		t.Errorf("treba da se prijavi greska, ali nije prijavljena")
+		t.FailNow()
+	}
+	data1 := make([]byte, 100)
+	binary.BigEndian.PutUint64(data1, 78)
+	data2 := make([]byte, 100)
+	binary.BigEndian.PutUint32(data2, 56)
+	data3 := make([]byte, 100)
+	binary.BigEndian.PutUint16(data3, 67)
+	bm.PutSpecific(file, 0, 0, 100, &data1)
+	bm.PutSpecific(file, 0, 100, 100, &data2)
+	bm.PutSpecific(file, 0, 200, 100, &data3)
+	snapshot1, err := NewSnapshot(filepath, 0, 0, 100, time.Now(), bm)
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("greska tokom incijalizacije snapshota broj 1")
+		t.FailNow()
+	}
+	snapshot2, err := NewSnapshot(filepath, 0, 100, 100, time.Now(), bm)
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("greska tokom incijalizacije snapshota broj 2")
+		t.FailNow()
+	}
+	snapshot3, err := NewSnapshot(filepath, 0, 200, 100, time.Now(), bm)
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("greska tokom incijalizacije snapshota broj 3")
+		t.FailNow()
+	}
+	readData1, err := snapshot1.GetValue(bm)
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("greska tokom dobavljanja vrednosti")
+		t.FailNow()
+	}
+	if reflect.DeepEqual(data1, (*readData1)) != true {
+		fmt.Print(data1)
+		fmt.Print(*readData1)
+		t.Errorf("neocekivana vrednost podataka prvog snapshot-a")
+		t.FailNow()
+	}
+	readData2, err := snapshot2.GetValue(bm)
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("greska tokom dobavljanja vrednosti")
+		t.FailNow()
+	}
+	if reflect.DeepEqual(data2, (*readData2)) != true {
+		t.Errorf("neocekivana vrednost podataka drugog snapshot-a")
+		t.FailNow()
+	}
+	readData3, err := snapshot3.GetValue(bm)
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("greska tokom dobavljanja vrednosti")
+		t.FailNow()
+	}
+	if reflect.DeepEqual(data3, (*readData3)) != true {
+		t.Errorf("neocekivana vrednost podataka treceg snapshot-a")
+		t.FailNow()
+	}
+	file.Close()
+	err = os.Remove(filepath)
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("zatvaranje fajla onemoguceno")
 		t.FailNow()
 	}
 }
