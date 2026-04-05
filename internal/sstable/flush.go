@@ -1,7 +1,6 @@
 package sstable
 
 import (
-	"encoding/binary"
 	"fmt"
 	"os"
 
@@ -47,34 +46,20 @@ func writeSummaryHeader(writer *blockWriter, firstKey string, lastKey string) {
 }
 
 func writeOneFileFooter(writer *blockWriter, summaryStart uint64, indexStart uint64, dataStart uint64) {
-	var footrerBuf [3 * OFFSET_L]byte
-	binary.BigEndian.PutUint64(footrerBuf[0:], summaryStart)
-	binary.BigEndian.PutUint64(footrerBuf[OFFSET_L:], indexStart)
-	binary.BigEndian.PutUint64(footrerBuf[2*OFFSET_L:], dataStart)
-	writer.Write(footrerBuf[:])
+	footrerBuf := newBufferWriter(FOOTER_L)
+	footrerBuf.WriteOffset(summaryStart)
+	footrerBuf.WriteOffset(indexStart)
+	footrerBuf.WriteOffset(dataStart)
+	writer.Write(footrerBuf.buf)
 }
 
 func multipleFilesFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) error {
-	dataFile, err := createSSTableFile("Data", tableNum)
+	sstablePath := sstableFilepath(tableNum)
+	files, err := createMultipleFiles(sstablePath)
 	if err != nil {
-		return fmt.Errorf("failed to create data file: %v", err)
+		return err
 	}
-	indexFile, err := createSSTableFile("Index", tableNum)
-	if err != nil {
-		return fmt.Errorf("failed to create index file: %v", err)
-	}
-	summaryFile, err := createSSTableFile("Summary", tableNum)
-	if err != nil {
-		return fmt.Errorf("failed to create summary file: %v", err)
-	}
-	filterFile, err := createSSTableFile("Filter", tableNum)
-	if err != nil {
-		return fmt.Errorf("failed to create filter file: %v", err)
-	}
-	defer dataFile.Close()
-	defer indexFile.Close()
-	defer summaryFile.Close()
-	defer filterFile.Close()
+	defer files.close()
 
 	sortedEntries := mem.GetSortedEntries()
 	bf, err := BloomFilter.NewBloomFilter(uint(len(sortedEntries)), BLOOM_FILTER_RATE)
@@ -82,10 +67,10 @@ func multipleFilesFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManage
 		return err
 	}
 
-	dataWriter := newBlockWriter(dataFile, bm)
-	indexWriter := newBlockWriter(indexFile, bm)
-	summaryWriter := newBlockWriter(summaryFile, bm)
-	filterWriter := newBlockWriter(filterFile, bm)
+	dataWriter := newBlockWriter(files.dataFile, bm)
+	indexWriter := newBlockWriter(files.indexFile, bm)
+	summaryWriter := newBlockWriter(files.summaryFile, bm)
+	filterWriter := newBlockWriter(files.filterFile, bm)
 
 	firstEntry, lastEntry := sortedEntries[0], sortedEntries[len(sortedEntries)-1]
 	writeSummaryHeader(summaryWriter, firstEntry.Key, lastEntry.Key)
@@ -114,7 +99,7 @@ type indexEntry struct {
 }
 
 func oneFileFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) error {
-	sstableFilename := sstableFilenameOneFile(tableNum)
+	sstableFilename := sstableFilepath(tableNum)
 	f, err := os.Create(sstableFilename)
 	if err != nil {
 		return fmt.Errorf("failed to create SSTable file: %v", err)

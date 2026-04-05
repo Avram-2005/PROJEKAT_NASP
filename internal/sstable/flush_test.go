@@ -73,17 +73,6 @@ func oneFileSize(keyCount int, keyLen int, valueLen int) int64 {
 	return size
 }
 
-type smallSmallKeyKVMemtable struct {
-}
-
-func (m smallSmallKeyKVMemtable) GetSortedEntries() []KeyValue {
-	return []KeyValue{
-		{Key: "a", Value: []byte("value1"), Tombstone: false},
-		{Key: "b", Value: []byte("value2"), Tombstone: false},
-		{Key: "c", Value: []byte("value3"), Tombstone: false},
-	}
-}
-
 func TestFlushFewSmallKVMultipleFiles(t *testing.T) {
 	mem := smallSmallKeyKVMemtable{}
 	err := testFlush(t.TempDir(), mem, 1, true)
@@ -91,8 +80,9 @@ func TestFlushFewSmallKVMultipleFiles(t *testing.T) {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
+	sstablePath := sstableFilepath(1)
 	for i, key := range []string{"a", "b", "c"} {
-		val, err := Get(key, 1, bm)
+		val, err := GetSpecific(key, sstablePath, bm)
 		if err != nil {
 			t.Fatalf("Failed to get key '%s' after flush: %v", key, err)
 		}
@@ -102,19 +92,19 @@ func TestFlushFewSmallKVMultipleFiles(t *testing.T) {
 		}
 	}
 
-	dataFilename := sstableFilename(1, "Data")
+	dataFilename := sstableFilenameMultFile(sstablePath, "Data")
 	expectedSize := calcDataSectionSize(3, 1, 6) // 3 entries, each with 1 byte key and 6 byte value
 	testFileSize(t, dataFilename, expectedSize)
 
-	indexFilename := sstableFilename(1, "Index")
+	indexFilename := sstableFilenameMultFile(sstablePath, "Index")
 	expectedSize = calcIndexSectionSize(3, 1) // 3 entries, each with 1 byte key and 8 byte offset
 	testFileSize(t, indexFilename, expectedSize)
 
-	summaryFilename := sstableFilename(1, "Summary")
+	summaryFilename := sstableFilenameMultFile(sstablePath, "Summary")
 	expectedSize = calcSummarySectionSize(3, 1) // 1 entry in summary, with 1 byte key and 8 byte offset
 	testFileSize(t, summaryFilename, expectedSize)
 
-	filterFilename := sstableFilename(1, "Filter")
+	filterFilename := sstableFilenameMultFile(sstablePath, "Filter")
 	expectedSize = calcFilterSectionSize(3)
 	testFileSize(t, filterFilename, expectedSize)
 }
@@ -126,8 +116,9 @@ func TestFlushFewSmallKVOneFile(t *testing.T) {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
+	sstablePath := sstableFilepath(1)
 	for i, key := range []string{"a", "b", "c"} {
-		val, err := Get(key, 1, bm)
+		val, err := GetSpecific(key, sstablePath, bm)
 		if err != nil {
 			t.Fatalf("Failed to get key '%s' after flush: %v", key, err)
 		}
@@ -137,24 +128,8 @@ func TestFlushFewSmallKVOneFile(t *testing.T) {
 		}
 	}
 
-	filename := sstableFilenameOneFile(1)
 	expectedSize := oneFileSize(3, 1, 6) // 3 entries, each with 1 byte key and 6 byte value
-	testFileSize(t, filename, expectedSize)
-}
-
-type fewLargeKeyKVMemtable struct {
-}
-
-func (m fewLargeKeyKVMemtable) GetSortedEntries() []KeyValue {
-	largeValue := make([]byte, 10000)
-	for i := range largeValue {
-		largeValue[i] = 'A'
-	}
-	return []KeyValue{
-		{Key: "long1", Value: largeValue, Tombstone: false},
-		{Key: "long2", Value: largeValue, Tombstone: false},
-		{Key: "long3", Value: largeValue, Tombstone: false},
-	}
+	testFileSize(t, sstablePath, expectedSize)
 }
 
 func TestFlushFewLargeKVMultipleFiles(t *testing.T) {
@@ -164,19 +139,20 @@ func TestFlushFewLargeKVMultipleFiles(t *testing.T) {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	dataFilename := sstableFilename(2, "Data")
+	sstablePath := sstableFilepath(2)
+	dataFilename := sstableFilenameMultFile(sstablePath, "Data")
 	expectedSize := calcDataSectionSize(3, 5, 10000) // 3 entries, each with 5 byte key and 10000 byte value
 	testFileSize(t, dataFilename, expectedSize)
 
-	indexFilename := sstableFilename(2, "Index")
+	indexFilename := sstableFilenameMultFile(sstablePath, "Index")
 	expectedSize = calcIndexSectionSize(3, 5) // 3 entries, each with 5 byte key and 8 byte offset
 	testFileSize(t, indexFilename, expectedSize)
 
-	summaryFilename := sstableFilename(2, "Summary")
+	summaryFilename := sstableFilenameMultFile(sstablePath, "Summary")
 	expectedSize = calcSummarySectionSize(3, 5) // 1 entry in summary, with 5 byte key and 8 byte offset
 	testFileSize(t, summaryFilename, expectedSize)
 
-	filterFilename := sstableFilename(2, "Filter")
+	filterFilename := sstableFilenameMultFile(sstablePath, "Filter")
 	expectedSize = calcFilterSectionSize(3)
 	testFileSize(t, filterFilename, expectedSize)
 }
@@ -188,9 +164,9 @@ func TestFlushFewLargeKVOneFile(t *testing.T) {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	filename := sstableFilenameOneFile(2)
+	sstablePath := sstableFilepath(2)
 	expectedSize := oneFileSize(3, 5, 10000) // 3 entries, each with 5 byte key and 10000 byte value
-	testFileSize(t, filename, expectedSize)
+	testFileSize(t, sstablePath, expectedSize)
 }
 
 func TestFlushManySmallKVMultipleFiles(t *testing.T) {
@@ -200,19 +176,20 @@ func TestFlushManySmallKVMultipleFiles(t *testing.T) {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	dataFilename := sstableFilename(3, "Data")
+	sstablePath := sstableFilepath(3)
+	dataFilename := sstableFilenameMultFile(sstablePath, "Data")
 	expectedSize := calcDataSectionSize(1000, 6, 8) // 1000 entries, each with 6 byte key and 8 byte value
 	testFileSize(t, dataFilename, expectedSize)
 
-	indexFilename := sstableFilename(3, "Index")
+	indexFilename := sstableFilenameMultFile(sstablePath, "Index")
 	expectedSize = calcIndexSectionSize(1000, 6) // 1000 entries, each with 6 byte key and 8 byte offset
 	testFileSize(t, indexFilename, expectedSize)
 
-	summaryFilename := sstableFilename(3, "Summary")
+	summaryFilename := sstableFilenameMultFile(sstablePath, "Summary")
 	expectedSize = calcSummarySectionSize(1000, 6) // 1 entry in summary, with 6 byte key and 8 byte offset
 	testFileSize(t, summaryFilename, expectedSize)
 
-	filterFilename := sstableFilename(3, "Filter")
+	filterFilename := sstableFilenameMultFile(sstablePath, "Filter")
 	expectedSize = calcFilterSectionSize(1000)
 	testFileSize(t, filterFilename, expectedSize)
 }
@@ -224,28 +201,9 @@ func TestFlushManySmallKVOneFile(t *testing.T) {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	filename := sstableFilenameOneFile(3)
+	sstablePath := sstableFilepath(3)
 	expectedSize := oneFileSize(1000, 6, 8) // 1000 entries, each with 6 byte key and 8 byte value
-	testFileSize(t, filename, expectedSize)
-}
-
-type manyLargeKeyKVMemtable struct {
-}
-
-func (m manyLargeKeyKVMemtable) GetSortedEntries() []KeyValue {
-	largeValue := make([]byte, 10000)
-	for i := range largeValue {
-		largeValue[i] = 'B'
-	}
-	entries := make([]KeyValue, 10000)
-	for i := range 10000 {
-		entries[i] = KeyValue{
-			Key:       fmt.Sprintf("longkey%04d", i),
-			Value:     largeValue,
-			Tombstone: false,
-		}
-	}
-	return entries
+	testFileSize(t, sstablePath, expectedSize)
 }
 
 func TestFlushManyLargeKVMultipleFIles(t *testing.T) {
@@ -255,19 +213,20 @@ func TestFlushManyLargeKVMultipleFIles(t *testing.T) {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	dataFilename := sstableFilename(4, "Data")
+	sstablePath := sstableFilepath(4)
+	dataFilename := sstableFilenameMultFile(sstablePath, "Data")
 	expectedSize := calcDataSectionSize(10000, 11, 10000) // 10000 entries, each with 11 byte key and 10000 byte value
 	testFileSize(t, dataFilename, expectedSize)
 
-	indexFilename := sstableFilename(4, "Index")
+	indexFilename := sstableFilenameMultFile(sstablePath, "Index")
 	expectedSize = calcIndexSectionSize(10000, 11) // 10000 entries, each with 11 byte key and 8 byte offset
 	testFileSize(t, indexFilename, expectedSize)
 
-	summaryFilename := sstableFilename(4, "Summary")
+	summaryFilename := sstableFilenameMultFile(sstablePath, "Summary")
 	expectedSize = calcSummarySectionSize(10000, 11) // 1 entry in summary, with 11 byte key and 8 byte offset
 	testFileSize(t, summaryFilename, expectedSize)
 
-	filterFilename := sstableFilename(4, "Filter")
+	filterFilename := sstableFilenameMultFile(sstablePath, "Filter")
 	expectedSize = calcFilterSectionSize(10000)
 	testFileSize(t, filterFilename, expectedSize)
 }
@@ -279,7 +238,7 @@ func TestFlushManyLargeKVOneFile(t *testing.T) {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	filename := sstableFilenameOneFile(4)
+	sstablePath := sstableFilepath(4)
 	expectedSize := oneFileSize(10000, 11, 10000) // 10000 entries, each with 11 byte key and 10000 byte value
-	testFileSize(t, filename, expectedSize)
+	testFileSize(t, sstablePath, expectedSize)
 }
