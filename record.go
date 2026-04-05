@@ -20,7 +20,7 @@ func (r *Record) Serialize() []byte {
 	valueSize := len(r.Value)
 	totalSize := HEADER_SIZE + keySize + valueSize
 
-	writer := newBufferWriter(totalSize)
+	writer := NewBufferWriter(totalSize)
 
 	writer.Seek(CRC_L)
 	writer.WriteTimestamp(r.Timestamp)
@@ -38,7 +38,7 @@ func (r *Record) Serialize() []byte {
 }
 
 func DeserializeRecord(data []byte) (*Record, error) {
-	reader := newBufferReader(data)
+	reader := NewBufferReader(data)
 
 	crc := reader.ReadCRC()
 	realCrc := crc32.ChecksumIEEE(data[CRC_L:])
