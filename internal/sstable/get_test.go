@@ -6,25 +6,54 @@ import (
 	"testing"
 )
 
+var flushCounter int
+var testTempDirs = make(map[testHelper]string)
+
+func getNextFlushNum() int {
+	flushCounter++
+	return flushCounter
+}
+
 type testHelper interface {
 	Helper()
 	Fatalf(format string, args ...any)
 	TempDir() string
 }
 
-func flush(t testHelper, multFiles bool) {
-	SetupSSTable(t.TempDir(), 100, multFiles)
-	mem := manySmallKeyKVMemtable{}
-	err := Flush(mem, 100, bm)
+func flush(t testHelper, multFiles bool, mem Memtable) string {
+	flushNum := getNextFlushNum()
+
+	// Get or create temp directory for this test
+	tempDir, exists := testTempDirs[t]
+	if !exists {
+		tempDir = t.TempDir()
+		testTempDirs[t] = tempDir
+	}
+
+	SetupSSTable(tempDir, flushNum, multFiles)
+	err := Flush(mem, flushNum, bm)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
+	return sstableFilepath(flushNum)
 }
 
-func testGet(t *testing.T, key string, expectedValue string, multFiles bool) {
-	flush(t, multFiles)
+func flush1(t testHelper, multFiles bool) string {
+	return flush(t, multFiles, &manySmallKeyKVMemtable{})
+}
 
-	val, err := Get(key, 100, bm)
+func flush2(t testHelper, multFiles bool) string {
+	return flush(t, multFiles, &fewLargeKeyKVMemtable{})
+}
+
+func flush3(t testHelper, multFiles bool) string {
+	return flush(t, multFiles, &manyLargeKeyKVMemtable{})
+}
+
+func testGetSpecific(t *testing.T, key string, expectedValue string, multFiles bool) {
+	sstablePath := flush1(t, multFiles)
+
+	val, err := GetSpecific(key, sstablePath, bm)
 	if err != nil {
 		t.Fatalf("Failed to get key '%s': %v", key, err)
 	}
@@ -33,42 +62,42 @@ func testGet(t *testing.T, key string, expectedValue string, multFiles bool) {
 	}
 }
 
-func TestGetFirstKeyMultipleFiles(t *testing.T) {
-	testGet(t, "key000", "value000", true)
+func TestGetSpecificFirstKeyMultipleFiles(t *testing.T) {
+	testGetSpecific(t, "key000", "value000", true)
 }
 
-func TestGetFirstKeyOneFile(t *testing.T) {
-	testGet(t, "key000", "value000", false)
+func TestGetSpecificFirstKeyOneFile(t *testing.T) {
+	testGetSpecific(t, "key000", "value000", false)
 }
 
-func TestGetSecondKeyMultipleFiles(t *testing.T) {
-	testGet(t, "key001", "value001", true)
+func TestGetSpecificSecondKeyMultipleFiles(t *testing.T) {
+	testGetSpecific(t, "key001", "value001", true)
 }
 
-func TestGetSecondKeyOneFile(t *testing.T) {
-	testGet(t, "key001", "value001", false)
+func TestGetSpecificSecondKeyOneFile(t *testing.T) {
+	testGetSpecific(t, "key001", "value001", false)
 }
 
-func TestGetLastKeyMultipleFiles(t *testing.T) {
-	testGet(t, "key999", "value999", true)
+func TestGetSpecificLastKeyMultipleFiles(t *testing.T) {
+	testGetSpecific(t, "key999", "value999", true)
 }
 
-func TestGetLastKeyOneFile(t *testing.T) {
-	testGet(t, "key999", "value999", false)
+func TestGetSpecificLastKeyOneFile(t *testing.T) {
+	testGetSpecific(t, "key999", "value999", false)
 }
 
-func TestGetMiddleKeyMultipleFiles(t *testing.T) {
-	testGet(t, "key500", "value500", true)
+func TestGetSpecificMiddleKeyMultipleFiles(t *testing.T) {
+	testGetSpecific(t, "key500", "value500", true)
 }
 
-func TestGetMiddleKeyOneFile(t *testing.T) {
-	testGet(t, "key500", "value500", false)
+func TestGetSpecificMiddleKeyOneFile(t *testing.T) {
+	testGetSpecific(t, "key500", "value500", false)
 }
 
-func TestGetNonExistentKeyMultipleFiles(t *testing.T) {
-	flush(t, true)
+func TestGetSpecificNonExistentKeyMultipleFiles(t *testing.T) {
+	sstablePath := flush1(t, true)
 
-	value, err := Get("nonexistent", 100, bm)
+	value, err := GetSpecific("nonexistent", sstablePath, bm)
 	if err != nil {
 		t.Fatalf("Error when getting non-existent key: %v", err)
 	}
@@ -77,15 +106,46 @@ func TestGetNonExistentKeyMultipleFiles(t *testing.T) {
 	}
 }
 
-func TestGetNonExistentKeyOneFile(t *testing.T) {
-	flush(t, false)
+func TestGetSpecificNonExistentKeyOneFile(t *testing.T) {
+	sstablePath := flush1(t, false)
 
-	value, err := Get("nonexistent", 100, bm)
+	value, err := GetSpecific("nonexistent", sstablePath, bm)
 	if err != nil {
 		t.Fatalf("Error when getting non-existent key: %v", err)
 	}
 	if value != nil {
 		t.Fatalf("Expected nil value when getting non-existent key, but got %s", value)
+	}
+}
+
+func TestGet(t *testing.T) {
+	flush1(t, true)
+	flush2(t, false)
+	flush3(t, false)
+
+	keys := []string{"key000", "key001", "key999", "long1", "long2", "long3", "longkey0000", "longkey9999"}
+	longValueA := make([]byte, 10000)
+	for i := range longValueA {
+		longValueA[i] = 'A'
+	}
+	longValueB := make([]byte, 10000)
+	for i := range longValueB {
+		longValueB[i] = 'B'
+	}
+	expectedValues := []string{
+		"value000", "value001", "value999",
+		string(longValueA), string(longValueA), string(longValueA),
+		string(longValueB), string(longValueB),
+	}
+
+	for i, key := range keys {
+		val, err := Get(key, bm)
+		if err != nil {
+			t.Fatalf("Failed to get key '%s': %v", key, err)
+		}
+		if string(val) != expectedValues[i] {
+			t.Fatalf("Expected value '%s' for key '%s', but got %s", expectedValues[i], key, val)
+		}
 	}
 }
 
@@ -97,24 +157,24 @@ func genKeys(n int) []string {
 	return keys
 }
 
-func benchmarkGet(b *testing.B, multFiles bool) {
+func benchmarkGetSpecific(b *testing.B, multFiles bool) {
 	r := rand.New(rand.NewSource(42))
-	flush(b, true)
+	sstablePath := flush1(b, multFiles)
 
 	keys := genKeys(1000)
 	for b.Loop() {
 		key := keys[r.Intn(len(keys))]
-		_, err := Get(key, 100, bm)
+		_, err := GetSpecific(key, sstablePath, bm)
 		if err != nil {
 			b.Fatalf("Error when getting key: %v", err)
 		}
 	}
 }
 
-func BenchmarkGetMultipleFiles(b *testing.B) {
-	benchmarkGet(b, true)
+func BenchmarkGetSpecificMultipleFiles(b *testing.B) {
+	benchmarkGetSpecific(b, true)
 }
 
-func BenchmarkGetOneFile(b *testing.B) {
-	benchmarkGet(b, false)
+func BenchmarkGetSpecificOneFile(b *testing.B) {
+	benchmarkGetSpecific(b, false)
 }

@@ -191,11 +191,11 @@ func parseData(dataFilename string, offset uint64, key string, bm *BlockManager.
 	return valueBuf, nil
 }
 
-func getMultipleFiles(key string, tableNum int, bm *BlockManager.BlockManager) ([]byte, error) {
-	filterFilename := sstableFilename(tableNum, "Filter")
+func getMultipleFiles(key string, sstablePath string, bm *BlockManager.BlockManager) ([]byte, error) {
+	filterFilename := sstableFilenameMultFile(sstablePath, "Filter")
 	isFound, err := searchFilter(filterFilename, 0, 0, key, bm)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read boom filter: %v", err)
+		return nil, fmt.Errorf("failed to read bloom filter: %v", err)
 	}
 
 	// kljuc se ne nalazi u sstable
@@ -203,7 +203,7 @@ func getMultipleFiles(key string, tableNum int, bm *BlockManager.BlockManager) (
 		return nil, nil
 	}
 
-	summaryFilename := sstableFilename(tableNum, "Summary")
+	summaryFilename := sstableFilenameMultFile(sstablePath, "Summary")
 	isFound, offset, err := searchSummary(summaryFilename, 0, key, bm)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search summary file: %v", err)
@@ -212,13 +212,13 @@ func getMultipleFiles(key string, tableNum int, bm *BlockManager.BlockManager) (
 		return nil, nil
 	}
 
-	indexFilename := sstableFilename(tableNum, "Index")
+	indexFilename := sstableFilenameMultFile(sstablePath, "Index")
 	offset, err = searchIndex(indexFilename, key, bm, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search index file: %v", err)
 	}
 
-	dataFilename := sstableFilename(tableNum, "Data")
+	dataFilename := sstableFilenameMultFile(sstablePath, "Data")
 	return parseData(dataFilename, offset, key, bm)
 }
 
@@ -228,9 +228,8 @@ type oneFileFooter struct {
 	DataStart    uint64
 }
 
-func readOneFileFooter(tableNum int, bm *BlockManager.BlockManager) (*oneFileFooter, error) {
-	oneFileTableFilename := sstableFilenameOneFile(tableNum)
-	f, err := os.Open(oneFileTableFilename)
+func readOneFileFooter(sstablePath string, bm *BlockManager.BlockManager) (*oneFileFooter, error) {
+	f, err := os.Open(sstablePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open SSTable file: %v", err)
 	}
@@ -262,16 +261,15 @@ func readOneFileFooter(tableNum int, bm *BlockManager.BlockManager) (*oneFileFoo
 	return footer, nil
 }
 
-func getOneFile(key string, tableNum int, bm *BlockManager.BlockManager) ([]byte, error) {
-	footer, err := readOneFileFooter(tableNum, bm)
+func getOneFile(key string, sstablePath string, bm *BlockManager.BlockManager) ([]byte, error) {
+	footer, err := readOneFileFooter(sstablePath, bm)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read footer: %v", err)
 	}
 
-	sstableFileFilename := sstableFilenameOneFile(tableNum)
-	isFound, err := searchFilter(sstableFileFilename, 0, footer.DataStart, key, bm)
+	isFound, err := searchFilter(sstablePath, 0, footer.DataStart, key, bm)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read boom filter: %v", err)
+		return nil, fmt.Errorf("failed to read bloom filter: %v", err)
 	}
 
 	// kljuc se ne nalazi u sstable
@@ -279,7 +277,7 @@ func getOneFile(key string, tableNum int, bm *BlockManager.BlockManager) ([]byte
 		return nil, nil
 	}
 
-	isFound, offset, err := searchSummary(sstableFileFilename, footer.SummaryStart, key, bm)
+	isFound, offset, err := searchSummary(sstablePath, footer.SummaryStart, key, bm)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search summary file: %v", err)
 	}
@@ -287,10 +285,10 @@ func getOneFile(key string, tableNum int, bm *BlockManager.BlockManager) ([]byte
 		return nil, nil
 	}
 
-	offset, err = searchIndex(sstableFileFilename, key, bm, offset)
+	offset, err = searchIndex(sstablePath, key, bm, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search index file: %v", err)
 	}
 
-	return parseData(sstableFileFilename, offset, key, bm)
+	return parseData(sstablePath, offset, key, bm)
 }
