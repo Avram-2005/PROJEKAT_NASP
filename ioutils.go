@@ -41,6 +41,10 @@ func newBufferReader(buf []byte) *BufferReader {
 	}
 }
 
+func (w *BufferWriter) Seek(offset int) {
+	w.pos = offset
+}
+
 func (w *BufferWriter) WriteCRC(crc uint32) {
 	binary.BigEndian.PutUint32(w.buf[w.pos:], crc)
 	w.pos += CRC_L

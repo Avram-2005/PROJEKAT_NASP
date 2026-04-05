@@ -1,9 +1,12 @@
 package main
 
-import "time"
+import (
+	"fmt"
+	"hash/crc32"
+	"time"
+)
 
 type Record struct {
-	CRC       uint32
 	Timestamp time.Time
 	Tombstone bool
 	Key       string
@@ -19,13 +22,17 @@ func (r *Record) Serialize() []byte {
 
 	writer := newBufferWriter(totalSize)
 
-	writer.WriteCRC(r.CRC)
+	writer.Seek(CRC_L)
 	writer.WriteTimestamp(r.Timestamp)
 	writer.WriteTombstone(r.Tombstone)
 	writer.WriteKeySize(keySize)
 	writer.WriteValueSize(valueSize)
 	writer.WriteBytes([]byte(r.Key))
 	writer.WriteBytes(r.Value)
+
+	CRC := crc32.ChecksumIEEE(writer.buf[CRC_L:])
+	writer.Seek(0)
+	writer.WriteCRC(CRC)
 
 	return writer.buf
 }
@@ -34,6 +41,11 @@ func DeserializeRecord(data []byte) (*Record, error) {
 	reader := newBufferReader(data)
 
 	crc := reader.ReadCRC()
+	realCrc := crc32.ChecksumIEEE(data[CRC_L:])
+	if crc != realCrc {
+		return nil, fmt.Errorf("CRC mismatch: expected %d, got %d", crc, realCrc)
+	}
+
 	timestamp := reader.ReadTimestamp()
 	tombstone := reader.ReadTombstone()
 	keySize := reader.ReadKeySize()
@@ -43,7 +55,6 @@ func DeserializeRecord(data []byte) (*Record, error) {
 	value := reader.ReadBytes(valueSize)
 
 	return &Record{
-		CRC:       crc,
 		Timestamp: timestamp,
 		Tombstone: tombstone,
 		Key:       key,
