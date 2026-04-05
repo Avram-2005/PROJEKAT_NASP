@@ -1,4 +1,4 @@
-package main
+package Record
 
 import (
 	"fmt"
@@ -14,6 +14,22 @@ type Record struct {
 }
 
 const HEADER_SIZE = CRC_L + TIMESTAMP_L + TOMBSTONE_L + KEY_SIZE_L + VALUE_SIZE_L
+
+func NewRecord(key string, value []byte, tombstone bool, timestamp time.Time) (*Record, error) {
+	if tombstone && len(value) != 0 {
+		return nil, fmt.Errorf("Ne moze tombstone da bude false i da value ima vrednost!")
+	}
+	if timestamp.IsZero() {
+		timestamp = time.Now()
+	}
+
+	return &Record{
+		Timestamp: timestamp,
+		Tombstone: tombstone,
+		Key:       key,
+		Value:     value,
+	}, nil
+}
 
 func (r *Record) Serialize() []byte {
 	keySize := len(r.Key)

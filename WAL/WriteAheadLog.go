@@ -10,6 +10,8 @@ import (
 	"time"
 
 	BlockManager "github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
+
+	Record "github.com/Avram-2005/PROJEKAT_NASP/Record"
 )
 
 // Sve potrebno za WAL
@@ -19,7 +21,7 @@ type WAL struct {
 	segmentList          []string //lista WAL segmenata
 	readFile             *os.File //putanja trenutno aktivnog fajla za čitanje
 	writeFile            *os.File //putanja trenutno aktivnog fajla za pisanje
-	currentWritePosition int      //pozicija gde se sledeći log upisuje
+	currentWritePosition int      //pozicija gde se sledeći Record upisuje
 	currentReadPosition  int      //pozicija za čitanje
 	segmentSize          int      //maksimalna veličina segmenta
 	blockManager         *BlockManager.BlockManager
@@ -104,40 +106,37 @@ func CreatNewWAL(sizeSegment int, blocksize int) (*WAL, error) {
 	}, nil
 }
 
-// Dodavanje novog log zapisa
-func (wal *WAL) AddLog(key string, value []byte) error {
+// Dodavanje novog Record zapisa
+func (wal *WAL) AddRecord(key string, value []byte) error {
 	if len(key) == 0 {
 		return fmt.Errorf("Kljuc je prazan!")
 	}
 
-	logEntry, err := NewLog(key, value, false, time.Now())
+	RecordEntry, err := Record.NewRecord(key, value, false, time.Now())
 	if err != nil {
 		return err
 	}
 
-	return wal.appendLog(logEntry)
+	return wal.appendRecord(RecordEntry)
 }
 
-// Dodavanje log zapisa za brisanje kljuca
-func (wal *WAL) DeleteLog(key string) error {
+// Dodavanje Record zapisa za brisanje kljuca
+func (wal *WAL) DeleteRecord(key string) error {
 	if len(key) == 0 {
 		return fmt.Errorf("Kljuc je prazan!")
 	}
 
-	logEntry, err := NewLog(key, nil, true, time.Now())
+	RecordEntry, err := Record.NewRecord(key, nil, true, time.Now())
 	if err != nil {
 		return err
 	}
 
-	return wal.appendLog(logEntry)
+	return wal.appendRecord(RecordEntry)
 }
 
-// Fizicki upis log zapisa u WAL
-func (wal *WAL) appendLog(newLog *Log) error {
-	binaryData, err := newLog.ToBinary()
-	if err != nil {
-		return err
-	}
+// Fizicki upis Record zapisa u WAL
+func (wal *WAL) appendRecord(newRecord *Record.Record) error {
+	binaryData := newRecord.Serialize()
 
 	// Ako nema mesta → rotacija segmenta
 	if wal.currentWritePosition+len(binaryData) > wal.segmentSize {
@@ -162,7 +161,7 @@ func (wal *WAL) appendLog(newLog *Log) error {
 	}
 	fmt.Println(wal.currentWritePosition, wal.blockManager.GetBlockSize(), blockNumber)
 	offset := wal.currentWritePosition % wal.blockManager.GetBlockSize()
-	err = wal.blockManager.PutSpecific(
+	err := wal.blockManager.PutSpecific(
 		wal.writeFile,
 		blockNumber,
 		offset,
@@ -227,12 +226,16 @@ func (wal *WAL) ReadAll() {
 
 			data := (*block)[offset : offset+recordSize]
 
-			logEntry, err := FromBinary(data)
+			if len(data) < HEADER_SIZE {
+				break
+			}
+
+			RecordEntry, err := Record.DeserializeRecord(data)
 			if err != nil {
 				break
 			}
 
-			fmt.Println(logEntry)
+			fmt.Println(RecordEntry)
 			offset += recordSize
 		}
 
@@ -244,60 +247,8 @@ func (wal *WAL) ReadAll() {
 func (wal *WAL) ReadSpecific(key string) {
 }
 
-// Konvertuk binarni zapis u Log
-func FromBinary(data []byte) (*Log, error) {
-	offset := 0
-
-	//Provera minimalne velicine header-a
-	if len(data) < HEADER_SIZE {
-		return nil, fmt.Errorf("Losi podaci, premalo podataka!")
-	}
-
-	//CRC
-	crc := binary.BigEndian.Uint32(data[offset : offset+4])
-	offset += 4
-
-	//Timestamp
-	ts := make([]byte, 8)
-	copy(ts, data[offset:offset+8])
-	offset += 8
-
-	//Tombstone
-	tombstone := data[offset] == 1
-	offset++
-
-	//Velicine kljuca i vrednosti
-	keySize := binary.BigEndian.Uint64(data[offset : offset+8])
-	offset += 8
-
-	valueSize := binary.BigEndian.Uint64(data[offset : offset+8])
-	offset += 8
-
-	//Provera duzine podataka
-	if len(data) < HEADER_SIZE+int(keySize)+int(valueSize) {
-		return nil, fmt.Errorf("Greska pri konvertovanju iz binarnog oblika!")
-	}
-
-	//Kljuc
-	key := string(data[offset : offset+int(keySize)])
-	offset += int(keySize)
-
-	//Vrednost
-	value := make([]byte, valueSize)
-	copy(value, data[offset:offset+int(valueSize)])
-
-	return &Log{
-		CRC:       crc,
-		Timestamp: ts,
-		Tombstone: tombstone,
-		KeySize:   keySize,
-		ValueSize: valueSize,
-		Key:       key,
-		Value:     value,
-	}, nil
-}
-
 func (wal *WAL) Recovery() {
+
 }
 
 func (wal *WAL) Close() {
