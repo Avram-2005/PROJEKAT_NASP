@@ -386,3 +386,21 @@ func TestShouldFlushByBytes(t *testing.T) {
 		})
 	}
 }
+
+// tombstone
+func TestTombstone(t *testing.T) {
+	entries := []struct {
+		Key   string
+		Value []byte
+	}{
+		{"k1", []byte("v1")},
+		{"k2", nil},
+	}
+	result := convertToKeyValue(entries)
+	if result[0].Tombstone {
+		t.Fatal("K1 must not be a tombstone")
+	}
+	if !result[1].Tombstone {
+		t.Fatal("k2 with nil value must be a tombstone")
+	}
+}
