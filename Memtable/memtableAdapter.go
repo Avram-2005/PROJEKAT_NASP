@@ -217,11 +217,11 @@ func (adapt *MemtableAdapter) GetSortedEntries() []KeyValue {
 		return convertToKeyValue(hmEntries)
 	case "skip_list": //vec je sortirana
 		sl := adapt.dataStructure.(*SkipList.SkipList)
-		slEntries := sl.RangeScan("", "zzzzzzzzz")
+		slEntries := sl.RangeScan("", "\U0010FFFF")
 		return convertToKeyValue(slEntries)
 	case "b_plus_tree": //vec je sortirano
 		bpt := adapt.dataStructure.(*BPlusTree.BPlusTree)
-		bptEntries := bpt.RangeScan("", "zzzzzzzzz")
+		bptEntries := bpt.RangeScan("", "\U0010FFFF")
 		return convertToKeyValue(bptEntries)
 	default:
 		return []KeyValue{}
