@@ -95,3 +95,33 @@ func TestPutNewValExistingKey(t *testing.T) {
 		})
 	}
 }
+
+// size
+func TestSizeAfterPut(t *testing.T) {
+	for _, typ := range allStructTypes {
+		t.Run(typ, func(t *testing.T) {
+			adapt := makeAdapter(t, typ)
+			if adapt.Size() != 0 {
+				t.Fatalf("Expected size=0 at the start, but got: %d", adapt.Size())
+			}
+			adapt.Put("k1", []byte("v1"))
+			adapt.Put("k2", []byte("v2"))
+			adapt.Put("k3", []byte("v3"))
+			if adapt.Size() != 3 {
+				t.Fatalf("Expected size=3, but got %d", adapt.Size())
+			}
+		})
+	}
+}
+func TestSizeAfterUpdate(t *testing.T) {
+	for _, typ := range allStructTypes {
+		t.Run(typ, func(t *testing.T) {
+			adapt := makeAdapter(t, typ)
+			adapt.Put("k1", []byte("val1"))
+			adapt.Put("k1", []byte("new_val"))
+			if adapt.Size() != 1 {
+				t.Fatalf("Expected size=1 after update, but got %d", adapt.Size())
+			}
+		})
+	}
+}
