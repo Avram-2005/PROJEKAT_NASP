@@ -266,3 +266,123 @@ func TestRangeScanNoResults(t *testing.T) {
 		})
 	}
 }
+
+// Prefix Scan
+func TestPrefixScan(t *testing.T) {
+	for _, typ := range allStructTypes {
+		t.Run(typ, func(t *testing.T) {
+			adapt := makeAdapter(t, typ)
+			adapt.Put("kljuc_1", []byte("val1"))
+			adapt.Put("kljuc_2", []byte("val2"))
+			adapt.Put("vred_kljuca_3", []byte("val3"))
+			adapt.Put("kljuc_4", []byte("val4"))
+			results := adapt.PrefixScan("kljuc")
+			if len(results) != 3 {
+				t.Fatalf("Expected 3 results, got %d instead", len(results))
+			}
+			for _, r := range results {
+				if len(r.Key) < 3 || r.Key[:5] != "kljuc" {
+					t.Fatalf("Key '%s' doesn't start with 'kljuc'", r.Key)
+				}
+			}
+		})
+	}
+}
+
+func TestPrefixScanNoResults(t *testing.T) {
+	for _, typ := range allStructTypes {
+		t.Run(typ, func(t *testing.T) {
+			adapt := makeAdapter(t, typ)
+			adapt.Put("kljuc1", []byte("val1"))
+			results := adapt.PrefixScan("bab")
+			if len(results) != 0 {
+				t.Fatalf("Expected 0 results, got %d instead", len(results))
+			}
+		})
+	}
+}
+
+// Iterator
+func TestIterator(t *testing.T) {
+	for _, typ := range allStructTypes {
+		t.Run(typ, func(t *testing.T) {
+			adapt := makeAdapter(t, typ)
+			adapt.Put("banana", []byte("val1"))
+			adapt.Put("ananas", []byte("val2"))
+			adapt.Put("citurs", []byte("val3"))
+			iter := adapt.Iterator()
+			count := 0
+			prevKey := ""
+			for iter.Next() {
+				if iter.Key() <= prevKey && prevKey != "" {
+					t.Fatalf("Iterator is not sorted: '%s' after '%s'", iter.Key(), prevKey)
+				}
+				prevKey = iter.Key()
+				count++
+			}
+			if count != 3 {
+				t.Fatalf("Expected 3 iterations, got %d", count)
+			}
+		})
+	}
+}
+
+func TestIteratorEmpty(t *testing.T) {
+	for _, typ := range allStructTypes {
+		t.Run(typ, func(t *testing.T) {
+			adapt := makeAdapter(t, typ)
+			iter := adapt.Iterator()
+			if iter.Next() {
+				t.Fatal("Empty adapter cnnot have true in variable next")
+			}
+		})
+	}
+}
+
+// Flush i IsFull
+func TestShouldFlush(t *testing.T) {
+	for _, typ := range allStructTypes {
+		t.Run(typ, func(t *testing.T) {
+			conf := MemtableConfig{
+				Type:              typ,
+				MaxSizeEntries:    3,
+				SkipListMaxHeight: 8,
+				BPlusTreeDegree:   2,
+			}
+			adapt, _ := NewMemtableAdapter(conf)
+			adapt.Put("kljuc1", []byte("val1"))
+			adapt.Put("kljuc2", []byte("val2"))
+			if adapt.ShouldFlush() {
+				t.Fatal("Cannot flush with 2 out of 3 inputs")
+			}
+			adapt.Put("kljuc3", []byte("val3"))
+			if !adapt.ShouldFlush() {
+				t.Fatal("Should flush with a full table")
+			}
+		})
+	}
+}
+
+func TestShouldFlushByBytes(t *testing.T) {
+	for _, typ := range allStructTypes {
+		t.Run(typ, func(t *testing.T) {
+			conf := MemtableConfig{
+				Type:              typ,
+				MaxSizeBytes:      250,
+				SkipListMaxHeight: 8,
+				BPlusTreeDegree:   2,
+			}
+			adapt, _ := NewMemtableAdapter(conf)
+			adapt.Put("a", []byte("1"))
+			adapt.Put("b", []byte("2"))
+			if adapt.ShouldFlush() {
+				t.Fatal("Cannot flush with 200 out of 250 bytes")
+			}
+			adapt.Put("c", []byte("3"))
+			if !adapt.ShouldFlush() {
+				t.Fatal("Should have flushed since the bytes exeed 250 bytes")
+			}
+
+		})
+	}
+}
