@@ -34,7 +34,14 @@ func NewBufferWriter(size int) *BufferWriter {
 	}
 }
 
-func NewBufferReader(buf []byte) *BufferReader {
+func NewBufferReader(size int) *BufferReader {
+	return &BufferReader{
+		Buf: make([]byte, size),
+		pos: 0,
+	}
+}
+
+func NewBufferReaderReuse(buf []byte) *BufferReader {
 	return &BufferReader{
 		Buf: buf,
 		pos: 0,
