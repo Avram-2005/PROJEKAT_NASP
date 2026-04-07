@@ -13,18 +13,36 @@ import (
 // provera funkcionalnosti samih hard linkova-ocekivano ponasanje je da
 // pri upisu u originalni fajl hard link bude izmenjen, i obratno
 func TestHardLink(t *testing.T) {
-	file, err := os.Create("sstables/test.bin")
+	file1, err := os.Create("sstables/test.bin")
 	if err != nil {
 		fmt.Print("error creating file", err)
 		t.FailNow()
 	}
-	data1 := make([]byte, 100)
+
+	err = os.Mkdir("sstables/sst1", 0755)
+	if err != nil {
+		fmt.Print("error creating directory ", err)
+		t.FailNow()
+	}
+
+	file2, err := os.Create("sstables/sst1/test1.bin")
+	if err != nil {
+		fmt.Print("error creating file 2", err)
+		t.FailNow()
+	}
+
 	bm, err := BlockManager.NewBlockManager(4, 4)
 	if err != nil {
 		fmt.Print("error creating bm ", err)
 		t.FailNow()
 	}
-	bm.Put(file, 0, &data1)
+
+	data1 := make([]byte, 100)
+	bm.Put(file1, 0, &data1)
+
+	data2 := make([]byte, 100)
+	binary.BigEndian.PutUint16(data2, 56)
+	bm.Put(file2, 0, &data2)
 
 	err = os.Mkdir("checkpoints/dir1", 0755)
 	if err != nil {
@@ -32,22 +50,28 @@ func TestHardLink(t *testing.T) {
 		t.FailNow()
 	}
 
-	fileName := file.Name()
+	fileName := file1.Name()
+	err = CreateHardLink(fileName, "dir1")
+	if err != nil {
+		fmt.Print("error creating link ", fileName, err)
+		t.FailNow()
+	}
+	fileName = file2.Name()
 	err = CreateHardLink(fileName, "dir1")
 	if err != nil {
 		fmt.Print("error creating link ", fileName, err)
 		t.FailNow()
 	}
 
-	link, err := os.OpenFile("checkpoints/dir1/test.bin", os.O_RDWR, 0644)
+	link1, err := os.OpenFile("checkpoints/dir1/test.bin", os.O_RDWR, 0644)
 	if err != nil {
 		fmt.Print("error opening link file", err)
 		t.FailNow()
 	}
 	binary.BigEndian.PutUint16(data1, 45)
-	bm.Put(file, 0, &data1)
+	bm.Put(file1, 0, &data1)
 
-	readData, err := bm.Get(link, 0)
+	readData, err := bm.Get(link1, 0)
 	if err != nil {
 		fmt.Print("error getting from link file ", err)
 		t.FailNow()
@@ -61,14 +85,34 @@ func TestHardLink(t *testing.T) {
 		}
 	}
 
+	link2, err := os.OpenFile("checkpoints/dir1/sst1/test1.bin", os.O_RDWR, 0644)
+	if err != nil {
+		fmt.Print("error opening link file", err)
+		t.FailNow()
+	}
+
+	readData, err = bm.Get(link2, 0)
+	if err != nil {
+		fmt.Print("error getting from link file ", err)
+		t.FailNow()
+	}
+
+	if !reflect.DeepEqual(data2, (*readData)) {
+		if err != nil {
+			fmt.Print("error on second compare")
+			fmt.Print(data2, (*readData))
+			t.FailNow()
+		}
+	}
+
 	binary.BigEndian.PutUint16(data1, 67)
-	err = bm.Put(link, 0, &data1)
+	err = bm.Put(link1, 0, &data1)
 	if err != nil {
 		fmt.Print("error putting to link file", err)
 		t.FailNow()
 	}
 
-	readData, err = bm.Get(file, 0)
+	readData, err = bm.Get(file1, 0)
 	if err != nil {
 		fmt.Print("error getting from link file", err)
 		t.FailNow()
@@ -76,18 +120,28 @@ func TestHardLink(t *testing.T) {
 
 	if !reflect.DeepEqual(data1, (*readData)) {
 		if err != nil {
-			fmt.Print("error on second compare")
+			fmt.Print("error on third compare")
 			fmt.Print(data1, (*readData))
 			t.FailNow()
 		}
 	}
 
-	err = file.Close()
+	err = file1.Close()
 	if err != nil {
 		fmt.Print("error closing file ", err)
 		t.FailNow()
 	}
-	err = link.Close()
+	err = file2.Close()
+	if err != nil {
+		fmt.Print("error closing file ", err)
+		t.FailNow()
+	}
+	err = link1.Close()
+	if err != nil {
+		fmt.Print("error closing link ", err)
+		t.FailNow()
+	}
+	err = link2.Close()
 	if err != nil {
 		fmt.Print("error closing link ", err)
 		t.FailNow()
@@ -97,14 +151,14 @@ func TestHardLink(t *testing.T) {
 		fmt.Print("error deleting file ", err)
 		t.FailNow()
 	}
-	err = os.Remove("checkpoints/dir1/test.bin")
-	if err != nil {
-		fmt.Print("error deleting file ", err)
-		t.FailNow()
-	}
-	err = os.Remove("checkpoints/dir1")
+	err = os.RemoveAll("sstables/sst1")
 	if err != nil {
 		fmt.Print("error deleting directory ", err)
+		t.FailNow()
+	}
+	err = DeleteCheckpoint("dir1")
+	if err != nil {
+		fmt.Print("error deleting checkpoint", err)
 		t.FailNow()
 	}
 
@@ -115,17 +169,27 @@ func TestHardLink(t *testing.T) {
 func TestCheckpoint(t *testing.T) {
 	firstTable, err := os.Create("sstables/test1.bin")
 	if err != nil {
-		fmt.Print("error creating file", err)
+		fmt.Print("error creating file 1", err)
 		t.FailNow()
 	}
-	secondTable, err := os.Create("sstables/test2.bin")
+	err = os.Mkdir("sstables/sst1", 0755)
 	if err != nil {
-		fmt.Print("error creating file", err)
+		fmt.Print("error creating directory 1", err)
 		t.FailNow()
 	}
-	thirdTable, err := os.Create("sstables/test3.bin")
+	secondTable, err := os.Create("sstables/sst1/test2.bin")
 	if err != nil {
-		fmt.Print("error creating file", err)
+		fmt.Print("error creating file 2", err)
+		t.FailNow()
+	}
+	err = os.Mkdir("sstables/sst1/sst2", 0755)
+	if err != nil {
+		fmt.Print("error creating directory 2", err)
+		t.FailNow()
+	}
+	thirdTable, err := os.Create("sstables/sst1/sst2/test3.bin")
+	if err != nil {
+		fmt.Print("error creating file 3", err)
 		t.FailNow()
 	}
 
@@ -144,31 +208,31 @@ func TestCheckpoint(t *testing.T) {
 	binary.BigEndian.PutUint16(data3, 89)
 	bm.Put(thirdTable, 0, &data3)
 
-	err = CreateCheckpoint("sstables")
+	checkpoint, err := CreateCheckpoint("sstables", "checkpoint1")
 	if err != nil {
-		fmt.Print("error creating link ", err)
+		fmt.Print("error creating checkpoint 1", err)
 		t.FailNow()
 	}
 
-	firstLink, err := os.OpenFile("checkpoints/sstables/test1.bin", os.O_RDWR, 0644)
+	firstLink, err := checkpoint.OpenFileReadWrite("test1.bin")
 	if err != nil {
-		fmt.Print("error opening link file", err)
+		fmt.Print("error opening link file 1", err)
 		t.FailNow()
 	}
-	secondLink, err := os.OpenFile("checkpoints/sstables/test1.bin", os.O_RDWR, 0644)
+	secondLink, err := checkpoint.OpenFileReadWrite("sst1/test2.bin")
 	if err != nil {
-		fmt.Print("error opening link file", err)
+		fmt.Print("error opening link file 2", err)
 		t.FailNow()
 	}
-	thirdLink, err := os.OpenFile("checkpoints/sstables/test1.bin", os.O_RDWR, 0644)
+	thirdLink, err := checkpoint.OpenFileReadWrite("sst1/sst2/test3.bin")
 	if err != nil {
-		fmt.Print("error opening link file", err)
+		fmt.Print("error opening link file 3", err)
 		t.FailNow()
 	}
 
 	readData, err := bm.Get(firstLink, 0)
 	if err != nil {
-		fmt.Print("error getting from link file ", err)
+		fmt.Print("error getting from link file 1", err)
 		t.FailNow()
 	}
 	if !reflect.DeepEqual(data1, (*readData)) {
@@ -180,7 +244,7 @@ func TestCheckpoint(t *testing.T) {
 	}
 	readData, err = bm.Get(secondLink, 0)
 	if err != nil {
-		fmt.Print("error getting from link file ", err)
+		fmt.Print("error getting from link file 2", err)
 		t.FailNow()
 	}
 	if !reflect.DeepEqual(data2, (*readData)) {
@@ -192,7 +256,7 @@ func TestCheckpoint(t *testing.T) {
 	}
 	readData, err = bm.Get(thirdLink, 0)
 	if err != nil {
-		fmt.Print("error getting from link file ", err)
+		fmt.Print("error getting from link file 3", err)
 		t.FailNow()
 	}
 	if !reflect.DeepEqual(data3, (*readData)) {
@@ -205,68 +269,43 @@ func TestCheckpoint(t *testing.T) {
 
 	err = firstTable.Close()
 	if err != nil {
-		fmt.Print("error closing file ", err)
+		fmt.Print("error closing file 1", err)
 		t.FailNow()
 	}
 	err = secondTable.Close()
 	if err != nil {
-		fmt.Print("error closing file ", err)
+		fmt.Print("error closing file 2", err)
 		t.FailNow()
 	}
 	err = thirdTable.Close()
 	if err != nil {
-		fmt.Print("error closing file ", err)
+		fmt.Print("error closing file 3", err)
 		t.FailNow()
 	}
 	err = firstLink.Close()
 	if err != nil {
-		fmt.Print("error closing link ", err)
+		fmt.Print("error closing link 1", err)
 		t.FailNow()
 	}
 	err = secondLink.Close()
 	if err != nil {
-		fmt.Print("error closing link ", err)
+		fmt.Print("error closing link 2", err)
 		t.FailNow()
 	}
 	err = thirdLink.Close()
 	if err != nil {
-		fmt.Print("error closing link ", err)
+		fmt.Print("error closing link 3", err)
 		t.FailNow()
 	}
-	err = os.Remove("sstables/test1.bin")
+	err = os.RemoveAll("sstables")
 	if err != nil {
-		fmt.Print("error deleting file ", err)
+		fmt.Print("error emptying directory", err)
 		t.FailNow()
 	}
-	err = os.Remove("sstables/test2.bin")
+	err = os.Mkdir("sstables", 0755)
 	if err != nil {
-		fmt.Print("error deleting file ", err)
+		fmt.Print("error creating directory sstables", err)
 		t.FailNow()
 	}
-	err = os.Remove("sstables/test3.bin")
-	if err != nil {
-		fmt.Print("error deleting file ", err)
-		t.FailNow()
-	}
-	err = os.Remove("checkpoints/sstables/test1.bin")
-	if err != nil {
-		fmt.Print("error deleting file ", err)
-		t.FailNow()
-	}
-	err = os.Remove("checkpoints/sstables/test2.bin")
-	if err != nil {
-		fmt.Print("error deleting file ", err)
-		t.FailNow()
-	}
-	err = os.Remove("checkpoints/sstables/test3.bin")
-	if err != nil {
-		fmt.Print("error deleting file ", err)
-		t.FailNow()
-	}
-	err = os.Remove("checkpoints/sstables")
-	if err != nil {
-		fmt.Print("error deleting directory ", err)
-		t.FailNow()
-	}
-
+	checkpoint.Delete()
 }
