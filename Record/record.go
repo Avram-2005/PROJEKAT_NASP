@@ -1,7 +1,8 @@
-package main
+package record
 
 import (
 	"fmt"
+	. "github.com/Avram-2005/PROJEKAT_NASP/utils"
 	"hash/crc32"
 	"time"
 )
@@ -15,12 +16,28 @@ type Record struct {
 
 const HEADER_SIZE = CRC_L + TIMESTAMP_L + TOMBSTONE_L + KEY_SIZE_L + VALUE_SIZE_L
 
+func NewRecord(key string, value []byte, tombstone bool, timestamp time.Time) (*Record, error) {
+	if tombstone && len(value) != 0 {
+		return nil, fmt.Errorf("Ne moze tombstone da bude false i da value ima vrednost!")
+	}
+	if timestamp.IsZero() {
+		timestamp = time.Now()
+	}
+
+	return &Record{
+		Timestamp: timestamp,
+		Tombstone: tombstone,
+		Key:       key,
+		Value:     value,
+	}, nil
+}
+
 func (r *Record) Serialize() []byte {
 	keySize := len(r.Key)
 	valueSize := len(r.Value)
 	totalSize := HEADER_SIZE + keySize + valueSize
 
-	writer := newBufferWriter(totalSize)
+	writer := NewBufferWriter(totalSize)
 
 	writer.Seek(CRC_L)
 	writer.WriteTimestamp(r.Timestamp)
@@ -30,15 +47,15 @@ func (r *Record) Serialize() []byte {
 	writer.WriteBytes([]byte(r.Key))
 	writer.WriteBytes(r.Value)
 
-	CRC := crc32.ChecksumIEEE(writer.buf[CRC_L:])
+	CRC := crc32.ChecksumIEEE(writer.Buf[CRC_L:])
 	writer.Seek(0)
 	writer.WriteCRC(CRC)
 
-	return writer.buf
+	return writer.Buf
 }
 
 func DeserializeRecord(data []byte) (*Record, error) {
-	reader := newBufferReader(data)
+	reader := NewBufferReader(data)
 
 	crc := reader.ReadCRC()
 	realCrc := crc32.ChecksumIEEE(data[CRC_L:])
