@@ -37,8 +37,10 @@ func SetupSSTable(root string, summaryInt int, multFiles bool) error {
 	return os.MkdirAll(tablesRoot, os.ModePerm)
 }
 
+type SSTable struct {
+}
+
 // TODO: Compression (1.3[DZ3])
-// TODO: Use an automatic counter for tableNum instead of passing it as a parameter
 func Flush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) error {
 	if multipleFiles {
 		return multipleFilesFlush(mem, tableNum, bm)
