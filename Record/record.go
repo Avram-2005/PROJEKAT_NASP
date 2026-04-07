@@ -55,7 +55,7 @@ func (r *Record) Serialize() []byte {
 }
 
 func DeserializeRecord(data []byte) (*Record, error) {
-	reader := NewBufferReader(data)
+	reader := NewBufferReaderReuse(data)
 
 	crc := reader.ReadCRC()
 	realCrc := crc32.ChecksumIEEE(data[CRC_L:])
