@@ -8,6 +8,7 @@ import (
 
 	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
 	"github.com/Avram-2005/PROJEKAT_NASP/BloomFilter"
+	. "github.com/Avram-2005/PROJEKAT_NASP/utils"
 )
 
 var bm *BlockManager.BlockManager
@@ -87,8 +88,8 @@ func TestFlushFewSmallKVMultipleFiles(t *testing.T) {
 			t.Fatalf("Failed to get key '%s' after flush: %v", key, err)
 		}
 		expectedValue := fmt.Sprintf("value%d", i+1)
-		if string(val) != expectedValue {
-			t.Fatalf("Expected value '%s' for key '%s', but got %s", expectedValue, key, val)
+		if string(val.Value) != expectedValue {
+			t.Fatalf("Expected value '%s' for key '%s', but got %v", expectedValue, key, val)
 		}
 	}
 
@@ -123,8 +124,8 @@ func TestFlushFewSmallKVOneFile(t *testing.T) {
 			t.Fatalf("Failed to get key '%s' after flush: %v", key, err)
 		}
 		expectedValue := fmt.Sprintf("value%d", i+1)
-		if string(val) != expectedValue {
-			t.Fatalf("Expected value '%s' for key '%s', but got %s", expectedValue, key, val)
+		if string(val.Value) != expectedValue {
+			t.Fatalf("Expected value '%s' for key '%s', but got %v", expectedValue, key, val)
 		}
 	}
 

@@ -1,17 +1,25 @@
 package sstable
 
 import (
-	"encoding/binary"
 	"fmt"
+	"hash/crc32"
 	"os"
 
 	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
 	"github.com/Avram-2005/PROJEKAT_NASP/BloomFilter"
+	. "github.com/Avram-2005/PROJEKAT_NASP/Record"
+	. "github.com/Avram-2005/PROJEKAT_NASP/utils"
+)
+
+const (
+	DATA_HEADER_L  = CRC_L + TIMESTAMP_L + TOMBSTONE_L + KEY_SIZE_L + VALUE_SIZE_L
+	INDEX_HEADER_L = KEY_SIZE_L + OFFSET_L
+	FOOTER_L       = 3 * OFFSET_L
 )
 
 func readNextIndexEntry(reader *blockReader) (key string, offset uint64, n int, err error) {
-	bufferReader := newBufferReader(INDEX_HEADER_L)
-	n, err = reader.Read(bufferReader.buf)
+	bufferReader := NewBufferReader(INDEX_HEADER_L)
+	n, err = reader.Read(bufferReader.Buf)
 	if err != nil {
 		return "", 0, 0, fmt.Errorf("failed to read index header: %v", err)
 	}
@@ -22,8 +30,8 @@ func readNextIndexEntry(reader *blockReader) (key string, offset uint64, n int, 
 	keySize := bufferReader.ReadKeySize()
 	offset = bufferReader.ReadOffset()
 
-	bufferReader = newBufferReader(keySize)
-	n, err = reader.Read(bufferReader.buf)
+	bufferReader = NewBufferReader(keySize)
+	n, err = reader.Read(bufferReader.Buf)
 	if err != nil {
 		return "", 0, 0, fmt.Errorf("failed to read key: %v", err)
 	}
@@ -31,7 +39,7 @@ func readNextIndexEntry(reader *blockReader) (key string, offset uint64, n int, 
 		return "", 0, 0, nil
 	}
 
-	return string(bufferReader.buf), offset, n, nil
+	return string(bufferReader.Buf), offset, n, nil
 }
 
 func findNextKeyOffset(searchKey string, reader *blockReader) (uint64, error) {
@@ -100,8 +108,8 @@ func searchSummary(summaryFilename string, offset uint64, key string, bm *BlockM
 	defer summaryFile.Close()
 	summaryReader := newBlockReader(summaryFile, bm, offset)
 
-	bufferReader := newBufferReader(2 * KEY_SIZE_L)
-	_, err = summaryReader.Read(bufferReader.buf)
+	bufferReader := NewBufferReader(2 * KEY_SIZE_L)
+	_, err = summaryReader.Read(bufferReader.Buf)
 	if err != nil {
 		return false, 0, fmt.Errorf("failed to read summary header: %v", err)
 	}
@@ -153,9 +161,7 @@ func searchFilter(filterFilename string, offset uint64, readSize uint64, key str
 	return bf.IsFound([]byte(key)), nil
 }
 
-// FIXME: Verify CRC
-// FIXME: Return a Record struct
-func parseData(dataFilename string, offset uint64, key string, bm *BlockManager.BlockManager) ([]byte, error) {
+func parseData(dataFilename string, offset uint64, key string, bm *BlockManager.BlockManager) (*Record, error) {
 	dataFile, err := os.Open(dataFilename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open data file: %v", err)
@@ -169,13 +175,10 @@ func parseData(dataFilename string, offset uint64, key string, bm *BlockManager.
 		return nil, fmt.Errorf("failed to read data header: %v", err)
 	}
 
-	currByte := CRC_L + TIMESTAMP_L + TOMBSTONE_L
-	keySize := binary.BigEndian.Uint32(dataHeaderBuf[currByte:])
-	currByte += KEY_SIZE_L
-	valueSize := binary.BigEndian.Uint32(dataHeaderBuf[currByte:])
+	header := DeserializeRecordHeader(dataHeaderBuf[:])
 
-	valueBuf := make([]byte, valueSize)
-	keyBuf := make([]byte, keySize)
+	valueBuf := make([]byte, header.ValueSize)
+	keyBuf := make([]byte, header.KeySize)
 	_, err = dataReader.Read(keyBuf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read key: %v", err)
@@ -188,10 +191,25 @@ func parseData(dataFilename string, offset uint64, key string, bm *BlockManager.
 	if err != nil {
 		return nil, fmt.Errorf("failed to read value: %v", err)
 	}
-	return valueBuf, nil
+
+	crcHash := crc32.NewIEEE()
+	crcHash.Write(dataHeaderBuf[CRC_L:])
+	crcHash.Write(keyBuf)
+	crcHash.Write(valueBuf)
+	realCrc := crcHash.Sum32()
+	if header.CRC != realCrc {
+		return nil, fmt.Errorf("CRC mismatch: expected %d, got %d", header.CRC, realCrc)
+	}
+
+	return &Record{
+		Timestamp: header.Timestamp,
+		Tombstone: header.Tombstone,
+		Key:       readKey,
+		Value:     valueBuf,
+	}, nil
 }
 
-func getMultipleFiles(key string, sstablePath string, bm *BlockManager.BlockManager) ([]byte, error) {
+func getMultipleFiles(key string, sstablePath string, bm *BlockManager.BlockManager) (*Record, error) {
 	filterFilename := sstableFilenameMultFile(sstablePath, "Filter")
 	isFound, err := searchFilter(filterFilename, 0, 0, key, bm)
 	if err != nil {
@@ -246,8 +264,8 @@ func readOneFileFooter(sstablePath string, bm *BlockManager.BlockManager) (*oneF
 	offset := uint64(stat.Size() - FOOTER_L)
 	reader := newBlockReader(f, bm, offset)
 
-	bufferReader := newBufferReader(FOOTER_L)
-	_, err = reader.Read(bufferReader.buf)
+	bufferReader := NewBufferReader(FOOTER_L)
+	_, err = reader.Read(bufferReader.Buf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read footer: %v", err)
 	}
@@ -261,7 +279,7 @@ func readOneFileFooter(sstablePath string, bm *BlockManager.BlockManager) (*oneF
 	return footer, nil
 }
 
-func getOneFile(key string, sstablePath string, bm *BlockManager.BlockManager) ([]byte, error) {
+func getOneFile(key string, sstablePath string, bm *BlockManager.BlockManager) (*Record, error) {
 	footer, err := readOneFileFooter(sstablePath, bm)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read footer: %v", err)

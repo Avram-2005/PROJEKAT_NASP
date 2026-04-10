@@ -54,26 +54,48 @@ func (r *Record) Serialize() []byte {
 	return writer.Buf
 }
 
-func DeserializeRecord(data []byte) (*Record, error) {
+type RecordHeader struct {
+	CRC       uint32
+	Timestamp time.Time
+	Tombstone bool
+	KeySize   int
+	ValueSize int
+}
+
+func DeserializeRecordHeader(data []byte) *RecordHeader {
 	reader := NewBufferReaderReuse(data)
 
 	crc := reader.ReadCRC()
-	realCrc := crc32.ChecksumIEEE(data[CRC_L:])
-	if crc != realCrc {
-		return nil, fmt.Errorf("CRC mismatch: expected %d, got %d", crc, realCrc)
-	}
-
 	timestamp := reader.ReadTimestamp()
 	tombstone := reader.ReadTombstone()
 	keySize := reader.ReadKeySize()
 	valueSize := reader.ReadValueSize()
 
-	key := string(reader.ReadBytes(keySize))
-	value := reader.ReadBytes(valueSize)
-
-	return &Record{
+	return &RecordHeader{
+		CRC:       crc,
 		Timestamp: timestamp,
 		Tombstone: tombstone,
+		KeySize:   keySize,
+		ValueSize: valueSize,
+	}
+}
+
+func DeserializeRecord(data []byte) (*Record, error) {
+	header := DeserializeRecordHeader(data)
+
+	realCrc := crc32.ChecksumIEEE(data[CRC_L:])
+	if realCrc != header.CRC {
+		return nil, fmt.Errorf("CRC mismatch: expected %d, got %d", header.CRC, realCrc)
+	}
+
+	reader := NewBufferReaderReuse(data[HEADER_SIZE:])
+
+	key := string(reader.ReadBytes(header.KeySize))
+	value := reader.ReadBytes(header.ValueSize)
+
+	return &Record{
+		Timestamp: header.Timestamp,
+		Tombstone: header.Tombstone,
 		Key:       key,
 		Value:     value,
 	}, nil
