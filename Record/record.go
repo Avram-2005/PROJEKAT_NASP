@@ -1,7 +1,8 @@
-package Record
+package record
 
 import (
 	"fmt"
+	. "github.com/Avram-2005/PROJEKAT_NASP/utils"
 	"hash/crc32"
 	"time"
 )
@@ -46,15 +47,15 @@ func (r *Record) Serialize() []byte {
 	writer.WriteBytes([]byte(r.Key))
 	writer.WriteBytes(r.Value)
 
-	CRC := crc32.ChecksumIEEE(writer.buf[CRC_L:])
+	CRC := crc32.ChecksumIEEE(writer.Buf[CRC_L:])
 	writer.Seek(0)
 	writer.WriteCRC(CRC)
 
-	return writer.buf
+	return writer.Buf
 }
 
 func DeserializeRecord(data []byte) (*Record, error) {
-	reader := NewBufferReader(data)
+	reader := NewBufferReaderReuse(data)
 
 	crc := reader.ReadCRC()
 	realCrc := crc32.ChecksumIEEE(data[CRC_L:])
