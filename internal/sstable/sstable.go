@@ -70,7 +70,7 @@ const (
 	OFFSET_L       = 8
 	DATA_HEADER_L  = CRC_L + TIMESTAMP_L + TOMBSTONE_L + KEY_SIZE_L + VALUE_SIZE_L
 	INDEX_HEADER_L = KEY_SIZE_L + OFFSET_L
-	FOOTER_L       = 4 * OFFSET_L
+	FOOTER_L       = 2 * OFFSET_L
 )
 
 func writeData(writer *blockWriter, entry KeyValue) int {
@@ -136,22 +136,27 @@ func multipleFilesFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManage
 	if err != nil {
 		return fmt.Errorf("failed to create data file: %v", err)
 	}
+	defer dataFile.Close()
 	indexFile, err := createSSTableFile("Index", tableNum)
 	if err != nil {
 		return fmt.Errorf("failed to create index file: %v", err)
 	}
+	defer indexFile.Close()
 	summaryFile, err := createSSTableFile("Summary", tableNum)
 	if err != nil {
 		return fmt.Errorf("failed to create summary file: %v", err)
 	}
+	defer summaryFile.Close()
 	filterFile, err := createSSTableFile("Filter", tableNum)
 	if err != nil {
 		return fmt.Errorf("failed to create filter file: %v", err)
 	}
+	defer filterFile.Close()
 	metadataFile, err := createSSTableFile("Metadata", tableNum)
 	if err != nil {
 		return fmt.Errorf("failed to create metadata file: %v", err)
 	}
+	defer metadataFile.Close()
 
 	sortedEntries := mem.GetSortedEntries()
 	bf, err := BloomFilter.NewBloomFilter(uint(len(sortedEntries)), 0.01)
@@ -179,7 +184,6 @@ func multipleFilesFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManage
 			writeIndex(summaryWriter, entry.Key, offset)
 		}
 	}
-
 	filterWriter.Write(bf.Dump())
 
 	tree, err := merkleTree.NewMerkleTree(merkleData)
@@ -187,6 +191,11 @@ func multipleFilesFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManage
 		return err
 	}
 	serializedTree := tree.Serialize()
+
+	sizeHeader := make([]byte, 4)
+	binary.BigEndian.PutUint32(sizeHeader, uint32(len(serializedTree)))
+	metadataWriter.Write(sizeHeader)
+
 	metadataWriter.Write(serializedTree)
 
 	dataWriter.Finalize()
@@ -628,10 +637,20 @@ func validateMultipleFiles(tableNum int, bm *BlockManager.BlockManager) (bool, [
 	}
 	defer metadataFile.Close()
 
-	stat, _ := metadataFile.Stat()
-
 	metadataReader := newBlockReader(metadataFile, bm, 0)
-	metadataData := make([]byte, stat.Size())
+
+	sizeHeader := make([]byte, 4)
+	_, err = metadataReader.Read(sizeHeader)
+	if err != nil {
+		return false, nil, fmt.Errorf("failed to read size header: %v", err)
+	}
+	treeSize := binary.BigEndian.Uint32(sizeHeader)
+
+	if treeSize == 0 {
+		return false, nil, fmt.Errorf("invalid tree size: %d", treeSize)
+	}
+
+	metadataData := make([]byte, treeSize)
 	_, err = metadataReader.Read(metadataData)
 	if err != nil {
 		return false, nil, err
@@ -648,11 +667,22 @@ func validateMultipleFiles(tableNum int, bm *BlockManager.BlockManager) (bool, [
 		return false, nil, fmt.Errorf("failed to open data file: %v", err)
 	}
 	defer dataFile.Close()
+
+	stat, err := dataFile.Stat()
+	if err != nil {
+		return false, nil, err
+	}
+	fileSize := stat.Size()
+
 	dataReader := newBlockReader(dataFile, bm, 0)
 
 	var currentData [][]byte
 
 	for {
+		if int64(dataReader.CurrOffset()) >= fileSize {
+			break
+		}
+
 		var dataHeaderBuf [DATA_HEADER_L]byte
 		_, err := dataReader.Read(dataHeaderBuf[:])
 		if err != nil {
@@ -663,6 +693,11 @@ func validateMultipleFiles(tableNum int, bm *BlockManager.BlockManager) (bool, [
 		keySize := binary.BigEndian.Uint32(dataHeaderBuf[currByte:])
 		currByte += KEY_SIZE_L
 		valueSize := binary.BigEndian.Uint32(dataHeaderBuf[currByte:])
+
+		nextOffset := dataReader.CurrOffset() + uint64(keySize+valueSize)
+		if int64(nextOffset) > fileSize {
+			break
+		}
 
 		keyBuf := make([]byte, keySize)
 		_, err = dataReader.Read(keyBuf)
