@@ -1,13 +1,14 @@
 package wal
 
 import (
-	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	utils "github.com/Avram-2005/PROJEKAT_NASP/utils"
 
 	BlockManager "github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
 
@@ -16,7 +17,7 @@ import (
 
 // Sve potrebno za WAL
 // Nisu konacne velicine
-// CRC 4B | Timestamp 8B | Tombstone 1B | KeySize 4B | ValueSize 8B | Key ... | Value ...
+// CRC 4B | Timestamp 8B | Tombstone 1B | KeySize 4B | ValueSize 4B | Key ... | Value ...
 type WAL struct {
 	segmentList          []string //lista WAL segmenata
 	readFile             *os.File //putanja trenutno aktivnog fajla za čitanje
@@ -32,7 +33,7 @@ const (
 	SEGMENT_NAME   = "wal_"
 	FILE_PATH      = "./WAL/walDATA"
 	FILE_EXTENSION = ".wal"
-	HEADER_SIZE    = 29
+	HEADER_SIZE    = 21
 )
 
 func openFile(path string) (*os.File, error) {
@@ -51,9 +52,9 @@ func CreatNewWAL(sizeSegment int, blocksize int) (*WAL, error) {
 	}
 
 	segments := make([]string, 0)
-
 	entries, err := os.ReadDir(FILE_PATH)
 	if err != nil {
+		os.MkdirAll(FILE_PATH, 0755)
 		return nil, err
 	}
 
@@ -137,9 +138,20 @@ func (wal *WAL) DeleteRecord(key string) error {
 // Fizicki upis Record zapisa u WAL
 func (wal *WAL) appendRecord(newRecord *Record.Record) error {
 	binaryData := newRecord.Serialize()
+	recordLen := len(binaryData)
+	blockSize := wal.blockManager.GetBlockSize()
 
-	// Ako nema mesta → rotacija segmenta
-	if wal.currentWritePosition+len(binaryData) > wal.segmentSize {
+	if recordLen > blockSize {
+		return fmt.Errorf("zapis je veći od bloka, fragmentacija trenutno nije podržana")
+	}
+
+	offset := wal.currentWritePosition % blockSize
+	if offset+recordLen > blockSize {
+		padding := blockSize - offset
+		wal.currentWritePosition += padding
+	}
+
+	if wal.currentWritePosition+recordLen > wal.segmentSize {
 		wal.writeFile.Close()
 
 		newIndex := len(wal.segmentList)
@@ -155,24 +167,21 @@ func (wal *WAL) appendRecord(newRecord *Record.Record) error {
 		wal.currentWritePosition = 0
 	}
 
-	blockNumber := wal.currentWritePosition / wal.blockManager.GetBlockSize()
-	if (wal.currentWritePosition+len(binaryData))/wal.blockManager.GetBlockSize() > blockNumber {
-		blockNumber++
-	}
-	fmt.Println(wal.currentWritePosition, wal.blockManager.GetBlockSize(), blockNumber)
-	offset := wal.currentWritePosition % wal.blockManager.GetBlockSize()
+	blockNumber := wal.currentWritePosition / blockSize
+	offset = wal.currentWritePosition % blockSize
+
 	err := wal.blockManager.PutSpecific(
 		wal.writeFile,
 		blockNumber,
 		offset,
-		len(binaryData),
+		recordLen,
 		&binaryData,
 	)
 	if err != nil {
 		return err
 	}
 
-	wal.currentWritePosition += len(binaryData)
+	wal.currentWritePosition += recordLen
 	err = wal.writeFile.Sync()
 	if err != nil {
 		panic(err)
@@ -186,65 +195,57 @@ func (wal *WAL) ClearWAL() {
 
 // Cita sve WAL zapise i radi X sa njima
 func (wal *WAL) ReadAll() {
-	blockSize := wal.blockManager.GetBlockSize()
+	fmt.Println("Reading all records from WAL:")
 
-	for _, segmentPath := range wal.segmentList {
-		file, err := openFileRead(segmentPath)
+	for _, path := range wal.segmentList {
+		file, err := openFileRead(path)
 		if err != nil {
-			fmt.Println("Greška pri otvaranju:", err)
 			continue
 		}
+		defer file.Close()
 
-		blockNumber := 0
-		offset := 0
-
+		blockNum := 0
 		for {
-			block, err := wal.blockManager.Get(file, blockNumber)
-			if err != nil || block == nil {
+			block, err := wal.blockManager.Get(file, blockNum)
+			if err == nil && block != nil && len(*block) != 0 {
 				break
 			}
 
-			if offset+HEADER_SIZE > blockSize {
-				blockNumber++
-				offset = 0
-				continue
+			data := *block
+			offset := 0
+
+			for offset+HEADER_SIZE <= len(data) {
+
+				reader := utils.NewBufferReaderReuse(data[offset : offset+HEADER_SIZE])
+
+				_ = reader.ReadCRC()
+				_ = reader.ReadTimestamp()
+				_ = reader.ReadTombstone()
+				kSize := int(reader.ReadKeySize())
+				vSize := int(reader.ReadValueSize())
+
+				recordSize := HEADER_SIZE + kSize + vSize
+
+				if kSize == 0 && vSize == 0 {
+					break
+				}
+
+				if offset+recordSize > len(data) {
+					break
+				}
+
+				rec, err := Record.DeserializeRecord(data[offset : offset+recordSize])
+				if err != nil {
+					break
+				}
+
+				fmt.Printf("[%s] Key: %s | Value: %s\n", path, rec.Key, string(rec.Value))
+
+				offset += recordSize
 			}
-
-			header := (*block)[offset : offset+HEADER_SIZE]
-
-			keySize := binary.BigEndian.Uint64(header[13:21])
-			valueSize := binary.BigEndian.Uint64(header[21:29])
-			recordSize := HEADER_SIZE + int(keySize) + int(valueSize)
-			if keySize == 0 && valueSize == 0 {
-				break
-			}
-			if offset+recordSize > blockSize {
-				blockNumber++
-				offset = 0
-				continue
-			}
-
-			data := (*block)[offset : offset+recordSize]
-
-			if len(data) < HEADER_SIZE {
-				break
-			}
-
-			RecordEntry, err := Record.DeserializeRecord(data)
-			if err != nil {
-				break
-			}
-
-			fmt.Println(RecordEntry)
-			offset += recordSize
+			blockNum++
 		}
-
-		file.Close()
 	}
-}
-
-// Cita samo zapise za dati kljuc =(
-func (wal *WAL) ReadSpecific(key string) {
 }
 
 func (wal *WAL) Recovery() {

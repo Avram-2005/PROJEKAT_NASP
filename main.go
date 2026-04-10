@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	wal, err := WAL.CreatNewWAL(4000060, 4)
+	wal, err := WAL.CreatNewWAL(4048, 4)
 	if err != nil {
 		fmt.Print(err)
 	}
@@ -19,6 +19,6 @@ func main() {
 	wal.AddRecord("Avram2", []byte("string"))
 	wal.DeleteRecord("Avram2")
 
-	//wal.ReadAll()
+	wal.ReadAll()
 
 }
