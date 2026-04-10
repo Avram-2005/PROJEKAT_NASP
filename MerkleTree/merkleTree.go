@@ -144,14 +144,32 @@ func serializeNode(n *MerkleNode) []byte {
 }
 
 func Deserialize(data []byte) *MerkleTree {
-	root, _ := deserializeNode(data, 0)
+	if len(data) == 0 {
+		return nil
+	}
+	// Pronadjo gde prestaju podaci
+	end := len(data)
+	for end > 0 && data[end-1] == 0 {
+		end--
+	}
+	if end == 0 {
+		return nil
+	}
+	root, _ := deserializeNode(data, 0, end)
 	return &MerkleTree{root: root}
 }
 
-func deserializeNode(data []byte, offset int) (*MerkleNode, int) {
+func deserializeNode(data []byte, offset int, maxLen int) (*MerkleNode, int) {
+	if offset >= maxLen {
+		return nil, offset
+	}
+
 	n := &MerkleNode{}
 
 	// flag
+	if offset >= maxLen {
+		return nil, offset
+	}
 	var isLeaf bool
 	if data[offset] == 1 {
 		isLeaf = true
@@ -160,19 +178,28 @@ func deserializeNode(data []byte, offset int) (*MerkleNode, int) {
 	}
 	offset++
 
-	// hash
+	// hash (32 bajta)
+	if offset+32 > maxLen {
+		return nil, offset
+	}
 	n.hash = data[offset : offset+32]
 	offset += 32
 
 	// ako je list, procitaj podatke
 	if isLeaf {
+		if offset+4 > maxLen {
+			return nil, offset
+		}
 		dataLen := binary.BigEndian.Uint32(data[offset : offset+4])
 		offset += 4
+		if offset+int(dataLen) > maxLen {
+			return nil, offset
+		}
 		n.data = data[offset : offset+int(dataLen)]
 		offset += int(dataLen)
 	} else { // rekurzivna deserijalizacija levog i desnog deteta
-		n.left, offset = deserializeNode(data, offset)
-		n.right, offset = deserializeNode(data, offset)
+		n.left, offset = deserializeNode(data, offset, maxLen)
+		n.right, offset = deserializeNode(data, offset, maxLen)
 
 		if n.left != nil {
 			n.left.parent = n
