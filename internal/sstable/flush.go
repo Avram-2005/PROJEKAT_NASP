@@ -6,51 +6,43 @@ import (
 
 	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
 	"github.com/Avram-2005/PROJEKAT_NASP/BloomFilter"
+	. "github.com/Avram-2005/PROJEKAT_NASP/Record"
+	. "github.com/Avram-2005/PROJEKAT_NASP/utils"
 )
 
-func writeData(writer *blockWriter, entry KeyValue) uint64 {
-	bufferWriter := newBufferWriter(DATA_HEADER_L)
-	// FIXME: Calculate and write CRC
-	bufferWriter.WriteCRC(0)
-	bufferWriter.WriteTimestamp()
-	bufferWriter.WriteTombstone(entry.Tombstone)
-	bufferWriter.WriteKeySize(len(entry.Key))
-	bufferWriter.WriteValueSize(len(entry.Value))
-
+func writeData(writer *blockWriter, record Record) uint64 {
 	oldOffset := writer.CurrOffset()
-	writer.Write(bufferWriter.buf)
-	writer.Write([]byte(entry.Key))
-	writer.Write(entry.Value)
+	writer.Write(record.Serialize())
 	return oldOffset
 }
 
 func writeIndex(writer *blockWriter, key string, offset uint64) uint64 {
-	bufferWriter := newBufferWriter(INDEX_HEADER_L)
+	bufferWriter := NewBufferWriter(INDEX_HEADER_L)
 	bufferWriter.WriteKeySize(len(key))
 	bufferWriter.WriteOffset(offset)
 
 	oldOffset := writer.CurrOffset()
-	writer.Write(bufferWriter.buf)
+	writer.Write(bufferWriter.Buf)
 	writer.Write([]byte(key))
 	return oldOffset
 }
 
 func writeSummaryHeader(writer *blockWriter, firstKey string, lastKey string) {
-	bufferWriter := newBufferWriter(2 * KEY_SIZE_L)
+	bufferWriter := NewBufferWriter(2 * KEY_SIZE_L)
 	bufferWriter.WriteKeySize(len(firstKey))
 	bufferWriter.WriteKeySize(len(lastKey))
 
-	writer.Write(bufferWriter.buf)
+	writer.Write(bufferWriter.Buf)
 	writer.Write([]byte(firstKey))
 	writer.Write([]byte(lastKey))
 }
 
 func writeOneFileFooter(writer *blockWriter, summaryStart uint64, indexStart uint64, dataStart uint64) {
-	footrerBuf := newBufferWriter(FOOTER_L)
+	footrerBuf := NewBufferWriter(FOOTER_L)
 	footrerBuf.WriteOffset(summaryStart)
 	footrerBuf.WriteOffset(indexStart)
 	footrerBuf.WriteOffset(dataStart)
-	writer.Write(footrerBuf.buf)
+	writer.Write(footrerBuf.Buf)
 }
 
 func multipleFilesFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) error {

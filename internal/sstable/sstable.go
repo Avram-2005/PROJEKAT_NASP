@@ -6,19 +6,14 @@ import (
 	"path/filepath"
 
 	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
+	. "github.com/Avram-2005/PROJEKAT_NASP/Record"
 )
 
 // FIXME: DELETE AFTER Memtable MERGE /
 // ////////////////////////////////////
 
-type KeyValue struct {
-	Key       string
-	Value     []byte
-	Tombstone bool //za brisanje, true ako je obrisan
-}
-
 type Memtable interface {
-	GetSortedEntries() []KeyValue //povratna vred/ parovi kljuc-vred neophodni za sstable
+	GetSortedEntries() []Record //povratna vred/ parovi kljuc-vred neophodni za sstable
 }
 
 //////////////////////////////////////
@@ -46,7 +41,6 @@ func Flush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) error {
 	return oneFileFlush(mem, tableNum, bm)
 }
 
-// FIXME: Deal with tombstones after Record merge
 func Get(key string, bm *BlockManager.BlockManager) ([]byte, error) {
 	files, err := os.ReadDir(tablesRoot)
 	if err != nil {
@@ -55,19 +49,19 @@ func Get(key string, bm *BlockManager.BlockManager) ([]byte, error) {
 
 	for _, file := range files {
 		sstablePath := filepath.Join(tablesRoot, file.Name())
-		val, err := GetSpecific(key, sstablePath, bm)
+		rec, err := GetSpecific(key, sstablePath, bm)
 		if err != nil {
 			return nil, fmt.Errorf("error getting key from SSTable %s: %v", sstablePath, err)
 		}
-		if val != nil {
-			return val, nil
+		if rec != nil {
+			return rec.Value, nil
 		}
 	}
 
 	return nil, fmt.Errorf("key %s not found in any SSTable", key)
 }
 
-func GetSpecific(key string, sstablePath string, bm *BlockManager.BlockManager) ([]byte, error) {
+func GetSpecific(key string, sstablePath string, bm *BlockManager.BlockManager) (*Record, error) {
 	if isSSTableMultFiles(sstablePath) {
 		return getMultipleFiles(key, sstablePath, bm)
 	}

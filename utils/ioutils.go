@@ -6,15 +6,12 @@ import (
 )
 
 const (
-	CRC_L          = 4
-	TIMESTAMP_L    = 8
-	TOMBSTONE_L    = 1
-	KEY_SIZE_L     = 4
-	VALUE_SIZE_L   = 4
-	OFFSET_L       = 8
-	DATA_HEADER_L  = CRC_L + TIMESTAMP_L + TOMBSTONE_L + KEY_SIZE_L + VALUE_SIZE_L
-	INDEX_HEADER_L = KEY_SIZE_L + OFFSET_L
-	FOOTER_L       = 3 * OFFSET_L
+	CRC_L        = 4
+	TIMESTAMP_L  = 8
+	TOMBSTONE_L  = 1
+	KEY_SIZE_L   = 4
+	VALUE_SIZE_L = 4
+	OFFSET_L     = 8
 )
 
 type BufferWriter struct {

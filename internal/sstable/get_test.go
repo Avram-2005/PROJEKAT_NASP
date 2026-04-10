@@ -57,8 +57,8 @@ func testGetSpecific(t *testing.T, key string, expectedValue string, multFiles b
 	if err != nil {
 		t.Fatalf("Failed to get key '%s': %v", key, err)
 	}
-	if string(val) != expectedValue {
-		t.Fatalf("Expected value '%s' for key '%s', but got %s", expectedValue, key, val)
+	if string(val.Value) != expectedValue {
+		t.Fatalf("Expected value '%s' for key '%s', but got %v", expectedValue, key, val)
 	}
 }
 
@@ -102,7 +102,7 @@ func TestGetSpecificNonExistentKeyMultipleFiles(t *testing.T) {
 		t.Fatalf("Error when getting non-existent key: %v", err)
 	}
 	if value != nil {
-		t.Fatalf("Expected nil value when getting non-existent key, but got %s", value)
+		t.Fatalf("Expected nil value when getting non-existent key, but got %v", value)
 	}
 }
 
@@ -114,7 +114,7 @@ func TestGetSpecificNonExistentKeyOneFile(t *testing.T) {
 		t.Fatalf("Error when getting non-existent key: %v", err)
 	}
 	if value != nil {
-		t.Fatalf("Expected nil value when getting non-existent key, but got %s", value)
+		t.Fatalf("Expected nil value when getting non-existent key, but got %v", value)
 	}
 }
 
