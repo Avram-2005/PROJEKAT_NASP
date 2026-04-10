@@ -3,18 +3,91 @@ package checkpoint
 import (
 	"container/list"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 )
+
+type CheckpointManager struct {
+	checkpointMap map[string]*Checkpoint
+}
 
 type Checkpoint struct {
 	checkpointName string
 }
 
-func NewCheckpoint(name string) *Checkpoint {
+func NewCheckpointManager() (*CheckpointManager, error) {
+	directoryMap := make(map[string]*Checkpoint)
+	files, err := os.ReadDir("checkpoints")
+	if err != nil {
+		return nil, err
+	}
+	for _, file := range files {
+		Checkpoint, err := NewCheckpoint(file.Name())
+		if err != nil {
+			return nil, err
+		}
+		directoryMap[file.Name()] = Checkpoint
+	}
+	return &CheckpointManager{
+		checkpointMap: directoryMap,
+	}, nil
+}
+
+// funkcija stvara nov checkpoint unutar checkpoints folder-a i automatski ga dodaje u manager
+func (ch *CheckpointManager) AddCheckpoint(targetDirectory string, checkPointDirectory string) error {
+	_, ok := ch.checkpointMap[checkPointDirectory]
+	if ok {
+		return fmt.Errorf("that checkpoint already exists")
+	}
+	checkpoint, err := CreateCheckpoint(targetDirectory, checkPointDirectory)
+	if err != nil {
+		return err
+	}
+	ch.checkpointMap[checkPointDirectory] = checkpoint
+	return nil
+}
+
+// put koristi vec postojeci checkpoint za razliku od add, koji ga stvori za nas
+// funkcija napravljena radi fleksibilnosti
+func (ch *CheckpointManager) PutCheckpoint(checkpoint *Checkpoint) error {
+	_, ok := ch.checkpointMap[checkpoint.checkpointName]
+	if ok {
+		return fmt.Errorf("that checkpoint already exists")
+	}
+	ch.checkpointMap[checkpoint.checkpointName] = checkpoint
+	return nil
+}
+
+func (ch *CheckpointManager) GetCheckpoint(name string) (*Checkpoint, error) {
+	checkpoint, ok := ch.checkpointMap[name]
+	if !ok {
+		return nil, fmt.Errorf("checkpoint not found in manager")
+	}
+	return checkpoint, nil
+}
+
+func (ch *CheckpointManager) DeleteCheckpoint(name string) error {
+	checkpoint, ok := ch.checkpointMap[name]
+	if !ok {
+		return fmt.Errorf("checkpoint not found in manager")
+	}
+	checkpoint.Delete()
+	delete(ch.checkpointMap, name)
+	return nil
+}
+
+func NewCheckpoint(name string) (*Checkpoint, error) {
+	info, err := os.Stat("checkpoints/" + name)
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("the checkpoint must be of a directory")
+	}
 	return &Checkpoint{
 		checkpointName: name,
-	}
+	}, nil
 }
 
 // Funkcija stvara hard link na specifican fajl unutar poddirektorijuma
@@ -46,6 +119,9 @@ func CreateHardLink(fileName string, checkpointDirectory string) error {
 	}
 	return nil
 }
+
+// funkcija namenjena da olaksa internu logiku checkpoint-a
+// stvara listu svih fajlova koji moraju da se rekreiraju u checkpoint-u
 func generateFileList(targetDirectory string) (*list.List, error) {
 	fileList := list.New()
 	files, err := os.ReadDir(targetDirectory)
@@ -54,6 +130,7 @@ func generateFileList(targetDirectory string) (*list.List, error) {
 	}
 	for _, file := range files {
 		if file.IsDir() {
+			// rekurzivni poziv u slucaju da je fajl na koji smo naisli direktorijum
 			directoryFiles, err := generateFileList(targetDirectory + "/" + file.Name())
 			if err != nil {
 				return nil, err
@@ -72,10 +149,7 @@ func generateFileList(targetDirectory string) (*list.List, error) {
 // targetdirectory-direktorijum za koji stvaramo checkpoint
 func CreateCheckpoint(targetDirectory string, checkPointDirectory string) (*Checkpoint, error) {
 	//dobavljamo sve fajlove direktorijuma
-	/*files, err := os.ReadDir(targetDirectory)
-	if err != nil {
-		return nil, err
-	}*/
+
 	//stvaramo direktorijum unutar checkpoints-a koji ce skladistiti hard linkove
 	err := os.Mkdir("checkpoints/"+checkPointDirectory, 0755)
 	if err != nil {
@@ -91,27 +165,26 @@ func CreateCheckpoint(targetDirectory string, checkPointDirectory string) (*Chec
 			return nil, err
 		}
 	}
-	//iteriramo kroz fajlove
-	/*for _, file := range files {
-		if file.IsDir() {
-
-		}
-		CreateHardLink(targetDirectory+"/"+file.Name(), checkPointDirectory)
-	}*/
-
-	return NewCheckpoint(checkPointDirectory), nil
+	checkpoint, err := NewCheckpoint(checkPointDirectory)
+	if err != nil {
+		return nil, err
+	}
+	return checkpoint, nil
 }
 
-func DeleteCheckpoint(targetCheckpoint string) error {
+// funkcija namenjeno da brise specificno direktorijum unutar checkpoints folder-a
+func DeleteCheckpointDirectory(targetCheckpoint string) error {
 	err := os.RemoveAll("checkpoints/" + targetCheckpoint)
 	return err
 }
 
+// funkcija se poziva nad checkpoint objektom, i brise sadrzaj tog checkpoint-a
 func (ch *Checkpoint) Delete() error {
-	err := DeleteCheckpoint(ch.checkpointName)
+	err := DeleteCheckpointDirectory(ch.checkpointName)
 	return err
 }
 
+// otvaramo fajl unutar checkpoint-a u modu za citanje
 func (ch *Checkpoint) OpenFileRead(fileName string) (*os.File, error) {
 	file, err := os.OpenFile("checkpoints/"+ch.checkpointName+"/"+fileName, os.O_RDONLY, 0644)
 	if err != nil {
@@ -120,6 +193,7 @@ func (ch *Checkpoint) OpenFileRead(fileName string) (*os.File, error) {
 	return file, nil
 }
 
+// otvaramo fajl unutar checkpoint-a u modu za citanje i pisanje
 func (ch *Checkpoint) OpenFileReadWrite(fileName string) (*os.File, error) {
 	file, err := os.OpenFile("checkpoints/"+ch.checkpointName+"/"+fileName, os.O_RDWR, 0644)
 	if err != nil {

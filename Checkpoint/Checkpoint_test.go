@@ -156,7 +156,7 @@ func TestHardLink(t *testing.T) {
 		fmt.Print("error deleting directory ", err)
 		t.FailNow()
 	}
-	err = DeleteCheckpoint("dir1")
+	err = DeleteCheckpointDirectory("dir1")
 	if err != nil {
 		fmt.Print("error deleting checkpoint", err)
 		t.FailNow()
@@ -308,4 +308,110 @@ func TestCheckpoint(t *testing.T) {
 		t.FailNow()
 	}
 	checkpoint.Delete()
+}
+
+// testiranje funkcionalnosti CheckpointManager klase
+func TestCheckpointManager(t *testing.T) {
+	err := os.Mkdir("checkpoints/ch1", 0755)
+	if err != nil {
+		fmt.Print("error creating directory 1", err)
+		t.FailNow()
+	}
+	ch1, err := os.Create("checkpoints/ch1/test1.bin")
+	if err != nil {
+		fmt.Print("error creating file 1", err)
+		t.FailNow()
+	}
+	err = os.Mkdir("checkpoints/ch1/sst1", 0755)
+	if err != nil {
+		fmt.Print("error creating directory 1", err)
+		t.FailNow()
+	}
+	ch2, err := os.Create("checkpoints/ch1/sst1/test2.bin")
+	if err != nil {
+		fmt.Print("error creating file 2", err)
+		t.FailNow()
+	}
+	err = os.Mkdir("checkpoints/ch1/sst1/sst2", 0755)
+	if err != nil {
+		fmt.Print("error creating directory 2", err)
+		t.FailNow()
+	}
+	ch3, err := os.Create("checkpoints/ch1/sst1/sst2/test3.bin")
+	if err != nil {
+		fmt.Print("error creating file 3", err)
+		t.FailNow()
+	}
+	err = os.Mkdir("sstables/sst3", 0755)
+	if err != nil {
+		fmt.Print("error creating directory 4", err)
+		t.FailNow()
+	}
+	firstTable, err := os.Create("sstables/sst3/test1.bin")
+	if err != nil {
+		fmt.Print("error creating file 3", err)
+		t.FailNow()
+	}
+	// instanciramo checkpointmanager,
+	// sa ocekivanjem da ce pratiti sta je stavljeno u checkpoint folder
+	checkpointManager, err := NewCheckpointManager()
+	if err != nil {
+		fmt.Print("error creating manager ", err)
+		t.FailNow()
+	}
+	// ocekujemo da manager prepozna postojanje checkpoint-a
+	Checkpoint, err := checkpointManager.GetCheckpoint("ch1")
+	if err != nil {
+		fmt.Print("error getting from manager ", err)
+		t.FailNow()
+	}
+	// dodajemo checkpoint-ocekujemo da se kreiraju direktorijumi
+	err = checkpointManager.AddCheckpoint("sstables/sst3", "ch2")
+	if err != nil {
+		fmt.Print("error creating checkpoint ", err)
+		t.FailNow()
+	}
+	// nov checkpoint se getuje
+	_, err = checkpointManager.GetCheckpoint("ch2")
+	if err != nil {
+		fmt.Print("error getting checkpoint 2", err)
+		t.FailNow()
+	}
+
+	err = firstTable.Close()
+	if err != nil {
+		fmt.Print("error closing file ", err)
+		t.FailNow()
+	}
+	err = ch1.Close()
+	if err != nil {
+		fmt.Print("error closing checkpoint 1 ", err)
+		t.FailNow()
+	}
+	err = ch2.Close()
+	if err != nil {
+		fmt.Print("error closing checkpoint 2 ", err)
+		t.FailNow()
+	}
+	err = ch3.Close()
+	if err != nil {
+		fmt.Print("error closing checkpoint 3 ", err)
+		t.FailNow()
+	}
+	err = os.RemoveAll("sstables/sst3")
+	if err != nil {
+		fmt.Print("error resetting directory ", err)
+		t.FailNow()
+	}
+	// brisanje oba checkpoint-a, ocekujemo da radi kako treba ako checkpoinmanager adekvatno prati
+	err = Checkpoint.Delete()
+	if err != nil {
+		fmt.Print("error deleting checkpoint 1", err)
+		t.FailNow()
+	}
+	err = checkpointManager.DeleteCheckpoint("ch2")
+	if err != nil {
+		fmt.Print("error deleting checkpoint 2", err)
+		t.FailNow()
+	}
 }
