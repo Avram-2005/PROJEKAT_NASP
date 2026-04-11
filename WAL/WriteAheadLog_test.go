@@ -138,3 +138,46 @@ func TestLargeRecordFragmentation(t *testing.T) {
 
 	w.ReadAll()
 }
+
+func TestWALCleanupAndRotation(t *testing.T) {
+	setupTest(t)
+	defer cleanupTest()
+
+	segmentSize := 4096
+	blockSize := 4
+
+	w, err := CreatNewWAL(segmentSize, blockSize)
+	if err != nil {
+		t.Fatalf("Kreiranje nije uspelo: %v", err)
+	}
+	defer w.Close()
+
+	for i := 0; i < 300; i++ {
+		_ = w.AddRecord("kljuc", make([]byte, 1200))
+	}
+
+	startCount := len(w.segmentList)
+	if startCount < 3 {
+		t.Fatalf("Očekivano barem 3 segmenta, dobijeno %d", startCount)
+	}
+
+	w.memtableRotation()
+	if len(w.lowWatermarks) == 0 {
+		t.Fatal("Watermark nije pravilno dodat u listu")
+	}
+
+	w.lowWatermarks = []string{w.segmentList[5], w.segmentList[10]}
+	obsoleteSegment := w.segmentList[0]
+	err = w.FlushWAL()
+	if err != nil {
+		t.Fatalf("FlushWAL je vratio grešku: %v", err)
+	}
+
+	if _, err := os.Stat(obsoleteSegment); !os.IsNotExist(err) {
+		t.Errorf("Fajl %s bi trebalo da je obrisan sa diska, ali i dalje postoji.", obsoleteSegment)
+	}
+
+	if len(w.segmentList) != startCount-5 {
+		t.Errorf("SegmentList bi trebalo da ima %d segmenta, ima %d", startCount-5, len(w.segmentList))
+	}
+}
