@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 
+	memtable "github.com/Avram-2005/PROJEKAT_NASP/Memtable"
+
 	WAL "github.com/Avram-2005/PROJEKAT_NASP/WAL"
 )
 
@@ -23,6 +25,16 @@ func main() {
 	wal.AddRecord("Avram2", []byte("string3"))
 	wal.DeleteRecord("Avram2")
 
-	wal.ReadAll()
+	conf := memtable.MemtableConfig{
+		Type:              "skip_list",
+		MaxSizeEntries:    5,
+		SkipListMaxHeight: 8,
+		BPlusTreeDegree:   2,
+	}
+	m, err := memtable.NewMemtableManager(3, conf, nil)
+	if err != nil {
+		fmt.Print(err)
+	}
+	wal.Recovery(m)
 
 }
