@@ -1,18 +1,74 @@
 package sstable
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+
+	. "github.com/Avram-2005/PROJEKAT_NASP/Record"
+)
+
+type smallSmallKeyKVMemtable struct {
+}
+
+func (m smallSmallKeyKVMemtable) GetSortedEntries() []Record {
+	ts := time.Now()
+	r1, _ := NewRecord("a", []byte("value1"), false, ts)
+	r2, _ := NewRecord("b", []byte("value2"), false, ts)
+	r3, _ := NewRecord("c", []byte("value3"), false, ts)
+	return []Record{*r1, *r2, *r3}
+}
 
 type manySmallKeyKVMemtable struct {
 }
 
-func (m manySmallKeyKVMemtable) GetSortedEntries() []KeyValue {
-	entries := make([]KeyValue, 1000)
+func (m manySmallKeyKVMemtable) GetSortedEntries() []Record {
+	ts := time.Now()
+	entries := make([]Record, 1000)
 	for i := range 1000 {
-		entries[i] = KeyValue{
-			Key:       fmt.Sprintf("key%03d", i),
-			Value:     []byte(fmt.Sprintf("value%03d", i)),
-			Tombstone: false,
-		}
+		rec, _ := NewRecord(
+			fmt.Sprintf("key%03d", i),
+			[]byte(fmt.Sprintf("value%03d", i)),
+			false,
+			ts,
+		)
+		entries[i] = *rec
+	}
+	return entries
+}
+
+type fewLargeKeyKVMemtable struct {
+}
+
+func (m fewLargeKeyKVMemtable) GetSortedEntries() []Record {
+	ts := time.Now()
+	largeValue := make([]byte, 10000)
+	for i := range largeValue {
+		largeValue[i] = 'A'
+	}
+	r1, _ := NewRecord("long1", largeValue, false, ts)
+	r2, _ := NewRecord("long2", largeValue, false, ts)
+	r3, _ := NewRecord("long3", largeValue, false, ts)
+	return []Record{*r1, *r2, *r3}
+}
+
+type manyLargeKeyKVMemtable struct {
+}
+
+func (m manyLargeKeyKVMemtable) GetSortedEntries() []Record {
+	ts := time.Now()
+	largeValue := make([]byte, 10000)
+	for i := range largeValue {
+		largeValue[i] = 'B'
+	}
+	entries := make([]Record, 10000)
+	for i := range 10000 {
+		rec, _ := NewRecord(
+			fmt.Sprintf("longkey%04d", i),
+			largeValue,
+			false,
+			ts,
+		)
+		entries[i] = *rec
 	}
 	return entries
 }
