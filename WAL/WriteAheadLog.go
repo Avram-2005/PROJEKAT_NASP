@@ -24,6 +24,7 @@ type WAL struct {
 	currentReadPosition  int      //pozicija za čitanje
 	segmentSize          int      //maksimalna veličina segmenta
 	blockManager         *BlockManager.BlockManager
+	lowWatermarks        []string //lista segmenata koji su sigurni za brisanje
 }
 
 const (
@@ -217,8 +218,28 @@ func (wal *WAL) rotateSegment() error {
 	return nil
 }
 
-// Brise WAL =(
-func (wal *WAL) ClearWAL() {
+func (wal *WAL) memtableRotation() {
+	wal.lowWatermarks = append(wal.lowWatermarks, wal.segmentList[len(wal.segmentList)-1])
+	if len(wal.lowWatermarks) >= 10 { //Treba uzeti broj iz konfiguracije za memtable
+		wal.FlushWAL()
+	}
+}
+
+// Brise WAL segmente koji su sigurni za brisanje (koji su ispod low water marka)
+func (wal *WAL) FlushWAL() error {
+	keepIndex := 0
+	for i, path := range wal.segmentList {
+		if path == wal.lowWatermarks[0] {
+			keepIndex = i
+			break
+		}
+		os.Remove(wal.segmentList[i])
+	}
+
+	wal.segmentList = wal.segmentList[keepIndex:]
+	wal.lowWatermarks = wal.lowWatermarks[1:]
+	return nil
+
 }
 
 // Cita sve WAL zapise i radi X sa njima

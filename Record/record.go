@@ -55,7 +55,6 @@ func (r *Record) Serialize() []byte {
 	return writer.Buf
 }
 
-// DeserializeRecord now returns (*Record, bytesConsumed, error)
 func DeserializeRecord(data []byte) (*Record, int, error) {
 	if len(data) < HEADER_SIZE {
 		return nil, 0, fmt.Errorf("nedovoljno podataka za zaglavlje")
