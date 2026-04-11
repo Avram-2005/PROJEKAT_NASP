@@ -8,8 +8,6 @@ import (
 	"strings"
 	"time"
 
-	utils "github.com/Avram-2005/PROJEKAT_NASP/utils"
-
 	BlockManager "github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
 
 	Record "github.com/Avram-2005/PROJEKAT_NASP/Record"
@@ -29,11 +27,18 @@ type WAL struct {
 }
 
 const (
-	MAX_SIZE       = 1000
 	SEGMENT_NAME   = "wal_"
 	FILE_PATH      = "./WAL/walDATA"
 	FILE_EXTENSION = ".wal"
 	HEADER_SIZE    = 21
+
+	ChunkTypeZero   byte = 0
+	ChunkTypeFull   byte = 1
+	ChunkTypeFirst  byte = 2
+	ChunkTypeMiddle byte = 3
+	ChunkTypeLast   byte = 4
+
+	ChunkHeaderSize = 1
 )
 
 func openFile(path string) (*os.File, error) {
@@ -137,55 +142,78 @@ func (wal *WAL) DeleteRecord(key string) error {
 
 // Fizicki upis Record zapisa u WAL
 func (wal *WAL) appendRecord(newRecord *Record.Record) error {
-	binaryData := newRecord.Serialize()
-	recordLen := len(binaryData)
+	data := newRecord.Serialize()
+	left := len(data)
+	offset := 0
+	isFirst := true
 	blockSize := wal.blockManager.GetBlockSize()
 
-	if recordLen > blockSize {
-		return fmt.Errorf("zapis je veći od bloka, fragmentacija trenutno nije podržana")
-	}
+	for left > 0 {
+		if wal.currentWritePosition >= wal.segmentSize {
+			if err := wal.rotateSegment(); err != nil {
+				return err
+			}
+		}
 
-	offset := wal.currentWritePosition % blockSize
-	if offset+recordLen > blockSize {
-		padding := blockSize - offset
-		wal.currentWritePosition += padding
-	}
+		blockOffset := wal.currentWritePosition % blockSize
+		remainingInBlock := blockSize - blockOffset
 
-	if wal.currentWritePosition+recordLen > wal.segmentSize {
-		wal.writeFile.Close()
+		if remainingInBlock <= 10 {
+			wal.currentWritePosition += remainingInBlock
+			continue
+		}
 
-		newIndex := len(wal.segmentList)
-		newSegment := filepath.Join(FILE_PATH, fmt.Sprintf("%s%04d%s", SEGMENT_NAME, newIndex, FILE_EXTENSION))
+		payloadSize := remainingInBlock - 1
+		if left < payloadSize {
+			payloadSize = left
+		}
 
-		file, err := openFile(newSegment)
+		var chunkType byte
+		if isFirst {
+			if left == payloadSize {
+				chunkType = ChunkTypeFull
+			} else {
+				chunkType = ChunkTypeFirst
+			}
+		} else {
+			if left == payloadSize {
+				chunkType = ChunkTypeLast
+			} else {
+				chunkType = ChunkTypeMiddle
+			}
+		}
+
+		chunk := make([]byte, 1+payloadSize)
+		chunk[0] = chunkType
+		copy(chunk[1:], data[offset:offset+payloadSize])
+
+		err := wal.blockManager.PutSpecific(wal.writeFile, wal.currentWritePosition/blockSize, blockOffset, len(chunk), &chunk)
 		if err != nil {
 			return err
 		}
 
-		wal.segmentList = append(wal.segmentList, newSegment)
-		wal.writeFile = file
-		wal.currentWritePosition = 0
+		wal.currentWritePosition += len(chunk)
+		offset += payloadSize
+		left -= payloadSize
+		isFirst = false
 	}
 
-	blockNumber := wal.currentWritePosition / blockSize
-	offset = wal.currentWritePosition % blockSize
+	return wal.writeFile.Sync()
+}
 
-	err := wal.blockManager.PutSpecific(
-		wal.writeFile,
-		blockNumber,
-		offset,
-		recordLen,
-		&binaryData,
-	)
+func (wal *WAL) rotateSegment() error {
+	wal.writeFile.Close()
+	newIndex := len(wal.segmentList)
+	newPath := filepath.Join(FILE_PATH, fmt.Sprintf("%s%04d%s", SEGMENT_NAME, newIndex, FILE_EXTENSION))
+
+	file, err := openFile(newPath)
 	if err != nil {
 		return err
 	}
 
-	wal.currentWritePosition += recordLen
-	err = wal.writeFile.Sync()
-	if err != nil {
-		panic(err)
-	}
+	wal.segmentList = append(wal.segmentList, newPath)
+	wal.writeFile = file
+	wal.currentWritePosition = 0
 	return nil
 }
 
@@ -195,55 +223,49 @@ func (wal *WAL) ClearWAL() {
 
 // Cita sve WAL zapise i radi X sa njima
 func (wal *WAL) ReadAll() {
-	fmt.Println("Reading all records from WAL:")
+	var recordBuffer []byte
 
 	for _, path := range wal.segmentList {
-		file, err := openFileRead(path)
-		if err != nil {
-			continue
-		}
+		file, _ := openFileRead(path)
 		defer file.Close()
 
-		blockNum := 0
-		for {
+		for blockNum := 0; ; blockNum++ {
 			block, err := wal.blockManager.Get(file, blockNum)
-			if err == nil && block != nil && len(*block) != 0 {
+			if err != nil || block == nil || len(*block) == 0 {
 				break
 			}
 
 			data := *block
 			offset := 0
 
-			for offset+HEADER_SIZE <= len(data) {
-
-				reader := utils.NewBufferReaderReuse(data[offset : offset+HEADER_SIZE])
-
-				_ = reader.ReadCRC()
-				_ = reader.ReadTimestamp()
-				_ = reader.ReadTombstone()
-				kSize := int(reader.ReadKeySize())
-				vSize := int(reader.ReadValueSize())
-
-				recordSize := HEADER_SIZE + kSize + vSize
-
-				if kSize == 0 && vSize == 0 {
+			for offset < len(data) {
+				chunkType := data[offset]
+				if chunkType == ChunkTypeZero {
 					break
 				}
 
-				if offset+recordSize > len(data) {
-					break
+				payloadStart := offset + 1
+				switch chunkType {
+				case ChunkTypeFirst, ChunkTypeMiddle:
+					recordBuffer = append(recordBuffer, data[payloadStart:]...)
+					offset = len(data)
+
+				case ChunkTypeFull, ChunkTypeLast:
+					fullData := append(recordBuffer, data[payloadStart:]...)
+					rec, consumed, err := Record.DeserializeRecord(fullData)
+					if err != nil {
+						fmt.Println("Error:", err)
+						return
+					}
+
+					fmt.Printf("Read Key: %s Read Value: %s\n", rec.Key, string(rec.Value))
+
+					bytesFromThisBlock := consumed - len(recordBuffer)
+
+					offset = payloadStart + bytesFromThisBlock
+					recordBuffer = nil
 				}
-
-				rec, err := Record.DeserializeRecord(data[offset : offset+recordSize])
-				if err != nil {
-					break
-				}
-
-				fmt.Printf("[%s] Key: %s | Value: %s\n", path, rec.Key, string(rec.Value))
-
-				offset += recordSize
 			}
-			blockNum++
 		}
 	}
 }

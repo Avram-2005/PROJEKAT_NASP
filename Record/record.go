@@ -2,9 +2,10 @@ package record
 
 import (
 	"fmt"
-	. "github.com/Avram-2005/PROJEKAT_NASP/utils"
 	"hash/crc32"
 	"time"
+
+	. "github.com/Avram-2005/PROJEKAT_NASP/utils"
 )
 
 type Record struct {
@@ -54,29 +55,39 @@ func (r *Record) Serialize() []byte {
 	return writer.Buf
 }
 
-func DeserializeRecord(data []byte) (*Record, error) {
+// DeserializeRecord now returns (*Record, bytesConsumed, error)
+func DeserializeRecord(data []byte) (*Record, int, error) {
+	if len(data) < HEADER_SIZE {
+		return nil, 0, fmt.Errorf("nedovoljno podataka za zaglavlje")
+	}
+
 	reader := NewBufferReaderReuse(data)
 
 	crc := reader.ReadCRC()
-	realCrc := crc32.ChecksumIEEE(data[CRC_L:])
-	if crc != realCrc {
-		return nil, fmt.Errorf("CRC mismatch: expected %d, got %d", crc, realCrc)
+	ts := reader.ReadTimestamp()
+	tomb := reader.ReadTombstone()
+	kSize := int(reader.ReadKeySize())
+	vSize := int(reader.ReadValueSize())
+
+	totalSize := HEADER_SIZE + kSize + vSize
+
+	if len(data) < totalSize {
+		return nil, 0, fmt.Errorf("manjak podataka: očekivano %d, dobijeno %d", totalSize, len(data))
 	}
 
-	timestamp := reader.ReadTimestamp()
-	tombstone := reader.ReadTombstone()
-	keySize := reader.ReadKeySize()
-	valueSize := reader.ReadValueSize()
+	payloadForChecksum := data[4:totalSize]
+	actualCRC := crc32.ChecksumIEEE(payloadForChecksum)
 
-	key := string(reader.ReadBytes(keySize))
-	value := reader.ReadBytes(valueSize)
+	if crc != actualCRC {
+		return nil, 0, fmt.Errorf("CRC nije validan: očekivano %08x, dobijeno %08x", crc, actualCRC)
+	}
 
-	return &Record{
-		Timestamp: timestamp,
-		Tombstone: tombstone,
-		Key:       key,
-		Value:     value,
-	}, nil
+	key := string(reader.ReadBytes(kSize))
+	value := reader.ReadBytes(vSize)
+
+	rec := &Record{Timestamp: ts, Tombstone: tomb, Key: key, Value: value}
+
+	return rec, totalSize, nil
 }
 
 func (r *Record) Size() int {

@@ -110,3 +110,31 @@ func TestBlockPadding(t *testing.T) {
 		t.Log("Uspeh: zapis je upisan na početak novog bloka.")
 	}
 }
+
+func TestLargeRecordFragmentation(t *testing.T) {
+	setupTest(t)
+	defer cleanupTest()
+
+	segmentSize := 4048
+	blockSize := 4
+
+	w, err := CreatNewWAL(segmentSize, blockSize)
+	if err != nil {
+		t.Fatalf("Kreiranje nije uspelo: %v", err)
+	}
+	defer w.Close()
+
+	key := "masivni_kljuc"
+
+	value := make([]byte, 5000)
+	for i := range value {
+		value[i] = 'X'
+	}
+
+	err2 := w.AddRecord(key, value)
+	if err2 != nil {
+		t.Fatalf("Greška tokom upisa velikog zapisa (fragmentacija pukla): %v", err2)
+	}
+
+	w.ReadAll()
+}
