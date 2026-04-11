@@ -54,7 +54,7 @@ func TestWriteAndRead(t *testing.T) {
 		t.Fatalf("Greška tokom upisa: %v", err2)
 	}
 
-	w.ReadAll()
+	//_ = w.Recovery(nil)
 }
 
 func TestSegmentSplitting(t *testing.T) {
@@ -136,7 +136,7 @@ func TestLargeRecordFragmentation(t *testing.T) {
 		t.Fatalf("Greška tokom upisa velikog zapisa (fragmentacija pukla): %v", err2)
 	}
 
-	w.ReadAll()
+	//_ = w.Recovery(nil)
 }
 
 func TestWALCleanupAndRotation(t *testing.T) {

@@ -10,6 +10,8 @@ import (
 
 	BlockManager "github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
 
+	memtable "github.com/Avram-2005/PROJEKAT_NASP/Memtable"
+
 	Record "github.com/Avram-2005/PROJEKAT_NASP/Record"
 )
 
@@ -242,10 +244,9 @@ func (wal *WAL) FlushWAL() error {
 
 }
 
-// Cita sve WAL zapise i radi X sa njima
-func (wal *WAL) ReadAll() {
+// Cita sve WAL zapise i upisuje ih u memtable
+func (wal *WAL) Recovery(memtableManager *memtable.MemtableManager) error {
 	var recordBuffer []byte
-
 	for _, path := range wal.segmentList {
 		file, _ := openFileRead(path)
 		defer file.Close()
@@ -275,11 +276,21 @@ func (wal *WAL) ReadAll() {
 					fullData := append(recordBuffer, data[payloadStart:]...)
 					rec, consumed, err := Record.DeserializeRecord(fullData)
 					if err != nil {
-						fmt.Println("Error:", err)
-						return
+						return err
 					}
-
-					fmt.Printf("Read Key: %s Read Value: %s\n", rec.Key, string(rec.Value))
+					if rec.Tombstone {
+						err = memtableManager.Delete(rec.Key)
+						fmt.Printf("Deleted Key: %s\n", rec.Key)
+						if err != nil {
+							return err
+						}
+					} else {
+						err = memtableManager.Put(rec.Key, rec.Value)
+						fmt.Printf("Read Key: %s Read Value: %s\n", rec.Key, string(rec.Value))
+						if err != nil {
+							return err
+						}
+					}
 
 					bytesFromThisBlock := consumed - len(recordBuffer)
 
@@ -289,10 +300,7 @@ func (wal *WAL) ReadAll() {
 			}
 		}
 	}
-}
-
-func (wal *WAL) Recovery() {
-
+	return nil
 }
 
 func (wal *WAL) Close() {
