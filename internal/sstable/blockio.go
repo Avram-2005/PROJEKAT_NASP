@@ -122,5 +122,16 @@ func (br *blockReader) Read(dest []byte) (int, error) {
 		toRead -= n
 	}
 
+	if toRead > 0 {
+		if totalRead == 0 {
+			return 0, io.EOF
+		}
+		return totalRead, io.ErrUnexpectedEOF
+	}
+
 	return totalRead, nil
+}
+
+func (br *blockReader) Skip(offset int) {
+	br.currByte += offset
 }
