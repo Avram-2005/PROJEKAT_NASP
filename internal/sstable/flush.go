@@ -1,56 +1,51 @@
 package sstable
 
 import (
+	"encoding/binary"
 	"fmt"
 	"os"
 
 	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
 	"github.com/Avram-2005/PROJEKAT_NASP/BloomFilter"
+	merkleTree "github.com/Avram-2005/PROJEKAT_NASP/MerkleTree"
+	. "github.com/Avram-2005/PROJEKAT_NASP/Record"
+	. "github.com/Avram-2005/PROJEKAT_NASP/utils"
 )
 
-func writeData(writer *blockWriter, entry KeyValue) uint64 {
-	bufferWriter := newBufferWriter(DATA_HEADER_L)
-	// FIXME: Calculate and write CRC
-	bufferWriter.WriteCRC(0)
-	bufferWriter.WriteTimestamp()
-	bufferWriter.WriteTombstone(entry.Tombstone)
-	bufferWriter.WriteKeySize(len(entry.Key))
-	bufferWriter.WriteValueSize(len(entry.Value))
-
+func writeData(writer *blockWriter, record Record) uint64 {
 	oldOffset := writer.CurrOffset()
-	writer.Write(bufferWriter.buf)
-	writer.Write([]byte(entry.Key))
-	writer.Write(entry.Value)
+	writer.Write(record.Serialize())
 	return oldOffset
 }
 
 func writeIndex(writer *blockWriter, key string, offset uint64) uint64 {
-	bufferWriter := newBufferWriter(INDEX_HEADER_L)
+	bufferWriter := NewBufferWriter(INDEX_HEADER_L)
 	bufferWriter.WriteKeySize(len(key))
 	bufferWriter.WriteOffset(offset)
 
 	oldOffset := writer.CurrOffset()
-	writer.Write(bufferWriter.buf)
+	writer.Write(bufferWriter.Buf)
 	writer.Write([]byte(key))
 	return oldOffset
 }
 
 func writeSummaryHeader(writer *blockWriter, firstKey string, lastKey string) {
-	bufferWriter := newBufferWriter(2 * KEY_SIZE_L)
+	bufferWriter := NewBufferWriter(2 * KEY_SIZE_L)
 	bufferWriter.WriteKeySize(len(firstKey))
 	bufferWriter.WriteKeySize(len(lastKey))
 
-	writer.Write(bufferWriter.buf)
+	writer.Write(bufferWriter.Buf)
 	writer.Write([]byte(firstKey))
 	writer.Write([]byte(lastKey))
 }
 
-func writeOneFileFooter(writer *blockWriter, summaryStart uint64, indexStart uint64, dataStart uint64) {
-	footrerBuf := newBufferWriter(FOOTER_L)
+func writeOneFileFooter(writer *blockWriter, summaryStart uint64, indexStart uint64, dataStart uint64, metadataStart uint64) {
+	footrerBuf := NewBufferWriter(FOOTER_L)
 	footrerBuf.WriteOffset(summaryStart)
 	footrerBuf.WriteOffset(indexStart)
 	footrerBuf.WriteOffset(dataStart)
-	writer.Write(footrerBuf.buf)
+	footrerBuf.WriteOffset(metadataStart)
+	writer.Write(footrerBuf.Buf)
 }
 
 func multipleFilesFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) error {
@@ -71,12 +66,17 @@ func multipleFilesFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManage
 	indexWriter := newBlockWriter(files.indexFile, bm)
 	summaryWriter := newBlockWriter(files.summaryFile, bm)
 	filterWriter := newBlockWriter(files.filterFile, bm)
+	metadataWriter := newBlockWriter(files.metadataFile, bm)
 
 	firstEntry, lastEntry := sortedEntries[0], sortedEntries[len(sortedEntries)-1]
 	writeSummaryHeader(summaryWriter, firstEntry.Key, lastEntry.Key)
 
+	// FIXME: Do this without copying into a new slice
+	var merkleData [][]byte
+
 	for i, entry := range sortedEntries {
 		bf.Set([]byte(entry.Key)) // dodaj kljuc u filter
+		merkleData = append(merkleData, entry.Value)
 		offset := writeData(dataWriter, entry)
 		offset = writeIndex(indexWriter, entry.Key, offset)
 		if i%summaryInterval == 0 {
@@ -85,10 +85,24 @@ func multipleFilesFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManage
 	}
 	filterWriter.Write(bf.Dump())
 
+	// TODO: Seperate this into a different function
+	tree, err := merkleTree.NewMerkleTree(merkleData)
+	if err != nil {
+		return err
+	}
+	serializedTree := tree.Serialize()
+
+	sizeHeader := make([]byte, 4)
+	binary.BigEndian.PutUint32(sizeHeader, uint32(len(serializedTree)))
+	metadataWriter.Write(sizeHeader)
+
+	metadataWriter.Write(serializedTree)
+
 	dataWriter.Finalize()
 	indexWriter.Finalize()
 	summaryWriter.Finalize()
 	filterWriter.Finalize()
+	metadataWriter.Finalize()
 
 	return nil
 }
@@ -123,8 +137,12 @@ func oneFileFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) err
 	writer.Write(filterData)
 	dataStart := writer.CurrOffset()
 
+	// FIXME: Do this without copying into a new slice
+	var merkleData [][]byte
+
 	index := make([]indexEntry, 0)
 	for _, entry := range mem.GetSortedEntries() {
+		merkleData = append(merkleData, entry.Value)
 		offset := writeData(writer, entry)
 		index = append(index, indexEntry{
 			Key:    entry.Key,
@@ -153,11 +171,19 @@ func oneFileFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) err
 		writeIndex(writer, entry.Key, entry.Offset)
 	}
 
+	metadataStart := writer.CurrOffset()
+	tree, err := merkleTree.NewMerkleTree(merkleData)
+	if err != nil {
+		return err
+	}
+	serializedTree := tree.Serialize()
+	writer.Write(serializedTree)
+
 	if writer.currBlockNum == 0 && writer.currByte == 0 {
 		return fmt.Errorf("memtable is empty, no data written")
 	}
 
-	writeOneFileFooter(writer, summaryStart, indexStart, dataStart)
+	writeOneFileFooter(writer, summaryStart, indexStart, dataStart, metadataStart)
 
 	writer.Finalize()
 	return nil

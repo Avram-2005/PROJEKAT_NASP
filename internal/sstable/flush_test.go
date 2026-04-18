@@ -1,6 +1,7 @@
 package sstable
 
 import (
+	"encoding/binary"
 	"fmt"
 	"math"
 	"os"
@@ -8,6 +9,8 @@ import (
 
 	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
 	"github.com/Avram-2005/PROJEKAT_NASP/BloomFilter"
+	merkleTree "github.com/Avram-2005/PROJEKAT_NASP/MerkleTree"
+	. "github.com/Avram-2005/PROJEKAT_NASP/utils"
 )
 
 var bm *BlockManager.BlockManager
@@ -64,12 +67,32 @@ func calcFilterSectionSize(count int) int64 {
 	return int64(BloomFilter.CalculateBloomFilterSize(uint(count), 0.01))
 }
 
-func oneFileSize(keyCount int, keyLen int, valueLen int) int64 {
+/*
+	func calcMetadataSectionSize(count int, valueLen int) int64 {
+		maxLeaves := 1
+		for maxLeaves < count {
+			maxLeaves *= 2
+		}
+
+		realLeafSize := int64(1 + 32 + 4 + valueLen)
+		emptyNodeSize := int64(1 + 32)
+
+		realLeaves := int64(count)
+		emptyLeaves := int64(maxLeaves - count)
+		totalInternalNodes := int64(maxLeaves - 1)
+
+		return realLeaves*realLeafSize + emptyLeaves*emptyNodeSize + totalInternalNodes*emptyNodeSize + 4
+	}
+*/
+
+func oneFileSize(keyCount int, keyLen int, valueLen int, metadataSize int64) int64 {
 	size := calcFilterSectionSize(keyCount)
 	size += calcDataSectionSize(keyCount, keyLen, valueLen)
 	size += calcIndexSectionSize(keyCount, keyLen)
 	size += calcSummarySectionSize(keyCount, keyLen)
-	size += 3 * OFFSET_L // 3 offsets for the sections
+	//size += calcMetadataSectionSize(keyCount, valueLen)
+	size += 4 * OFFSET_L // 4 offsets for the sections
+	size += metadataSize
 	return size
 }
 
@@ -87,8 +110,8 @@ func TestFlushFewSmallKVMultipleFiles(t *testing.T) {
 			t.Fatalf("Failed to get key '%s' after flush: %v", key, err)
 		}
 		expectedValue := fmt.Sprintf("value%d", i+1)
-		if string(val) != expectedValue {
-			t.Fatalf("Expected value '%s' for key '%s', but got %s", expectedValue, key, val)
+		if string(val.Value) != expectedValue {
+			t.Fatalf("Expected value '%s' for key '%s', but got %v", expectedValue, key, val)
 		}
 	}
 
@@ -107,6 +130,10 @@ func TestFlushFewSmallKVMultipleFiles(t *testing.T) {
 	filterFilename := sstableFilenameMultFile(sstablePath, "Filter")
 	expectedSize = calcFilterSectionSize(3)
 	testFileSize(t, filterFilename, expectedSize)
+
+	//metadataFilename := sstableFilename(1, "Metadata")
+	//expectedSize = calcMetadataSectionSize(3, 6)
+	//testFileSize(t, metadataFilename, expectedSize)
 }
 
 func TestFlushFewSmallKVOneFile(t *testing.T) {
@@ -122,13 +149,24 @@ func TestFlushFewSmallKVOneFile(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to get key '%s' after flush: %v", key, err)
 		}
+		if val == nil {
+			t.Fatalf("Key '%s' not found in SSTable", key)
+		}
 		expectedValue := fmt.Sprintf("value%d", i+1)
-		if string(val) != expectedValue {
-			t.Fatalf("Expected value '%s' for key '%s', but got %s", expectedValue, key, val)
+		if string(val.Value) != expectedValue {
+			t.Fatalf("Expected value '%s' for key '%s', but got %v", expectedValue, key, val)
 		}
 	}
 
-	expectedSize := oneFileSize(3, 1, 6) // 3 entries, each with 1 byte key and 6 byte value
+	info, err := os.Stat(sstablePath)
+	if err != nil {
+		t.Fatalf("Failed to stat file: %v", err)
+	}
+
+	calculatedSize := calcFilterSectionSize(3) + calcDataSectionSize(3, 1, 6) + calcIndexSectionSize(3, 1) + calcSummarySectionSize(3, 1) + 4*OFFSET_L
+	metadataSize := info.Size() - calculatedSize
+
+	expectedSize := oneFileSize(3, 1, 6, metadataSize) // 3 entries, each with 1 byte key and 6 byte value
 	testFileSize(t, sstablePath, expectedSize)
 }
 
@@ -155,6 +193,10 @@ func TestFlushFewLargeKVMultipleFiles(t *testing.T) {
 	filterFilename := sstableFilenameMultFile(sstablePath, "Filter")
 	expectedSize = calcFilterSectionSize(3)
 	testFileSize(t, filterFilename, expectedSize)
+
+	/*metadataFilename := sstableFilename(2, "Metadata")
+	expectedSize = calcMetadataSectionSize(3, 10000)
+	testFileSize(t, metadataFilename, expectedSize)*/
 }
 
 func TestFlushFewLargeKVOneFile(t *testing.T) {
@@ -165,7 +207,14 @@ func TestFlushFewLargeKVOneFile(t *testing.T) {
 	}
 
 	sstablePath := sstableFilepath(2)
-	expectedSize := oneFileSize(3, 5, 10000) // 3 entries, each with 5 byte key and 10000 byte value
+	info, err := os.Stat(sstablePath)
+	if err != nil {
+		t.Fatalf("Failed to stat file: %v", err)
+	}
+
+	calculatedSize := calcFilterSectionSize(3) + calcDataSectionSize(3, 5, 10000) + calcIndexSectionSize(3, 5) + calcSummarySectionSize(3, 5) + 4*OFFSET_L
+	metadataSize := info.Size() - calculatedSize
+	expectedSize := oneFileSize(3, 5, 10000, metadataSize) // 3 entries, each with 5 byte key and 10000 byte value
 	testFileSize(t, sstablePath, expectedSize)
 }
 
@@ -192,6 +241,10 @@ func TestFlushManySmallKVMultipleFiles(t *testing.T) {
 	filterFilename := sstableFilenameMultFile(sstablePath, "Filter")
 	expectedSize = calcFilterSectionSize(1000)
 	testFileSize(t, filterFilename, expectedSize)
+
+	/*metadataFilename := sstableFilename(3, "Metadata")
+	expectedSize = calcMetadataSectionSize(1000, 8)
+	testFileSize(t, metadataFilename, expectedSize)*/
 }
 
 func TestFlushManySmallKVOneFile(t *testing.T) {
@@ -202,7 +255,14 @@ func TestFlushManySmallKVOneFile(t *testing.T) {
 	}
 
 	sstablePath := sstableFilepath(3)
-	expectedSize := oneFileSize(1000, 6, 8) // 1000 entries, each with 6 byte key and 8 byte value
+	info, err := os.Stat(sstablePath)
+	if err != nil {
+		t.Fatalf("Failed to stat file: %v", err)
+	}
+
+	calculatedSize := calcFilterSectionSize(1000) + calcDataSectionSize(1000, 6, 8) + calcIndexSectionSize(1000, 6) + calcSummarySectionSize(1000, 6) + 4*OFFSET_L
+	metadataSize := info.Size() - calculatedSize
+	expectedSize := oneFileSize(1000, 6, 8, metadataSize) // 1000 entries, each with 6 byte key and 8 byte value
 	testFileSize(t, sstablePath, expectedSize)
 }
 
@@ -229,6 +289,10 @@ func TestFlushManyLargeKVMultipleFIles(t *testing.T) {
 	filterFilename := sstableFilenameMultFile(sstablePath, "Filter")
 	expectedSize = calcFilterSectionSize(10000)
 	testFileSize(t, filterFilename, expectedSize)
+
+	/*metadataFilename := sstableFilename(4, "Metadata")
+	expectedSize = calcMetadataSectionSize(10000, 10000)
+	testFileSize(t, metadataFilename, expectedSize)*/
 }
 
 func TestFlushManyLargeKVOneFile(t *testing.T) {
@@ -239,6 +303,201 @@ func TestFlushManyLargeKVOneFile(t *testing.T) {
 	}
 
 	sstablePath := sstableFilepath(4)
-	expectedSize := oneFileSize(10000, 11, 10000) // 10000 entries, each with 11 byte key and 10000 byte value
+	info, err := os.Stat(sstablePath)
+	if err != nil {
+		t.Fatalf("Failed to stat file: %v", err)
+	}
+
+	calculatedSize := calcFilterSectionSize(10000) + calcDataSectionSize(10000, 11, 10000) + calcIndexSectionSize(10000, 11) + calcSummarySectionSize(10000, 11) + 4*OFFSET_L
+	metadataSize := info.Size() - calculatedSize
+	expectedSize := oneFileSize(10000, 11, 10000, metadataSize) // 10000 entries, each with 11 byte key and 10000 byte value
 	testFileSize(t, sstablePath, expectedSize)
+}
+
+func TestMetadataValidationOneFile(t *testing.T) {
+	mem := smallSmallKeyKVMemtable{}
+	err := testFlush(t.TempDir(), mem, 1, false)
+	if err != nil {
+		t.Fatalf("Flush failed: %v", err)
+	}
+
+	isValid, corruptedData, err := ValidateSSTable(1, bm)
+	if err != nil {
+		t.Fatalf("Validation error: %v", err)
+	}
+	if !isValid {
+		t.Fatalf("Merkle validation failed, corruption data count: %d", len(corruptedData))
+	}
+}
+
+func TestMetadataCorruptionOneFile(t *testing.T) {
+	mem := smallSmallKeyKVMemtable{}
+	err := testFlush(t.TempDir(), mem, 2, false)
+	if err != nil {
+		t.Fatalf("Flush failed: %v", err)
+	}
+
+	file := sstableFilepath(2)
+	f, err := os.OpenFile(file, os.O_RDWR, 0644)
+	if err != nil {
+		t.Fatalf("Open file error: %v", err)
+	}
+	defer f.Close()
+
+	footer, err := readOneFileFooter(file, bm)
+	if err != nil {
+		t.Fatalf("Failed to read footer: %v", err)
+	}
+
+	dataReader := newBlockReader(f, bm, footer.DataStart)
+	var dataHeaderBuf [DATA_HEADER_L]byte
+	_, err = dataReader.Read(dataHeaderBuf[:])
+	if err != nil {
+		t.Fatalf("Failed to read data header: %v", err)
+	}
+
+	currByte := CRC_L + TIMESTAMP_L + TOMBSTONE_L
+	keySize := binary.BigEndian.Uint32(dataHeaderBuf[currByte:])
+	currByte += KEY_SIZE_L
+
+	valueOffset := footer.DataStart + DATA_HEADER_L + uint64(keySize)
+
+	f2, err := os.OpenFile(file, os.O_RDWR, 0644)
+	if err != nil {
+		t.Fatalf("Open file error: %v", err)
+	}
+	defer f2.Close()
+
+	newValue := []byte("AAA")
+	_, err = f2.WriteAt(newValue, int64(valueOffset))
+	if err != nil {
+		t.Fatalf("Failed to corrupt data: %v", err)
+	}
+	f2.Close()
+
+	newBM, err := BlockManager.NewBlockManager(100, 4)
+	if err != nil {
+		t.Fatalf("Failed to create new BlockManager: %v", err)
+	}
+
+	isValid, corruptedData, err := ValidateSSTable(2, newBM)
+	if err != nil {
+		t.Fatalf("Validation error: %v", err)
+	}
+
+	if isValid {
+		t.Fatalf("Merkle failed to detect change")
+	}
+	if len(corruptedData) == 0 {
+		t.Fatalf("Corrupted data not detected")
+	}
+
+	if string(corruptedData[0]) != "value1" {
+		t.Fatalf("Expected corrupted data 'value1', got '%s'", string(corruptedData[0]))
+	}
+}
+
+func TestMetadataValidationMultipleFiles(t *testing.T) {
+	mem := smallSmallKeyKVMemtable{}
+	err := testFlush(t.TempDir(), mem, 1, true)
+	if err != nil {
+		t.Fatalf("Flush failed: %v", err)
+	}
+
+	isValid, corruptedData, err := ValidateSSTable(1, bm)
+	if err != nil {
+		t.Fatalf("Validation error: %v", err)
+	}
+	if !isValid {
+		t.Fatalf("Merkle validation failed, corruption data count: %d", len(corruptedData))
+	}
+}
+
+func TestMetadataCorruptionMultipleFiles(t *testing.T) {
+	mem := smallSmallKeyKVMemtable{}
+	err := testFlush(t.TempDir(), mem, 1, true)
+	if err != nil {
+		t.Fatalf("Flush failed: %v", err)
+	}
+
+	sstablePath := sstableFilepath(1)
+	dataFile := sstableFilenameMultFile(sstablePath, "Data")
+
+	readFile, err := os.Open(dataFile)
+	if err != nil {
+		t.Fatalf("Failed to open file for reading: %v", err)
+	}
+	defer readFile.Close()
+
+	reader := newBlockReader(readFile, bm, 0)
+
+	var dataHeaderBuf [DATA_HEADER_L]byte
+	_, err = reader.Read(dataHeaderBuf[:])
+	if err != nil {
+		t.Fatalf("Failed to read data header: %v", err)
+	}
+
+	currByte := CRC_L + TIMESTAMP_L + TOMBSTONE_L
+	keySize := binary.BigEndian.Uint32(dataHeaderBuf[currByte:])
+	currByte += KEY_SIZE_L
+
+	valueOffset := DATA_HEADER_L + uint64(keySize)
+
+	f2, err := os.OpenFile(dataFile, os.O_RDWR, 0644)
+	if err != nil {
+		t.Fatalf("Open file error: %v", err)
+	}
+	defer f2.Close()
+
+	metadataFile := sstableFilenameMultFile(sstablePath, "Metadata")
+	metadata, err := os.ReadFile(metadataFile)
+	if err != nil {
+		t.Fatalf("Failed to read metadata: %v", err)
+	}
+
+	end := len(metadata)
+	for end > 0 && metadata[end-1] == 0 {
+		end--
+	}
+	metadata = metadata[:end]
+
+	originalTree := merkleTree.Deserialize(metadata)
+	if originalTree == nil {
+		t.Fatalf("Failed to deserialize tree")
+	}
+
+	newValue := []byte("AAA")
+	_, err = f2.WriteAt(newValue, int64(valueOffset))
+	if err != nil {
+		t.Fatalf("Failed to corrupt data: %v", err)
+	}
+	f2.Close()
+
+	newBM, err := BlockManager.NewBlockManager(100, 4)
+	if err != nil {
+		t.Fatalf("Failed to create new BlockManager: %v", err)
+	}
+
+	isValid, corruptedData, err := ValidateSSTable(1, newBM)
+	if err != nil {
+		t.Fatalf("Validation error: %v", err)
+	}
+
+	if isValid {
+		t.Fatalf("Merkle failed to detect change")
+	}
+	if len(corruptedData) == 0 {
+		t.Fatalf("Corrupted data not detected")
+	}
+
+	found := false
+	for _, data := range corruptedData {
+		if string(data) == "value1" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("Expected corrupted data 'value1', got: %v", corruptedData)
+	}
 }
