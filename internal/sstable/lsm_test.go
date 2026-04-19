@@ -7,11 +7,18 @@ import (
 
 func TestLSMFlushNoCompaction(t *testing.T) {
 	mem := smallSmallKeyKVMemtable{}
-	config := LSMConfig{
+	sstCfg := SSTableConfig{
+		SummaryInterval: 1,
+		MultipleFiles:   true,
+	}
+	lsmCfg := LSMConfig{
 		NumLevels:      4,
 		NumFilesLevel0: 2,
 	}
-	lsm := NewLSM(bm, config)
+	lsm, err := NewLSM(lsmCfg, t.TempDir(), sstCfg, bm)
+	if err != nil {
+		t.Fatalf("Failed to create LSM: %v", err)
+	}
 
 	for range 2 {
 		err := lsm.Flush(mem)
@@ -21,7 +28,7 @@ func TestLSMFlushNoCompaction(t *testing.T) {
 	}
 
 	for i := range 2 {
-		sstablePath := sstableFilepath(0, i)
+		sstablePath := lsm.sstm.sstableFilepath(0, i)
 		for i, key := range []string{"a", "b", "c"} {
 			val, err := GetSpecific(key, sstablePath, bm)
 			if err != nil {

@@ -30,8 +30,14 @@ func flush(t testHelper, multFiles bool, mem Memtable) string {
 		testTempDirs[t] = tempDir
 	}
 
-	SetupSSTable(tempDir, flushNum, multFiles)
-	sst, err := FlushSSTable(mem, flushNum, bm)
+	m, err := SetupSSTableManager(tempDir, SSTableConfig{
+		SummaryInterval: 10,
+		MultipleFiles:   multFiles,
+	}, bm)
+	if err != nil {
+		t.Fatalf("Failed to setup SSTable: %v", err)
+	}
+	sst, err := m.Flush(mem, flushNum)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
@@ -123,6 +129,14 @@ func TestGet(t *testing.T) {
 	flush2(t, false)
 	flush3(t, false)
 
+	m, err := SetupSSTableManager(testTempDirs[t], SSTableConfig{
+		SummaryInterval: 10,
+		MultipleFiles:   true,
+	}, bm)
+	if err != nil {
+		t.Fatalf("Failed to setup SSTableManager: %v", err)
+	}
+
 	keys := []string{"key000", "key001", "key999", "long1", "long2", "long3", "longkey0000", "longkey9999"}
 	longValueA := make([]byte, 10000)
 	for i := range longValueA {
@@ -139,7 +153,7 @@ func TestGet(t *testing.T) {
 	}
 
 	for i, key := range keys {
-		val, err := Get(key, bm)
+		val, err := m.Get(key, bm)
 		if err != nil {
 			t.Fatalf("Failed to get key '%s': %v", key, err)
 		}
