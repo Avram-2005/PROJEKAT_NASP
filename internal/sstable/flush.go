@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
 	"github.com/Avram-2005/PROJEKAT_NASP/BloomFilter"
 	merkleTree "github.com/Avram-2005/PROJEKAT_NASP/MerkleTree"
 	. "github.com/Avram-2005/PROJEKAT_NASP/Record"
@@ -48,8 +47,8 @@ func writeOneFileFooter(writer *blockWriter, summaryStart uint64, indexStart uin
 	writer.Write(footrerBuf.Buf)
 }
 
-func multipleFilesFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) error {
-	sstablePath := sstableFilepath(tableNum)
+func (m *SSTableManager) multipleFilesFlush(mem Memtable, tableNum int) error {
+	sstablePath := m.sstableFilepath(tableNum)
 	files, err := createMultipleFiles(sstablePath)
 	if err != nil {
 		return err
@@ -62,11 +61,11 @@ func multipleFilesFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManage
 		return err
 	}
 
-	dataWriter := newBlockWriter(files.dataFile, bm)
-	indexWriter := newBlockWriter(files.indexFile, bm)
-	summaryWriter := newBlockWriter(files.summaryFile, bm)
-	filterWriter := newBlockWriter(files.filterFile, bm)
-	metadataWriter := newBlockWriter(files.metadataFile, bm)
+	dataWriter := newBlockWriter(files.dataFile, m.bm)
+	indexWriter := newBlockWriter(files.indexFile, m.bm)
+	summaryWriter := newBlockWriter(files.summaryFile, m.bm)
+	filterWriter := newBlockWriter(files.filterFile, m.bm)
+	metadataWriter := newBlockWriter(files.metadataFile, m.bm)
 
 	firstEntry, lastEntry := sortedEntries[0], sortedEntries[len(sortedEntries)-1]
 	writeSummaryHeader(summaryWriter, firstEntry.Key, lastEntry.Key)
@@ -79,7 +78,7 @@ func multipleFilesFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManage
 		merkleData = append(merkleData, entry.Value)
 		offset := writeData(dataWriter, entry)
 		offset = writeIndex(indexWriter, entry.Key, offset)
-		if i%summaryInterval == 0 {
+		if i%m.config.SummaryInterval == 0 {
 			writeIndex(summaryWriter, entry.Key, offset)
 		}
 	}
@@ -112,15 +111,15 @@ type indexEntry struct {
 	Offset uint64
 }
 
-func oneFileFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) error {
-	sstableFilename := sstableFilepath(tableNum)
+func (m *SSTableManager) oneFileFlush(mem Memtable, tableNum int) error {
+	sstableFilename := m.sstableFilepath(tableNum)
 	f, err := os.Create(sstableFilename)
 	if err != nil {
 		return fmt.Errorf("failed to create SSTable file: %v", err)
 	}
 	defer f.Close()
 
-	writer := newBlockWriter(f, bm)
+	writer := newBlockWriter(f, m.bm)
 
 	bf, err := BloomFilter.NewBloomFilter(uint(len(mem.GetSortedEntries())), BLOOM_FILTER_RATE)
 	if err != nil {
@@ -151,11 +150,11 @@ func oneFileFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) err
 	}
 
 	indexStart := writer.CurrOffset()
-	summaryOffsets := make([]indexEntry, 0, len(index)/summaryInterval+1)
+	summaryOffsets := make([]indexEntry, 0, len(index)/m.config.SummaryInterval+1)
 	i := 0
 	for _, entry := range index {
 		indexOffset := writeIndex(writer, entry.Key, entry.Offset)
-		if i%summaryInterval == 0 {
+		if i%m.config.SummaryInterval == 0 {
 			summaryOffsets = append(summaryOffsets, indexEntry{
 				Key:    entry.Key,
 				Offset: indexOffset,
