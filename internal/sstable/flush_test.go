@@ -25,19 +25,25 @@ func TestMain(m *testing.M) {
 	m.Run()
 }
 
-func testFlush(tempDir string, mem Memtable, numFlush int, multFiles bool) error {
-	SetupSSTable(tempDir, 100, multFiles)
+func testFlush(tempDir string, mem Memtable, numFlush int, multFiles bool) (*SSTableManager, error) {
+	m, err := SetupSSTableManager(tempDir, SSTableConfig{
+		SummaryInterval: 10,
+		MultipleFiles:   multFiles,
+	}, bm)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to setup SSTable: %v", err)
+	}
 
 	// f, _ := os.Create(filepath.Join(tempDir, fmt.Sprintf("cpu_profile_flush_%d.prof", numFlush)))
 	// pprof.StartCPUProfile(f)
 	// defer pprof.StopCPUProfile()
 
-	_, err := FlushSSTable(mem, numFlush, bm)
+	_, err = m.Flush(mem, numFlush)
 	if err != nil {
-		return fmt.Errorf("Flush failed: %v", err)
+		return nil, fmt.Errorf("Flush failed: %v", err)
 	}
 
-	return nil
+	return m, nil
 }
 
 func testFileSize(t *testing.T, filename string, expectedSize int64) {
@@ -58,7 +64,7 @@ func calcIndexSectionSize(count int, keyLen int) int64 {
 	return int64(count * (INDEX_HEADER_L + keyLen))
 }
 
-func calcSummarySectionSize(count int, keyLen int) int64 {
+func calcSummarySectionSize(count int, keyLen int, summaryInterval int) int64 {
 	numSummaryEntries := math.Ceil(float64(count) / float64(summaryInterval))
 	return int64(int(numSummaryEntries)*(INDEX_HEADER_L+keyLen)) + 2*int64(KEY_SIZE_L+keyLen)
 }
@@ -85,11 +91,11 @@ func calcFilterSectionSize(count int) int64 {
 	}
 */
 
-func oneFileSize(keyCount int, keyLen int, valueLen int, metadataSize int64) int64 {
+func oneFileSize(keyCount int, keyLen int, valueLen int, metadataSize int64, summaryInterval int) int64 {
 	size := calcFilterSectionSize(keyCount)
 	size += calcDataSectionSize(keyCount, keyLen, valueLen)
 	size += calcIndexSectionSize(keyCount, keyLen)
-	size += calcSummarySectionSize(keyCount, keyLen)
+	size += calcSummarySectionSize(keyCount, keyLen, summaryInterval)
 	//size += calcMetadataSectionSize(keyCount, valueLen)
 	size += 4 * OFFSET_L // 4 offsets for the sections
 	size += metadataSize
@@ -98,12 +104,12 @@ func oneFileSize(keyCount int, keyLen int, valueLen int, metadataSize int64) int
 
 func TestFlushFewSmallKVMultipleFiles(t *testing.T) {
 	mem := smallSmallKeyKVMemtable{}
-	err := testFlush(t.TempDir(), mem, 1, true)
+	m, err := testFlush(t.TempDir(), mem, 1, true)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	sstablePath := sstableFilepath(0, 1)
+	sstablePath := m.sstableFilepath(0, 1)
 	for i, key := range []string{"a", "b", "c"} {
 		val, err := GetSpecific(key, sstablePath, bm)
 		if err != nil {
@@ -124,7 +130,7 @@ func TestFlushFewSmallKVMultipleFiles(t *testing.T) {
 	testFileSize(t, indexFilename, expectedSize)
 
 	summaryFilename := sstableFilenameMultFile(sstablePath, "Summary")
-	expectedSize = calcSummarySectionSize(3, 1) // 1 entry in summary, with 1 byte key and 8 byte offset
+	expectedSize = calcSummarySectionSize(3, 1, m.config.SummaryInterval) // 1 entry in summary, with 1 byte key and 8 byte offset
 	testFileSize(t, summaryFilename, expectedSize)
 
 	filterFilename := sstableFilenameMultFile(sstablePath, "Filter")
@@ -138,12 +144,12 @@ func TestFlushFewSmallKVMultipleFiles(t *testing.T) {
 
 func TestFlushFewSmallKVOneFile(t *testing.T) {
 	mem := smallSmallKeyKVMemtable{}
-	err := testFlush(t.TempDir(), mem, 1, false)
+	m, err := testFlush(t.TempDir(), mem, 1, false)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	sstablePath := sstableFilepath(0, 1)
+	sstablePath := m.sstableFilepath(0, 1)
 	for i, key := range []string{"a", "b", "c"} {
 		val, err := GetSpecific(key, sstablePath, bm)
 		if err != nil {
@@ -163,21 +169,21 @@ func TestFlushFewSmallKVOneFile(t *testing.T) {
 		t.Fatalf("Failed to stat file: %v", err)
 	}
 
-	calculatedSize := calcFilterSectionSize(3) + calcDataSectionSize(3, 1, 6) + calcIndexSectionSize(3, 1) + calcSummarySectionSize(3, 1) + 4*OFFSET_L
+	calculatedSize := calcFilterSectionSize(3) + calcDataSectionSize(3, 1, 6) + calcIndexSectionSize(3, 1) + calcSummarySectionSize(3, 1, m.config.SummaryInterval) + 4*OFFSET_L
 	metadataSize := info.Size() - calculatedSize
 
-	expectedSize := oneFileSize(3, 1, 6, metadataSize) // 3 entries, each with 1 byte key and 6 byte value
+	expectedSize := oneFileSize(3, 1, 6, metadataSize, m.config.SummaryInterval) // 3 entries, each with 1 byte key and 6 byte value
 	testFileSize(t, sstablePath, expectedSize)
 }
 
 func TestFlushFewLargeKVMultipleFiles(t *testing.T) {
 	mem := fewLargeKeyKVMemtable{}
-	err := testFlush(t.TempDir(), mem, 2, true)
+	m, err := testFlush(t.TempDir(), mem, 2, true)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	sstablePath := sstableFilepath(0, 2)
+	sstablePath := m.sstableFilepath(0, 2)
 	dataFilename := sstableFilenameMultFile(sstablePath, "Data")
 	expectedSize := calcDataSectionSize(3, 5, 10000) // 3 entries, each with 5 byte key and 10000 byte value
 	testFileSize(t, dataFilename, expectedSize)
@@ -187,7 +193,7 @@ func TestFlushFewLargeKVMultipleFiles(t *testing.T) {
 	testFileSize(t, indexFilename, expectedSize)
 
 	summaryFilename := sstableFilenameMultFile(sstablePath, "Summary")
-	expectedSize = calcSummarySectionSize(3, 5) // 1 entry in summary, with 5 byte key and 8 byte offset
+	expectedSize = calcSummarySectionSize(3, 5, m.config.SummaryInterval) // 1 entry in summary, with 5 byte key and 8 byte offset
 	testFileSize(t, summaryFilename, expectedSize)
 
 	filterFilename := sstableFilenameMultFile(sstablePath, "Filter")
@@ -201,31 +207,31 @@ func TestFlushFewLargeKVMultipleFiles(t *testing.T) {
 
 func TestFlushFewLargeKVOneFile(t *testing.T) {
 	mem := fewLargeKeyKVMemtable{}
-	err := testFlush(t.TempDir(), mem, 2, false)
+	m, err := testFlush(t.TempDir(), mem, 2, false)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	sstablePath := sstableFilepath(0, 2)
+	sstablePath := m.sstableFilepath(0, 2)
 	info, err := os.Stat(sstablePath)
 	if err != nil {
 		t.Fatalf("Failed to stat file: %v", err)
 	}
 
-	calculatedSize := calcFilterSectionSize(3) + calcDataSectionSize(3, 5, 10000) + calcIndexSectionSize(3, 5) + calcSummarySectionSize(3, 5) + 4*OFFSET_L
+	calculatedSize := calcFilterSectionSize(3) + calcDataSectionSize(3, 5, 10000) + calcIndexSectionSize(3, 5) + calcSummarySectionSize(3, 5, m.config.SummaryInterval) + 4*OFFSET_L
 	metadataSize := info.Size() - calculatedSize
-	expectedSize := oneFileSize(3, 5, 10000, metadataSize) // 3 entries, each with 5 byte key and 10000 byte value
+	expectedSize := oneFileSize(3, 5, 10000, metadataSize, m.config.SummaryInterval) // 3 entries, each with 5 byte key and 10000 byte value
 	testFileSize(t, sstablePath, expectedSize)
 }
 
 func TestFlushManySmallKVMultipleFiles(t *testing.T) {
 	mem := manySmallKeyKVMemtable{}
-	err := testFlush(t.TempDir(), mem, 3, true)
+	m, err := testFlush(t.TempDir(), mem, 3, true)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	sstablePath := sstableFilepath(0, 3)
+	sstablePath := m.sstableFilepath(0, 3)
 	dataFilename := sstableFilenameMultFile(sstablePath, "Data")
 	expectedSize := calcDataSectionSize(1000, 6, 8) // 1000 entries, each with 6 byte key and 8 byte value
 	testFileSize(t, dataFilename, expectedSize)
@@ -235,7 +241,7 @@ func TestFlushManySmallKVMultipleFiles(t *testing.T) {
 	testFileSize(t, indexFilename, expectedSize)
 
 	summaryFilename := sstableFilenameMultFile(sstablePath, "Summary")
-	expectedSize = calcSummarySectionSize(1000, 6) // 1 entry in summary, with 6 byte key and 8 byte offset
+	expectedSize = calcSummarySectionSize(1000, 6, m.config.SummaryInterval) // 1 entry in summary, with 6 byte key and 8 byte offset
 	testFileSize(t, summaryFilename, expectedSize)
 
 	filterFilename := sstableFilenameMultFile(sstablePath, "Filter")
@@ -249,31 +255,31 @@ func TestFlushManySmallKVMultipleFiles(t *testing.T) {
 
 func TestFlushManySmallKVOneFile(t *testing.T) {
 	mem := manySmallKeyKVMemtable{}
-	err := testFlush(t.TempDir(), mem, 3, false)
+	m, err := testFlush(t.TempDir(), mem, 3, false)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	sstablePath := sstableFilepath(0, 3)
+	sstablePath := m.sstableFilepath(0, 3)
 	info, err := os.Stat(sstablePath)
 	if err != nil {
 		t.Fatalf("Failed to stat file: %v", err)
 	}
 
-	calculatedSize := calcFilterSectionSize(1000) + calcDataSectionSize(1000, 6, 8) + calcIndexSectionSize(1000, 6) + calcSummarySectionSize(1000, 6) + 4*OFFSET_L
+	calculatedSize := calcFilterSectionSize(1000) + calcDataSectionSize(1000, 6, 8) + calcIndexSectionSize(1000, 6) + calcSummarySectionSize(1000, 6, m.config.SummaryInterval) + 4*OFFSET_L
 	metadataSize := info.Size() - calculatedSize
-	expectedSize := oneFileSize(1000, 6, 8, metadataSize) // 1000 entries, each with 6 byte key and 8 byte value
+	expectedSize := oneFileSize(1000, 6, 8, metadataSize, m.config.SummaryInterval) // 1000 entries, each with 6 byte key and 8 byte value
 	testFileSize(t, sstablePath, expectedSize)
 }
 
 func TestFlushManyLargeKVMultipleFIles(t *testing.T) {
 	mem := manyLargeKeyKVMemtable{}
-	err := testFlush(t.TempDir(), mem, 4, true)
+	m, err := testFlush(t.TempDir(), mem, 4, true)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	sstablePath := sstableFilepath(0, 4)
+	sstablePath := m.sstableFilepath(0, 4)
 	dataFilename := sstableFilenameMultFile(sstablePath, "Data")
 	expectedSize := calcDataSectionSize(10000, 11, 10000) // 10000 entries, each with 11 byte key and 10000 byte value
 	testFileSize(t, dataFilename, expectedSize)
@@ -283,7 +289,7 @@ func TestFlushManyLargeKVMultipleFIles(t *testing.T) {
 	testFileSize(t, indexFilename, expectedSize)
 
 	summaryFilename := sstableFilenameMultFile(sstablePath, "Summary")
-	expectedSize = calcSummarySectionSize(10000, 11) // 1 entry in summary, with 11 byte key and 8 byte offset
+	expectedSize = calcSummarySectionSize(10000, 11, m.config.SummaryInterval) // 1 entry in summary, with 11 byte key and 8 byte offset
 	testFileSize(t, summaryFilename, expectedSize)
 
 	filterFilename := sstableFilenameMultFile(sstablePath, "Filter")
@@ -297,31 +303,31 @@ func TestFlushManyLargeKVMultipleFIles(t *testing.T) {
 
 func TestFlushManyLargeKVOneFile(t *testing.T) {
 	mem := manyLargeKeyKVMemtable{}
-	err := testFlush(t.TempDir(), mem, 4, false)
+	m, err := testFlush(t.TempDir(), mem, 4, false)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	sstablePath := sstableFilepath(0, 4)
+	sstablePath := m.sstableFilepath(0, 4)
 	info, err := os.Stat(sstablePath)
 	if err != nil {
 		t.Fatalf("Failed to stat file: %v", err)
 	}
 
-	calculatedSize := calcFilterSectionSize(10000) + calcDataSectionSize(10000, 11, 10000) + calcIndexSectionSize(10000, 11) + calcSummarySectionSize(10000, 11) + 4*OFFSET_L
+	calculatedSize := calcFilterSectionSize(10000) + calcDataSectionSize(10000, 11, 10000) + calcIndexSectionSize(10000, 11) + calcSummarySectionSize(10000, 11, m.config.SummaryInterval) + 4*OFFSET_L
 	metadataSize := info.Size() - calculatedSize
-	expectedSize := oneFileSize(10000, 11, 10000, metadataSize) // 10000 entries, each with 11 byte key and 10000 byte value
+	expectedSize := oneFileSize(10000, 11, 10000, metadataSize, m.config.SummaryInterval) // 10000 entries, each with 11 byte key and 10000 byte value
 	testFileSize(t, sstablePath, expectedSize)
 }
 
 func TestMetadataValidationOneFile(t *testing.T) {
 	mem := smallSmallKeyKVMemtable{}
-	err := testFlush(t.TempDir(), mem, 1, false)
+	m, err := testFlush(t.TempDir(), mem, 1, false)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	isValid, corruptedData, err := ValidateSSTable(1, bm)
+	isValid, corruptedData, err := m.ValidateSSTable(1)
 	if err != nil {
 		t.Fatalf("Validation error: %v", err)
 	}
@@ -332,12 +338,12 @@ func TestMetadataValidationOneFile(t *testing.T) {
 
 func TestMetadataCorruptionOneFile(t *testing.T) {
 	mem := smallSmallKeyKVMemtable{}
-	err := testFlush(t.TempDir(), mem, 2, false)
+	m, err := testFlush(t.TempDir(), mem, 2, false)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	file := sstableFilepath(0, 2)
+	file := m.sstableFilepath(0, 2)
 	f, err := os.OpenFile(file, os.O_RDWR, 0644)
 	if err != nil {
 		t.Fatalf("Open file error: %v", err)
@@ -379,8 +385,9 @@ func TestMetadataCorruptionOneFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create new BlockManager: %v", err)
 	}
+	m.bm = newBM
 
-	isValid, corruptedData, err := ValidateSSTable(2, newBM)
+	isValid, corruptedData, err := m.ValidateSSTable(2)
 	if err != nil {
 		t.Fatalf("Validation error: %v", err)
 	}
@@ -399,12 +406,12 @@ func TestMetadataCorruptionOneFile(t *testing.T) {
 
 func TestMetadataValidationMultipleFiles(t *testing.T) {
 	mem := smallSmallKeyKVMemtable{}
-	err := testFlush(t.TempDir(), mem, 1, true)
+	m, err := testFlush(t.TempDir(), mem, 1, true)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	isValid, corruptedData, err := ValidateSSTable(1, bm)
+	isValid, corruptedData, err := m.ValidateSSTable(1)
 	if err != nil {
 		t.Fatalf("Validation error: %v", err)
 	}
@@ -415,12 +422,12 @@ func TestMetadataValidationMultipleFiles(t *testing.T) {
 
 func TestMetadataCorruptionMultipleFiles(t *testing.T) {
 	mem := smallSmallKeyKVMemtable{}
-	err := testFlush(t.TempDir(), mem, 1, true)
+	m, err := testFlush(t.TempDir(), mem, 1, true)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	sstablePath := sstableFilepath(0, 1)
+	sstablePath := m.sstableFilepath(0, 1)
 	dataFile := sstableFilenameMultFile(sstablePath, "Data")
 
 	readFile, err := os.Open(dataFile)
@@ -477,8 +484,9 @@ func TestMetadataCorruptionMultipleFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create new BlockManager: %v", err)
 	}
+	m.bm = newBM
 
-	isValid, corruptedData, err := ValidateSSTable(1, newBM)
+	isValid, corruptedData, err := m.ValidateSSTable(1)
 	if err != nil {
 		t.Fatalf("Validation error: %v", err)
 	}
@@ -499,31 +507,5 @@ func TestMetadataCorruptionMultipleFiles(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("Expected corrupted data 'value1', got: %v", corruptedData)
-	}
-}
-
-func TestLSMFlush(t *testing.T) {
-	mem := smallSmallKeyKVMemtable{}
-	config := LSMConfig{
-		NumLevels:      4,
-		NumFilesLevel0: 2,
-	}
-	lsm := NewLSM(bm, config)
-
-	err := lsm.Flush(mem)
-	if err != nil {
-		t.Fatalf("Flush failed: %v", err)
-	}
-
-	sstablePath := sstableFilepath(0, 0)
-	for i, key := range []string{"a", "b", "c"} {
-		val, err := GetSpecific(key, sstablePath, bm)
-		if err != nil {
-			t.Fatalf("Failed to get key '%s' after flush: %v", key, err)
-		}
-		expectedValue := fmt.Sprintf("value%d", i+1)
-		if string(val.Value) != expectedValue {
-			t.Fatalf("Expected value '%s' for key '%s', but got %v", expectedValue, key, val)
-		}
 	}
 }

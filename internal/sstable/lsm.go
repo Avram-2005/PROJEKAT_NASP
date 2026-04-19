@@ -21,16 +21,20 @@ type Level struct {
 
 type LSM struct {
 	levels []Level
-	bm     *BlockManager.BlockManager
 	config LSMConfig
+	sstm   *SSTableManager
 }
 
-func NewLSM(bm *BlockManager.BlockManager, config LSMConfig) *LSM {
-	return &LSM{
-		levels: make([]Level, config.NumLevels),
-		bm:     bm,
-		config: config,
+func NewLSM(lsmConfig LSMConfig, tablesRoot string, sstConfig SSTableConfig, bm *BlockManager.BlockManager) (*LSM, error) {
+	m, err := SetupSSTableManager(tablesRoot, sstConfig, bm)
+	if err != nil {
+		return nil, fmt.Errorf("failed to setup SSTableManager: %v", err)
 	}
+	return &LSM{
+		levels: make([]Level, lsmConfig.NumLevels),
+		config: lsmConfig,
+		sstm:   m,
+	}, nil
 }
 
 func (l *Level) ShouldCompact() bool {
@@ -49,7 +53,7 @@ func (lsm *LSM) Compact() error {
 }
 
 func (lsm *LSM) Flush(mem Memtable) error {
-	sst, err := FlushSSTable(mem, len(lsm.levels[0].tables), lsm.bm)
+	sst, err := lsm.sstm.Flush(mem, len(lsm.levels[0].tables))
 	if err != nil {
 		return fmt.Errorf("failed to flush memtable: %v", err)
 	}
