@@ -104,8 +104,9 @@ func (m *SSTableManager) multipleFilesFlush(mem Memtable, tableNum int) (*SSTabl
 	metadataWriter.Finalize()
 
 	return &SSTable{
-		path: sstablePath,
-		size: dataWriter.CurrOffset() + indexWriter.CurrOffset() + summaryWriter.CurrOffset() + filterWriter.CurrOffset(),
+		path:        sstablePath,
+		size:        dataWriter.CurrOffset() + indexWriter.CurrOffset() + summaryWriter.CurrOffset() + filterWriter.CurrOffset(),
+		isMultFiles: true,
 	}, nil
 }
 
@@ -189,7 +190,8 @@ func (m *SSTableManager) oneFileFlush(mem Memtable, tableNum int) (*SSTable, err
 
 	writer.Finalize()
 	return &SSTable{
-		path: sstableFilename,
-		size: writer.CurrOffset(),
+		path:        sstableFilename,
+		size:        writer.CurrOffset(),
+		isMultFiles: false,
 	}, nil
 }
