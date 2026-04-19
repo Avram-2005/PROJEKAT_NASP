@@ -3,6 +3,8 @@ package sstable
 import (
 	"fmt"
 	"math"
+	"os"
+	"path/filepath"
 
 	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
 )
@@ -16,11 +18,11 @@ type LSMConfig struct {
 type Level struct {
 	levelNum int
 	size     uint64
-	tables   []SSTable
+	tables   []*SSTable
 }
 
 type LSM struct {
-	levels []Level
+	levels []*Level
 	config LSMConfig
 	sstm   *SSTableManager
 }
@@ -30,11 +32,45 @@ func NewLSM(lsmConfig LSMConfig, tablesRoot string, sstConfig SSTableConfig, bm 
 	if err != nil {
 		return nil, fmt.Errorf("failed to setup SSTableManager: %v", err)
 	}
-	return &LSM{
-		levels: make([]Level, lsmConfig.NumLevels),
+	lsm := LSM{
+		levels: make([]*Level, lsmConfig.NumLevels),
 		config: lsmConfig,
 		sstm:   m,
-	}, nil
+	}
+	lsm.levels[0] = &Level{
+		levelNum: 0,
+		size:     0,
+		tables:   []*SSTable{},
+	}
+
+	files, err := os.ReadDir(m.TablesRoot)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read tables directory: %v", err)
+	}
+
+	for _, file := range files {
+		sstablePath := filepath.Join(m.TablesRoot, file.Name())
+		sstable, err := createSSTable(sstablePath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create SSTable from file %s: %v", sstablePath, err)
+		}
+		levelNum, err := extractLevelNum(file.Name())
+		if err != nil {
+			return nil, fmt.Errorf("failed to startup LSM: %v", err)
+		}
+		if lsm.levels[levelNum] == nil {
+			lsm.levels[levelNum] = &Level{
+				levelNum: levelNum,
+				size:     0,
+				tables:   []*SSTable{},
+			}
+		}
+		lsm.levels[levelNum].tables = append(lsm.levels[levelNum].tables, sstable)
+		lsm.levels[levelNum].size += sstable.size
+		lsm.levels[levelNum].levelNum = levelNum
+	}
+
+	return &lsm, nil
 }
 
 func (l *Level) ShouldCompact() bool {
@@ -57,16 +93,28 @@ func (lsm *LSM) Flush(mem Memtable) error {
 	if err != nil {
 		return fmt.Errorf("failed to flush memtable: %v", err)
 	}
-	lsm.levels[0].tables = append(lsm.levels[0].tables, *sst)
+	lsm.levels[0].tables = append(lsm.levels[0].tables, sst)
 	lsm.levels[0].size += sst.size
 	if lsm.levels[0].ShouldCompactL0(lsm.config.NumFilesLevel0) {
 		if err := lsm.Compact(); err != nil {
-			return fmt.Errorf("failed to perform minor compaction: %v", err)
+			return fmt.Errorf("failed to perform compaction: %v", err)
 		}
 	}
 	return nil
 }
 
 func (lsm *LSM) Get(key string) ([]byte, error) {
-	return nil, fmt.Errorf("Get not implemented yet")
+	for _, level := range lsm.levels {
+		for _, sstable := range level.tables {
+			rec, err := lsm.sstm.Get(key, sstable)
+			if err != nil {
+				return nil, fmt.Errorf("error getting key from SSTable %s: %v", sstable.path, err)
+			}
+			if rec != nil {
+				return rec.Value, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("key %s not found in any SSTable", key)
 }

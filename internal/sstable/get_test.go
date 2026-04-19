@@ -20,7 +20,7 @@ type testHelper interface {
 	TempDir() string
 }
 
-func flush(t testHelper, multFiles bool, mem Memtable) string {
+func flush(t testHelper, multFiles bool, mem Memtable) (*SSTableManager, *SSTable) {
 	flushNum := getNextFlushNum()
 
 	// Get or create temp directory for this test
@@ -41,25 +41,25 @@ func flush(t testHelper, multFiles bool, mem Memtable) string {
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
-	return sst.path
+	return m, sst
 }
 
-func flush1(t testHelper, multFiles bool) string {
+func flush1(t testHelper, multFiles bool) (*SSTableManager, *SSTable) {
 	return flush(t, multFiles, &manySmallKeyKVMemtable{})
 }
 
-func flush2(t testHelper, multFiles bool) string {
+func flush2(t testHelper, multFiles bool) (*SSTableManager, *SSTable) {
 	return flush(t, multFiles, &fewLargeKeyKVMemtable{})
 }
 
-func flush3(t testHelper, multFiles bool) string {
+func flush3(t testHelper, multFiles bool) (*SSTableManager, *SSTable) {
 	return flush(t, multFiles, &manyLargeKeyKVMemtable{})
 }
 
 func testGetSpecific(t *testing.T, key string, expectedValue string, multFiles bool) {
-	sstablePath := flush1(t, multFiles)
+	m, sst := flush1(t, multFiles)
 
-	val, err := GetSpecific(key, sstablePath, bm)
+	val, err := m.Get(key, sst)
 	if err != nil {
 		t.Fatalf("Failed to get key '%s': %v", key, err)
 	}
@@ -101,9 +101,9 @@ func TestGetSpecificMiddleKeyOneFile(t *testing.T) {
 }
 
 func TestGetSpecificNonExistentKeyMultipleFiles(t *testing.T) {
-	sstablePath := flush1(t, true)
+	m, sst := flush1(t, true)
 
-	value, err := GetSpecific("nonexistent", sstablePath, bm)
+	value, err := m.Get("nonexistent", sst)
 	if err != nil {
 		t.Fatalf("Error when getting non-existent key: %v", err)
 	}
@@ -113,9 +113,9 @@ func TestGetSpecificNonExistentKeyMultipleFiles(t *testing.T) {
 }
 
 func TestGetSpecificNonExistentKeyOneFile(t *testing.T) {
-	sstablePath := flush1(t, false)
+	m, sst := flush1(t, false)
 
-	value, err := GetSpecific("nonexistent", sstablePath, bm)
+	value, err := m.Get("nonexistent", sst)
 	if err != nil {
 		t.Fatalf("Error when getting non-existent key: %v", err)
 	}
@@ -129,12 +129,18 @@ func TestGet(t *testing.T) {
 	flush2(t, false)
 	flush3(t, false)
 
-	m, err := SetupSSTableManager(testTempDirs[t], SSTableConfig{
+	lsmCfg := LSMConfig{
+		NumLevels:      4,
+		NumFilesLevel0: 2,
+	}
+	sstCfg := SSTableConfig{
 		SummaryInterval: 10,
 		MultipleFiles:   true,
-	}, bm)
+	}
+
+	lsm, err := NewLSM(lsmCfg, testTempDirs[t], sstCfg, bm)
 	if err != nil {
-		t.Fatalf("Failed to setup SSTableManager: %v", err)
+		t.Fatalf("Failed to create LSM: %v", err)
 	}
 
 	keys := []string{"key000", "key001", "key999", "long1", "long2", "long3", "longkey0000", "longkey9999"}
@@ -153,7 +159,7 @@ func TestGet(t *testing.T) {
 	}
 
 	for i, key := range keys {
-		val, err := m.Get(key, bm)
+		val, err := lsm.Get(key)
 		if err != nil {
 			t.Fatalf("Failed to get key '%s': %v", key, err)
 		}
@@ -173,12 +179,12 @@ func genKeys(n int) []string {
 
 func benchmarkGetSpecific(b *testing.B, multFiles bool) {
 	r := rand.New(rand.NewSource(42))
-	sstablePath := flush1(b, multFiles)
+	m, sst := flush1(b, multFiles)
 
 	keys := genKeys(1000)
 	for b.Loop() {
 		key := keys[r.Intn(len(keys))]
-		_, err := GetSpecific(key, sstablePath, bm)
+		_, err := m.Get(key, sst)
 		if err != nil {
 			b.Fatalf("Error when getting key: %v", err)
 		}

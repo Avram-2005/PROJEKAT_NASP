@@ -49,9 +49,23 @@ func SetupSSTableManager(root string, config SSTableConfig, bm *BlockManager.Blo
 	}, nil
 }
 
+// TODO: Could store the BloomFilter and Summary here as well
 type SSTable struct {
-	path string
-	size uint64
+	path        string
+	size        uint64
+	isMultFiles bool
+}
+
+func createSSTable(path string) (*SSTable, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat path %s: %v", path, err)
+	}
+	return &SSTable{
+		path:        path,
+		size:        uint64(info.Size()),
+		isMultFiles: info.IsDir(),
+	}, nil
 }
 
 // TODO: Compression (1.3[DZ3])
@@ -62,31 +76,11 @@ func (m *SSTableManager) Flush(mem Memtable, tableNum int) (*SSTable, error) {
 	return m.oneFileFlush(mem, tableNum)
 }
 
-func (m *SSTableManager) Get(key string, bm *BlockManager.BlockManager) ([]byte, error) {
-	files, err := os.ReadDir(m.TablesRoot)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read tables directory: %v", err)
+func (sstm *SSTableManager) Get(key string, sst *SSTable) (*Record, error) {
+	if sst.isMultFiles {
+		return sstm.getMultipleFiles(key, sst.path)
 	}
-
-	for _, file := range files {
-		sstablePath := filepath.Join(m.TablesRoot, file.Name())
-		rec, err := GetSpecific(key, sstablePath, bm)
-		if err != nil {
-			return nil, fmt.Errorf("error getting key from SSTable %s: %v", sstablePath, err)
-		}
-		if rec != nil {
-			return rec.Value, nil
-		}
-	}
-
-	return nil, fmt.Errorf("key %s not found in any SSTable", key)
-}
-
-func GetSpecific(key string, sstablePath string, bm *BlockManager.BlockManager) (*Record, error) {
-	if isSSTableMultFiles(sstablePath) {
-		return getMultipleFiles(key, sstablePath, bm)
-	}
-	return getOneFile(key, sstablePath, bm)
+	return sstm.getOneFile(key, sst.path)
 }
 
 func isSSTableMultFiles(sstablePath string) bool {
@@ -105,7 +99,16 @@ func (m *SSTableManager) sstableFilepath(level int, tableNum int) string {
 	return filepath.Join(m.TablesRoot, fmt.Sprintf("L%d-%010d", level, tableNum))
 }
 
-func createSSTableFile(fileType string, sstablePath string) (*os.File, error) {
+func extractLevelNum(filename string) (int, error) {
+	var levelNum int
+	_, err := fmt.Sscanf(filename, "L%d-", &levelNum)
+	if err != nil {
+		return 0, fmt.Errorf("failed to extract level number from filename %s: %v", filename, err)
+	}
+	return levelNum, nil
+}
+
+func createMultFile(fileType string, sstablePath string) (*os.File, error) {
 	filename := sstableFilenameMultFile(sstablePath, fileType)
 	if _, err := os.Stat(filename); err == nil {
 		return nil, fmt.Errorf("file %s already exists", filename)
@@ -133,23 +136,23 @@ type sstableFiles struct {
 }
 
 func createMultipleFiles(sstablePath string) (*sstableFiles, error) {
-	dataFile, err := createSSTableFile("Data", sstablePath)
+	dataFile, err := createMultFile("Data", sstablePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create data file: %v", err)
 	}
-	indexFile, err := createSSTableFile("Index", sstablePath)
+	indexFile, err := createMultFile("Index", sstablePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create index file: %v", err)
 	}
-	summaryFile, err := createSSTableFile("Summary", sstablePath)
+	summaryFile, err := createMultFile("Summary", sstablePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create summary file: %v", err)
 	}
-	filterFile, err := createSSTableFile("Filter", sstablePath)
+	filterFile, err := createMultFile("Filter", sstablePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create filter file: %v", err)
 	}
-	metadataFile, err := createSSTableFile("Metadata", sstablePath)
+	metadataFile, err := createMultFile("Metadata", sstablePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create metadata file: %v", err)
 	}
@@ -182,7 +185,7 @@ func (m *SSTableManager) ValidateSSTable(tableNum int) (bool, [][]byte, error) {
 
 // TODO: Move this to a separate file
 func (m *SSTableManager) validateOneFile(filename string) (bool, [][]byte, error) {
-	footer, err := readOneFileFooter(filename, m.bm)
+	footer, err := m.readOneFileFooter(filename)
 	if err != nil {
 		return false, nil, fmt.Errorf("failed to read SSTable footer: %v", err)
 	}

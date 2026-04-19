@@ -1,12 +1,10 @@
 package sstable
 
 import (
-	"fmt"
 	"testing"
 )
 
-func TestLSMFlushNoCompaction(t *testing.T) {
-	mem := smallSmallKeyKVMemtable{}
+func testLSM(t *testing.T, memtables []Memtable) {
 	sstCfg := SSTableConfig{
 		SummaryInterval: 1,
 		MultipleFiles:   true,
@@ -20,24 +18,24 @@ func TestLSMFlushNoCompaction(t *testing.T) {
 		t.Fatalf("Failed to create LSM: %v", err)
 	}
 
-	for range 2 {
+	for i, mem := range memtables {
 		err := lsm.Flush(mem)
 		if err != nil {
-			t.Fatalf("Flush failed: %v", err)
+			t.Fatalf("Flush failed for memtable %d: %v", i, err)
 		}
 	}
+}
 
-	for i := range 2 {
-		sstablePath := lsm.sstm.sstableFilepath(0, i)
-		for i, key := range []string{"a", "b", "c"} {
-			val, err := GetSpecific(key, sstablePath, bm)
-			if err != nil {
-				t.Fatalf("Failed to get key '%s' after flush: %v", key, err)
-			}
-			expectedValue := fmt.Sprintf("value%d", i+1)
-			if string(val.Value) != expectedValue {
-				t.Fatalf("Expected value '%s' for key '%s', but got %v", expectedValue, key, val)
-			}
-		}
-	}
+func TestLSMFlushNoCompaction(t *testing.T) {
+	testLSM(t, []Memtable{
+		smallSmallKeyKVMemtable{}, manyLargeKeyKVMemtable{},
+	})
+}
+
+func TestLSMFlushL0Compaction(t *testing.T) {
+	testLSM(t, []Memtable{
+		smallSmallKeyKVMemtable{},
+		manyLargeKeyKVMemtable{},
+		smallSmallKeyKVMemtable{},
+	})
 }

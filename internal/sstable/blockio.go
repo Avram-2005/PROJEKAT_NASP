@@ -47,6 +47,7 @@ func (bw *blockWriter) copyToBlock(data []byte, offset int) int {
 	return n
 }
 
+// TODO: Consider adding padding
 func (bw *blockWriter) Write(data []byte) int {
 	totalWritten := 0
 	toWrite := len(data)
@@ -100,6 +101,7 @@ func (br *blockReader) readBlock() error {
 	return nil
 }
 
+// TODO: Consider adding padding
 func (br *blockReader) Read(dest []byte) (int, error) {
 	totalRead := 0
 	toRead := len(dest)
