@@ -48,18 +48,18 @@ func writeOneFileFooter(writer *blockWriter, summaryStart uint64, indexStart uin
 	writer.Write(footrerBuf.Buf)
 }
 
-func multipleFilesFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) error {
-	sstablePath := sstableFilepath(tableNum)
+func multipleFilesFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) (*SSTable, error) {
+	sstablePath := sstableFilepath(0, tableNum)
 	files, err := createMultipleFiles(sstablePath)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer files.close()
 
 	sortedEntries := mem.GetSortedEntries()
 	bf, err := BloomFilter.NewBloomFilter(uint(len(sortedEntries)), BLOOM_FILTER_RATE)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	dataWriter := newBlockWriter(files.dataFile, bm)
@@ -88,7 +88,7 @@ func multipleFilesFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManage
 	// TODO: Seperate this into a different function
 	tree, err := merkleTree.NewMerkleTree(merkleData)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	serializedTree := tree.Serialize()
 
@@ -104,7 +104,10 @@ func multipleFilesFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManage
 	filterWriter.Finalize()
 	metadataWriter.Finalize()
 
-	return nil
+	return &SSTable{
+		path: sstablePath,
+		size: dataWriter.CurrOffset() + indexWriter.CurrOffset() + summaryWriter.CurrOffset() + filterWriter.CurrOffset(),
+	}, nil
 }
 
 type indexEntry struct {
@@ -112,11 +115,11 @@ type indexEntry struct {
 	Offset uint64
 }
 
-func oneFileFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) error {
-	sstableFilename := sstableFilepath(tableNum)
+func oneFileFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) (*SSTable, error) {
+	sstableFilename := sstableFilepath(0, tableNum)
 	f, err := os.Create(sstableFilename)
 	if err != nil {
-		return fmt.Errorf("failed to create SSTable file: %v", err)
+		return nil, fmt.Errorf("failed to create SSTable file: %v", err)
 	}
 	defer f.Close()
 
@@ -124,7 +127,7 @@ func oneFileFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) err
 
 	bf, err := BloomFilter.NewBloomFilter(uint(len(mem.GetSortedEntries())), BLOOM_FILTER_RATE)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// TODO: Consider doing this in a single pass
@@ -174,17 +177,20 @@ func oneFileFlush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) err
 	metadataStart := writer.CurrOffset()
 	tree, err := merkleTree.NewMerkleTree(merkleData)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	serializedTree := tree.Serialize()
 	writer.Write(serializedTree)
 
 	if writer.currBlockNum == 0 && writer.currByte == 0 {
-		return fmt.Errorf("memtable is empty, no data written")
+		return nil, fmt.Errorf("memtable is empty, no data written")
 	}
 
 	writeOneFileFooter(writer, summaryStart, indexStart, dataStart, metadataStart)
 
 	writer.Finalize()
-	return nil
+	return &SSTable{
+		path: sstableFilename,
+		size: writer.CurrOffset(),
+	}, nil
 }

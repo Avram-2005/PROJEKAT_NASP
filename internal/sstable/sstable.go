@@ -36,10 +36,12 @@ func SetupSSTable(root string, summaryInt int, multFiles bool) error {
 }
 
 type SSTable struct {
+	path string
+	size uint64
 }
 
 // TODO: Compression (1.3[DZ3])
-func Flush(mem Memtable, tableNum int, bm *BlockManager.BlockManager) error {
+func FlushSSTable(mem Memtable, tableNum int, bm *BlockManager.BlockManager) (*SSTable, error) {
 	if multipleFiles {
 		return multipleFilesFlush(mem, tableNum, bm)
 	}
@@ -85,9 +87,8 @@ func sstableFilenameMultFile(sstablePath string, fileType string) string {
 	return filepath.Join(sstablePath, fmt.Sprintf("usertable-%s.txt", fileType))
 }
 
-// FIXME: Set the level after LSM Tree is implemented
-func sstableFilepath(tableNum int) string {
-	return filepath.Join(tablesRoot, fmt.Sprintf("L%d-%010d", 1, tableNum))
+func sstableFilepath(level int, tableNum int) string {
+	return filepath.Join(tablesRoot, fmt.Sprintf("L%d-%010d", level, tableNum))
 }
 
 func createSSTableFile(fileType string, sstablePath string) (*os.File, error) {
@@ -157,7 +158,7 @@ func (files *sstableFiles) close() {
 }
 
 func ValidateSSTable(tableNum int, bm *BlockManager.BlockManager) (bool, [][]byte, error) {
-	filename := sstableFilepath(tableNum)
+	filename := sstableFilepath(0, tableNum)
 	if isSSTableMultFiles(filename) {
 		return validateMultipleFiles(tableNum, bm)
 	}
@@ -235,7 +236,7 @@ func validateOneFile(filename string, bm *BlockManager.BlockManager) (bool, [][]
 }
 
 func validateMultipleFiles(tableNum int, bm *BlockManager.BlockManager) (bool, [][]byte, error) {
-	sstablePath := sstableFilepath(tableNum)
+	sstablePath := sstableFilepath(0, tableNum)
 	metadataFilename := sstableFilenameMultFile(sstablePath, "Metadata")
 	metadataFile, err := os.Open(metadataFilename)
 	if err != nil {

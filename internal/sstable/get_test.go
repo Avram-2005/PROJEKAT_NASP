@@ -31,11 +31,11 @@ func flush(t testHelper, multFiles bool, mem Memtable) string {
 	}
 
 	SetupSSTable(tempDir, flushNum, multFiles)
-	err := Flush(mem, flushNum, bm)
+	sst, err := FlushSSTable(mem, flushNum, bm)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
-	return sstableFilepath(flushNum)
+	return sst.path
 }
 
 func flush1(t testHelper, multFiles bool) string {

@@ -32,7 +32,7 @@ func testFlush(tempDir string, mem Memtable, numFlush int, multFiles bool) error
 	// pprof.StartCPUProfile(f)
 	// defer pprof.StopCPUProfile()
 
-	err := Flush(mem, numFlush, bm)
+	_, err := FlushSSTable(mem, numFlush, bm)
 	if err != nil {
 		return fmt.Errorf("Flush failed: %v", err)
 	}
@@ -103,7 +103,7 @@ func TestFlushFewSmallKVMultipleFiles(t *testing.T) {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	sstablePath := sstableFilepath(1)
+	sstablePath := sstableFilepath(0, 1)
 	for i, key := range []string{"a", "b", "c"} {
 		val, err := GetSpecific(key, sstablePath, bm)
 		if err != nil {
@@ -143,7 +143,7 @@ func TestFlushFewSmallKVOneFile(t *testing.T) {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	sstablePath := sstableFilepath(1)
+	sstablePath := sstableFilepath(0, 1)
 	for i, key := range []string{"a", "b", "c"} {
 		val, err := GetSpecific(key, sstablePath, bm)
 		if err != nil {
@@ -177,7 +177,7 @@ func TestFlushFewLargeKVMultipleFiles(t *testing.T) {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	sstablePath := sstableFilepath(2)
+	sstablePath := sstableFilepath(0, 2)
 	dataFilename := sstableFilenameMultFile(sstablePath, "Data")
 	expectedSize := calcDataSectionSize(3, 5, 10000) // 3 entries, each with 5 byte key and 10000 byte value
 	testFileSize(t, dataFilename, expectedSize)
@@ -206,7 +206,7 @@ func TestFlushFewLargeKVOneFile(t *testing.T) {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	sstablePath := sstableFilepath(2)
+	sstablePath := sstableFilepath(0, 2)
 	info, err := os.Stat(sstablePath)
 	if err != nil {
 		t.Fatalf("Failed to stat file: %v", err)
@@ -225,7 +225,7 @@ func TestFlushManySmallKVMultipleFiles(t *testing.T) {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	sstablePath := sstableFilepath(3)
+	sstablePath := sstableFilepath(0, 3)
 	dataFilename := sstableFilenameMultFile(sstablePath, "Data")
 	expectedSize := calcDataSectionSize(1000, 6, 8) // 1000 entries, each with 6 byte key and 8 byte value
 	testFileSize(t, dataFilename, expectedSize)
@@ -254,7 +254,7 @@ func TestFlushManySmallKVOneFile(t *testing.T) {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	sstablePath := sstableFilepath(3)
+	sstablePath := sstableFilepath(0, 3)
 	info, err := os.Stat(sstablePath)
 	if err != nil {
 		t.Fatalf("Failed to stat file: %v", err)
@@ -273,7 +273,7 @@ func TestFlushManyLargeKVMultipleFIles(t *testing.T) {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	sstablePath := sstableFilepath(4)
+	sstablePath := sstableFilepath(0, 4)
 	dataFilename := sstableFilenameMultFile(sstablePath, "Data")
 	expectedSize := calcDataSectionSize(10000, 11, 10000) // 10000 entries, each with 11 byte key and 10000 byte value
 	testFileSize(t, dataFilename, expectedSize)
@@ -302,7 +302,7 @@ func TestFlushManyLargeKVOneFile(t *testing.T) {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	sstablePath := sstableFilepath(4)
+	sstablePath := sstableFilepath(0, 4)
 	info, err := os.Stat(sstablePath)
 	if err != nil {
 		t.Fatalf("Failed to stat file: %v", err)
@@ -337,7 +337,7 @@ func TestMetadataCorruptionOneFile(t *testing.T) {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	file := sstableFilepath(2)
+	file := sstableFilepath(0, 2)
 	f, err := os.OpenFile(file, os.O_RDWR, 0644)
 	if err != nil {
 		t.Fatalf("Open file error: %v", err)
@@ -420,7 +420,7 @@ func TestMetadataCorruptionMultipleFiles(t *testing.T) {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	sstablePath := sstableFilepath(1)
+	sstablePath := sstableFilepath(0, 1)
 	dataFile := sstableFilenameMultFile(sstablePath, "Data")
 
 	readFile, err := os.Open(dataFile)
@@ -499,5 +499,31 @@ func TestMetadataCorruptionMultipleFiles(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("Expected corrupted data 'value1', got: %v", corruptedData)
+	}
+}
+
+func TestLSMFlush(t *testing.T) {
+	mem := smallSmallKeyKVMemtable{}
+	config := LSMConfig{
+		NumLevels:      4,
+		NumFilesLevel0: 2,
+	}
+	lsm := NewLSM(bm, config)
+
+	err := lsm.Flush(mem)
+	if err != nil {
+		t.Fatalf("Flush failed: %v", err)
+	}
+
+	sstablePath := sstableFilepath(0, 0)
+	for i, key := range []string{"a", "b", "c"} {
+		val, err := GetSpecific(key, sstablePath, bm)
+		if err != nil {
+			t.Fatalf("Failed to get key '%s' after flush: %v", key, err)
+		}
+		expectedValue := fmt.Sprintf("value%d", i+1)
+		if string(val.Value) != expectedValue {
+			t.Fatalf("Expected value '%s' for key '%s', but got %v", expectedValue, key, val)
+		}
 	}
 }
