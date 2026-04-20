@@ -10,6 +10,7 @@ import (
 	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
 	merkleTree "github.com/Avram-2005/PROJEKAT_NASP/MerkleTree"
 	. "github.com/Avram-2005/PROJEKAT_NASP/Record"
+	. "github.com/Avram-2005/PROJEKAT_NASP/utils"
 )
 
 // FIXME: DELETE AFTER Memtable MERGE /
@@ -54,18 +55,36 @@ type SSTable struct {
 	path        string
 	size        uint64
 	isMultFiles bool
+	footer      *OneFileFooter
 }
 
-func createSSTable(path string) (*SSTable, error) {
-	info, err := os.Stat(path)
+func (sstm *SSTableManager) createSSTable(path string) (*SSTable, error) {
+	file, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to stat path %s: %v", path, err)
+		return nil, fmt.Errorf("failed to open SSTable file: %v", err)
 	}
-	return &SSTable{
+	defer file.Close()
+
+	info, err := file.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get file info: %v", err)
+	}
+
+	sst := &SSTable{
 		path:        path,
 		size:        uint64(info.Size()),
 		isMultFiles: info.IsDir(),
-	}, nil
+	}
+
+	if !sst.isMultFiles {
+		footer, err := sstm.GetOneFileFooter(file)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read SSTable footer: %v", err)
+		}
+		sst.footer = footer
+	}
+
+	return sst, nil
 }
 
 // TODO: Compression (1.3[DZ3])
@@ -159,6 +178,50 @@ func (files *sstableFiles) Close() {
 	files.metadataFile.Close()
 }
 
+type OneFileFooter struct {
+	SummaryStart  uint64
+	IndexStart    uint64
+	DataStart     uint64
+	MetadataStart uint64
+}
+
+func (m *SSTableManager) GetOneFileFooter(file *os.File) (*OneFileFooter, error) {
+	stat, err := file.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat SSTable file: %v", err)
+	}
+	if stat.Size() < FOOTER_L {
+		return nil, fmt.Errorf("file size is too small to contain footer")
+	}
+
+	offset := uint64(stat.Size() - FOOTER_L)
+	reader := newBlockReader(file, m.bm, offset)
+
+	bufferReader := NewBufferReader(FOOTER_L)
+	_, err = reader.Read(bufferReader.Buf)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read footer: %v", err)
+	}
+
+	footer := &OneFileFooter{
+		SummaryStart:  bufferReader.ReadOffset(),
+		IndexStart:    bufferReader.ReadOffset(),
+		DataStart:     bufferReader.ReadOffset(),
+		MetadataStart: bufferReader.ReadOffset(),
+	}
+
+	return footer, nil
+}
+
+func (off *OneFileFooter) Write(writer *blockWriter) {
+	footrerBuf := NewBufferWriter(FOOTER_L)
+	footrerBuf.WriteOffset(off.SummaryStart)
+	footrerBuf.WriteOffset(off.IndexStart)
+	footrerBuf.WriteOffset(off.DataStart)
+	footrerBuf.WriteOffset(off.MetadataStart)
+	writer.Write(footrerBuf.Buf)
+}
+
 // TODO: This should be a method of SSTable
 func (m *SSTableManager) ValidateSSTable(tableNum int) (bool, [][]byte, error) {
 	filename := m.sstableFilepath(0, tableNum)
@@ -176,7 +239,7 @@ func (m *SSTableManager) validateOneFile(filename string) (bool, [][]byte, error
 	}
 	defer f.Close()
 
-	footer, err := m.readOneFileFooter(f)
+	footer, err := m.GetOneFileFooter(f)
 	if err != nil {
 		return false, nil, fmt.Errorf("failed to read SSTable footer: %v", err)
 	}

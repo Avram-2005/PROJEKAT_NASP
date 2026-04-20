@@ -350,7 +350,7 @@ func TestMetadataCorruptionOneFile(t *testing.T) {
 	}
 	defer f.Close()
 
-	footer, err := m.readOneFileFooter(f)
+	footer, err := m.GetOneFileFooter(f)
 	if err != nil {
 		t.Fatalf("Failed to read footer: %v", err)
 	}
