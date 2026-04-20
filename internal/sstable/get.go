@@ -167,11 +167,9 @@ func (m *SSTableManager) searchFilter(file *os.File, offset uint64, readSize uin
 	return bf.IsFound([]byte(key)), nil
 }
 
-func (m *SSTableManager) parseData(file *os.File, offset uint64, key string) (*Record, error) {
-	dataReader := newBlockReader(file, m.bm, offset)
-
+func (m *SSTableManager) parseData(reader *blockReader) (*Record, error) {
 	var dataHeaderBuf [DATA_HEADER_L]byte
-	_, err := dataReader.Read(dataHeaderBuf[:])
+	_, err := reader.Read(dataHeaderBuf[:])
 	if err != nil {
 		return nil, fmt.Errorf("failed to read data header: %v", err)
 	}
@@ -180,15 +178,13 @@ func (m *SSTableManager) parseData(file *os.File, offset uint64, key string) (*R
 
 	valueBuf := make([]byte, header.ValueSize)
 	keyBuf := make([]byte, header.KeySize)
-	_, err = dataReader.Read(keyBuf)
+	_, err = reader.Read(keyBuf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read key: %v", err)
 	}
 	readKey := string(keyBuf)
-	if readKey != key {
-		return nil, fmt.Errorf("key mismatch: expected %s, got %s", key, readKey)
-	}
-	_, err = dataReader.Read(valueBuf)
+
+	_, err = reader.Read(valueBuf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read value: %v", err)
 	}
@@ -240,7 +236,8 @@ func (sstm *SSTableManager) getMultipleFiles(key string, sstablePath string) (*R
 		return nil, fmt.Errorf("failed to search index file: %v", err)
 	}
 
-	return sstm.parseData(files.dataFile, offset, key)
+	dataReader := newBlockReader(files.dataFile, sstm.bm, offset)
+	return sstm.parseData(dataReader)
 }
 
 func (m *SSTableManager) getOneFile(key string, sstablePath string) (*Record, error) {
@@ -278,5 +275,6 @@ func (m *SSTableManager) getOneFile(key string, sstablePath string) (*Record, er
 		return nil, fmt.Errorf("failed to search index file: %v", err)
 	}
 
-	return m.parseData(file, offset, key)
+	dataReader := newBlockReader(file, m.bm, offset)
+	return m.parseData(dataReader)
 }
