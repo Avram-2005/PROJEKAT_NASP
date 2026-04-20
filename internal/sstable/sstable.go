@@ -108,25 +108,6 @@ func extractLevelNum(filename string) (int, error) {
 	return levelNum, nil
 }
 
-func createMultFile(fileType string, sstablePath string) (*os.File, error) {
-	filename := sstableFilenameMultFile(sstablePath, fileType)
-	if _, err := os.Stat(filename); err == nil {
-		return nil, fmt.Errorf("file %s already exists", filename)
-	}
-
-	dir := filepath.Dir(filename)
-	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
-		return nil, fmt.Errorf("failed to create directory %s: %w", dir, err)
-	}
-
-	f, err := os.Create(filename)
-	if err != nil {
-		return nil, err
-	}
-
-	return f, nil
-}
-
 type sstableFiles struct {
 	dataFile     *os.File
 	indexFile    *os.File
@@ -135,26 +116,30 @@ type sstableFiles struct {
 	metadataFile *os.File
 }
 
-func createMultipleFiles(sstablePath string) (*sstableFiles, error) {
-	dataFile, err := createMultFile("Data", sstablePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create data file: %v", err)
+func openMultipleFiles(sstablePath string) (*sstableFiles, error) {
+	if err := os.MkdirAll(sstablePath, os.ModePerm); err != nil {
+		return nil, fmt.Errorf("failed to create directory for multiple files: %v", err)
 	}
-	indexFile, err := createMultFile("Index", sstablePath)
+
+	dataFile, err := os.OpenFile(sstableFilenameMultFile(sstablePath, "Data"), os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create index file: %v", err)
+		return nil, fmt.Errorf("failed to open data file: %v", err)
 	}
-	summaryFile, err := createMultFile("Summary", sstablePath)
+	indexFile, err := os.OpenFile(sstableFilenameMultFile(sstablePath, "Index"), os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create summary file: %v", err)
+		return nil, fmt.Errorf("failed to open index file: %v", err)
 	}
-	filterFile, err := createMultFile("Filter", sstablePath)
+	summaryFile, err := os.OpenFile(sstableFilenameMultFile(sstablePath, "Summary"), os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create filter file: %v", err)
+		return nil, fmt.Errorf("failed to open summary file: %v", err)
 	}
-	metadataFile, err := createMultFile("Metadata", sstablePath)
+	filterFile, err := os.OpenFile(sstableFilenameMultFile(sstablePath, "Filter"), os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create metadata file: %v", err)
+		return nil, fmt.Errorf("failed to open filter file: %v", err)
+	}
+	metadataFile, err := os.OpenFile(sstableFilenameMultFile(sstablePath, "Metadata"), os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open metadata file: %v", err)
 	}
 
 	return &sstableFiles{
@@ -166,7 +151,7 @@ func createMultipleFiles(sstablePath string) (*sstableFiles, error) {
 	}, nil
 }
 
-func (files *sstableFiles) close() {
+func (files *sstableFiles) Close() {
 	files.dataFile.Close()
 	files.indexFile.Close()
 	files.summaryFile.Close()
@@ -185,16 +170,16 @@ func (m *SSTableManager) ValidateSSTable(tableNum int) (bool, [][]byte, error) {
 
 // TODO: Move this to a separate file
 func (m *SSTableManager) validateOneFile(filename string) (bool, [][]byte, error) {
-	footer, err := m.readOneFileFooter(filename)
-	if err != nil {
-		return false, nil, fmt.Errorf("failed to read SSTable footer: %v", err)
-	}
-
 	f, err := os.Open(filename)
 	if err != nil {
 		return false, nil, fmt.Errorf("failed to open SSTable file: %v", err)
 	}
 	defer f.Close()
+
+	footer, err := m.readOneFileFooter(f)
+	if err != nil {
+		return false, nil, fmt.Errorf("failed to read SSTable footer: %v", err)
+	}
 
 	metadataReader := newBlockReader(f, m.bm, footer.MetadataStart)
 

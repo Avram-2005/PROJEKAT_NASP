@@ -49,11 +49,11 @@ func writeOneFileFooter(writer *blockWriter, summaryStart uint64, indexStart uin
 
 func (m *SSTableManager) multipleFilesFlush(mem Memtable, tableNum int) (*SSTable, error) {
 	sstablePath := m.sstableFilepath(0, tableNum)
-	files, err := createMultipleFiles(sstablePath)
+	files, err := openMultipleFiles(sstablePath)
 	if err != nil {
 		return nil, err
 	}
-	defer files.close()
+	defer files.Close()
 
 	sortedEntries := mem.GetSortedEntries()
 	bf, err := BloomFilter.NewBloomFilter(uint(len(sortedEntries)), BLOOM_FILTER_RATE)
