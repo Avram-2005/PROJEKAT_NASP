@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
+	"github.com/Avram-2005/PROJEKAT_NASP/BloomFilter"
 	merkleTree "github.com/Avram-2005/PROJEKAT_NASP/MerkleTree"
 	. "github.com/Avram-2005/PROJEKAT_NASP/Record"
 	. "github.com/Avram-2005/PROJEKAT_NASP/utils"
@@ -56,16 +57,11 @@ type SSTable struct {
 	size        uint64
 	isMultFiles bool
 	footer      *OneFileFooter
+	filter      *BloomFilter.BloomFilter
 }
 
 func (sstm *SSTableManager) createSSTable(path string) (*SSTable, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open SSTable file: %v", err)
-	}
-	defer file.Close()
-
-	info, err := file.Stat()
+	info, err := os.Stat(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get file info: %v", err)
 	}
@@ -76,30 +72,61 @@ func (sstm *SSTableManager) createSSTable(path string) (*SSTable, error) {
 		isMultFiles: info.IsDir(),
 	}
 
-	if !sst.isMultFiles {
+	var filterFile *os.File
+	var filterSize uint64
+
+	if sst.isMultFiles {
+		filterPath := sstableFilenameMultFile(path, "Filter")
+		filterFile, err = os.Open(filterPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open filter file: %v", err)
+		}
+		defer filterFile.Close()
+
+		info, err := filterFile.Stat()
+		if err != nil {
+			return nil, fmt.Errorf("failed to stat filter file: %v", err)
+		}
+		filterSize = uint64(info.Size())
+	} else {
+		file, err := os.Open(path)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open SSTable file: %v", err)
+		}
+		defer file.Close()
+
 		footer, err := sstm.GetOneFileFooter(file)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read SSTable footer: %v", err)
 		}
 		sst.footer = footer
+
+		filterSize = footer.DataStart
+		filterFile = file
 	}
+
+	bf, err := sstm.GetFilter(filterFile, 0, filterSize)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load bloom filter: %v", err)
+	}
+	sst.filter = bf
 
 	return sst, nil
 }
 
 // TODO: Compression (1.3[DZ3])
-func (m *SSTableManager) Flush(mem Memtable, tableNum int) (*SSTable, error) {
-	if m.config.MultipleFiles {
-		return m.multipleFilesFlush(mem, tableNum)
+func (sstm *SSTableManager) Flush(mem Memtable, tableNum int) (*SSTable, error) {
+	if sstm.config.MultipleFiles {
+		return sstm.multipleFilesFlush(mem, tableNum)
 	}
-	return m.oneFileFlush(mem, tableNum)
+	return sstm.oneFileFlush(mem, tableNum)
 }
 
 func (sstm *SSTableManager) Get(key string, sst *SSTable) (*Record, error) {
 	if sst.isMultFiles {
-		return sstm.getMultipleFiles(key, sst.path)
+		return sstm.getMultipleFiles(key, sst)
 	}
-	return sstm.getOneFile(key, sst.path)
+	return sstm.getOneFile(key, sst)
 }
 
 func isSSTableMultFiles(sstablePath string) bool {
@@ -114,8 +141,8 @@ func sstableFilenameMultFile(sstablePath string, fileType string) string {
 	return filepath.Join(sstablePath, fmt.Sprintf("usertable-%s.txt", fileType))
 }
 
-func (m *SSTableManager) sstableFilepath(level int, tableNum int) string {
-	return filepath.Join(m.TablesRoot, fmt.Sprintf("L%d-%010d", level, tableNum))
+func (sstm *SSTableManager) sstableFilepath(level int, tableNum int) string {
+	return filepath.Join(sstm.TablesRoot, fmt.Sprintf("L%d-%010d", level, tableNum))
 }
 
 func extractLevelNum(filename string) (int, error) {
@@ -185,7 +212,7 @@ type OneFileFooter struct {
 	MetadataStart uint64
 }
 
-func (m *SSTableManager) GetOneFileFooter(file *os.File) (*OneFileFooter, error) {
+func (sstm *SSTableManager) GetOneFileFooter(file *os.File) (*OneFileFooter, error) {
 	stat, err := file.Stat()
 	if err != nil {
 		return nil, fmt.Errorf("failed to stat SSTable file: %v", err)
@@ -195,7 +222,7 @@ func (m *SSTableManager) GetOneFileFooter(file *os.File) (*OneFileFooter, error)
 	}
 
 	offset := uint64(stat.Size() - FOOTER_L)
-	reader := newBlockReader(file, m.bm, offset)
+	reader := newBlockReader(file, sstm.bm, offset)
 
 	bufferReader := NewBufferReader(FOOTER_L)
 	_, err = reader.Read(bufferReader.Buf)
@@ -223,28 +250,28 @@ func (off *OneFileFooter) Write(writer *blockWriter) {
 }
 
 // TODO: This should be a method of SSTable
-func (m *SSTableManager) ValidateSSTable(tableNum int) (bool, [][]byte, error) {
-	filename := m.sstableFilepath(0, tableNum)
+func (sstm *SSTableManager) ValidateSSTable(tableNum int) (bool, [][]byte, error) {
+	filename := sstm.sstableFilepath(0, tableNum)
 	if isSSTableMultFiles(filename) {
-		return m.validateMultipleFiles(tableNum)
+		return sstm.validateMultipleFiles(tableNum)
 	}
-	return m.validateOneFile(filename)
+	return sstm.validateOneFile(filename)
 }
 
 // TODO: Move this to a separate file
-func (m *SSTableManager) validateOneFile(filename string) (bool, [][]byte, error) {
+func (sstm *SSTableManager) validateOneFile(filename string) (bool, [][]byte, error) {
 	f, err := os.Open(filename)
 	if err != nil {
 		return false, nil, fmt.Errorf("failed to open SSTable file: %v", err)
 	}
 	defer f.Close()
 
-	footer, err := m.GetOneFileFooter(f)
+	footer, err := sstm.GetOneFileFooter(f)
 	if err != nil {
 		return false, nil, fmt.Errorf("failed to read SSTable footer: %v", err)
 	}
 
-	metadataReader := newBlockReader(f, m.bm, footer.MetadataStart)
+	metadataReader := newBlockReader(f, sstm.bm, footer.MetadataStart)
 
 	stat, _ := f.Stat()
 	footerStart := uint64(stat.Size()) - FOOTER_L
@@ -261,7 +288,7 @@ func (m *SSTableManager) validateOneFile(filename string) (bool, [][]byte, error
 		return false, nil, fmt.Errorf("failed to deserialize merkle tree")
 	}
 
-	dataReader := newBlockReader(f, m.bm, footer.DataStart)
+	dataReader := newBlockReader(f, sstm.bm, footer.DataStart)
 
 	var currentData [][]byte
 	for {
@@ -301,8 +328,8 @@ func (m *SSTableManager) validateOneFile(filename string) (bool, [][]byte, error
 	return false, diffs, nil
 }
 
-func (m *SSTableManager) validateMultipleFiles(tableNum int) (bool, [][]byte, error) {
-	sstablePath := m.sstableFilepath(0, tableNum)
+func (sstm *SSTableManager) validateMultipleFiles(tableNum int) (bool, [][]byte, error) {
+	sstablePath := sstm.sstableFilepath(0, tableNum)
 	metadataFilename := sstableFilenameMultFile(sstablePath, "Metadata")
 	metadataFile, err := os.Open(metadataFilename)
 	if err != nil {
@@ -310,7 +337,7 @@ func (m *SSTableManager) validateMultipleFiles(tableNum int) (bool, [][]byte, er
 	}
 	defer metadataFile.Close()
 
-	metadataReader := newBlockReader(metadataFile, m.bm, 0)
+	metadataReader := newBlockReader(metadataFile, sstm.bm, 0)
 
 	sizeHeader := make([]byte, 4)
 	_, err = metadataReader.Read(sizeHeader)
@@ -347,7 +374,7 @@ func (m *SSTableManager) validateMultipleFiles(tableNum int) (bool, [][]byte, er
 	}
 	fileSize := stat.Size()
 
-	dataReader := newBlockReader(dataFile, m.bm, 0)
+	dataReader := newBlockReader(dataFile, sstm.bm, 0)
 
 	var currentData [][]byte
 	for {

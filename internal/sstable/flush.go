@@ -38,8 +38,8 @@ func writeSummaryHeader(writer *blockWriter, firstKey string, lastKey string) {
 	writer.Write([]byte(lastKey))
 }
 
-func (m *SSTableManager) multipleFilesFlush(mem Memtable, tableNum int) (*SSTable, error) {
-	sstablePath := m.sstableFilepath(0, tableNum)
+func (sstm *SSTableManager) multipleFilesFlush(mem Memtable, tableNum int) (*SSTable, error) {
+	sstablePath := sstm.sstableFilepath(0, tableNum)
 	files, err := openMultipleFiles(sstablePath)
 	if err != nil {
 		return nil, err
@@ -52,11 +52,11 @@ func (m *SSTableManager) multipleFilesFlush(mem Memtable, tableNum int) (*SSTabl
 		return nil, err
 	}
 
-	dataWriter := newBlockWriter(files.dataFile, m.bm)
-	indexWriter := newBlockWriter(files.indexFile, m.bm)
-	summaryWriter := newBlockWriter(files.summaryFile, m.bm)
-	filterWriter := newBlockWriter(files.filterFile, m.bm)
-	metadataWriter := newBlockWriter(files.metadataFile, m.bm)
+	dataWriter := newBlockWriter(files.dataFile, sstm.bm)
+	indexWriter := newBlockWriter(files.indexFile, sstm.bm)
+	summaryWriter := newBlockWriter(files.summaryFile, sstm.bm)
+	filterWriter := newBlockWriter(files.filterFile, sstm.bm)
+	metadataWriter := newBlockWriter(files.metadataFile, sstm.bm)
 
 	firstEntry, lastEntry := sortedEntries[0], sortedEntries[len(sortedEntries)-1]
 	writeSummaryHeader(summaryWriter, firstEntry.Key, lastEntry.Key)
@@ -69,7 +69,7 @@ func (m *SSTableManager) multipleFilesFlush(mem Memtable, tableNum int) (*SSTabl
 		merkleData = append(merkleData, entry.Value)
 		offset := writeData(dataWriter, entry)
 		offset = writeIndex(indexWriter, entry.Key, offset)
-		if i%m.config.SummaryInterval == 0 {
+		if i%sstm.config.SummaryInterval == 0 {
 			writeIndex(summaryWriter, entry.Key, offset)
 		}
 	}
@@ -98,6 +98,8 @@ func (m *SSTableManager) multipleFilesFlush(mem Memtable, tableNum int) (*SSTabl
 		path:        sstablePath,
 		size:        dataWriter.CurrOffset() + indexWriter.CurrOffset() + summaryWriter.CurrOffset() + filterWriter.CurrOffset(),
 		isMultFiles: true,
+		footer:      nil,
+		filter:      bf,
 	}, nil
 }
 
@@ -106,8 +108,8 @@ type indexEntry struct {
 	Offset uint64
 }
 
-func (m *SSTableManager) oneFileFlush(mem Memtable, tableNum int) (*SSTable, error) {
-	sstableFilename := m.sstableFilepath(0, tableNum)
+func (sstm *SSTableManager) oneFileFlush(mem Memtable, tableNum int) (*SSTable, error) {
+	sstableFilename := sstm.sstableFilepath(0, tableNum)
 	f, err := os.Create(sstableFilename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create SSTable file: %v", err)
@@ -115,7 +117,7 @@ func (m *SSTableManager) oneFileFlush(mem Memtable, tableNum int) (*SSTable, err
 	defer f.Close()
 	footer := OneFileFooter{}
 
-	writer := newBlockWriter(f, m.bm)
+	writer := newBlockWriter(f, sstm.bm)
 
 	bf, err := BloomFilter.NewBloomFilter(uint(len(mem.GetSortedEntries())), BLOOM_FILTER_RATE)
 	if err != nil {
@@ -146,11 +148,11 @@ func (m *SSTableManager) oneFileFlush(mem Memtable, tableNum int) (*SSTable, err
 	}
 
 	footer.IndexStart = writer.CurrOffset()
-	summaryOffsets := make([]indexEntry, 0, len(index)/m.config.SummaryInterval+1)
+	summaryOffsets := make([]indexEntry, 0, len(index)/sstm.config.SummaryInterval+1)
 	i := 0
 	for _, entry := range index {
 		indexOffset := writeIndex(writer, entry.Key, entry.Offset)
-		if i%m.config.SummaryInterval == 0 {
+		if i%sstm.config.SummaryInterval == 0 {
 			summaryOffsets = append(summaryOffsets, indexEntry{
 				Key:    entry.Key,
 				Offset: indexOffset,
@@ -186,5 +188,6 @@ func (m *SSTableManager) oneFileFlush(mem Memtable, tableNum int) (*SSTable, err
 		size:        writer.CurrOffset(),
 		isMultFiles: false,
 		footer:      &footer,
+		filter:      bf,
 	}, nil
 }
