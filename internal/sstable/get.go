@@ -103,14 +103,8 @@ func findPreviousKeyOffset(searchKey string, reader *blockReader, sectionEnd uin
 	}
 }
 
-func (m *SSTableManager) searchIndex(indexFilename string, key string, oldOffset uint64, sectionEnd uint64) (uint64, error) {
-	indexFile, err := os.Open(indexFilename)
-	if err != nil {
-		return 0, fmt.Errorf("failed to open index file: %v", err)
-	}
-	defer indexFile.Close()
-	indexReader := newBlockReader(indexFile, m.bm, oldOffset)
-
+func (m *SSTableManager) searchIndex(file *os.File, key string, oldOffset uint64, sectionEnd uint64) (uint64, error) {
+	indexReader := newBlockReader(file, m.bm, oldOffset)
 	return findNextKeyOffset(key, indexReader, sectionEnd)
 }
 
@@ -123,16 +117,11 @@ func readKey(reader *blockReader, keySize int) (string, error) {
 	return string(keyBuf), nil
 }
 
-func (m *SSTableManager) searchSummary(summaryFilename string, offset uint64, sectionEnd uint64, key string) (bool, uint64, error) {
-	summaryFile, err := os.Open(summaryFilename)
-	if err != nil {
-		return false, 0, fmt.Errorf("failed to open summary file: %v", err)
-	}
-	defer summaryFile.Close()
-	summaryReader := newBlockReader(summaryFile, m.bm, offset)
+func (m *SSTableManager) searchSummary(file *os.File, offset uint64, sectionEnd uint64, key string) (bool, uint64, error) {
+	summaryReader := newBlockReader(file, m.bm, offset)
 
 	bufferReader := NewBufferReader(2 * KEY_SIZE_L)
-	_, err = summaryReader.Read(bufferReader.Buf)
+	_, err := summaryReader.Read(bufferReader.Buf)
 	if err != nil {
 		return false, 0, fmt.Errorf("failed to read summary header: %v", err)
 	}
@@ -157,24 +146,18 @@ func (m *SSTableManager) searchSummary(summaryFilename string, offset uint64, se
 	return true, offset, err
 }
 
-func (m *SSTableManager) searchFilter(filterFilename string, offset uint64, readSize uint64, key string) (bool, error) {
-	filterFile, err := os.Open(filterFilename)
-	if err != nil {
-		return false, fmt.Errorf("failed to open filter file: %v", err)
-	}
-	defer filterFile.Close()
-
+func (m *SSTableManager) searchFilter(file *os.File, offset uint64, readSize uint64, key string) (bool, error) {
 	if readSize == 0 {
-		stat, err := filterFile.Stat()
+		stat, err := file.Stat()
 		if err != nil {
 			return false, err
 		}
 		readSize = uint64(stat.Size())
 	}
 
-	filterReader := newBlockReader(filterFile, m.bm, offset)
+	filterReader := newBlockReader(file, m.bm, offset)
 	filterData := make([]byte, readSize)
-	_, err = filterReader.Read(filterData)
+	_, err := filterReader.Read(filterData)
 	if err != nil {
 		return false, err
 	}
@@ -184,16 +167,11 @@ func (m *SSTableManager) searchFilter(filterFilename string, offset uint64, read
 	return bf.IsFound([]byte(key)), nil
 }
 
-func (m *SSTableManager) parseData(dataFilename string, offset uint64, key string) (*Record, error) {
-	dataFile, err := os.Open(dataFilename)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open data file: %v", err)
-	}
-	defer dataFile.Close()
-	dataReader := newBlockReader(dataFile, m.bm, offset)
+func (m *SSTableManager) parseData(file *os.File, offset uint64, key string) (*Record, error) {
+	dataReader := newBlockReader(file, m.bm, offset)
 
 	var dataHeaderBuf [DATA_HEADER_L]byte
-	_, err = dataReader.Read(dataHeaderBuf[:])
+	_, err := dataReader.Read(dataHeaderBuf[:])
 	if err != nil {
 		return nil, fmt.Errorf("failed to read data header: %v", err)
 	}
@@ -233,8 +211,13 @@ func (m *SSTableManager) parseData(dataFilename string, offset uint64, key strin
 }
 
 func (sstm *SSTableManager) getMultipleFiles(key string, sstablePath string) (*Record, error) {
-	filterFilename := sstableFilenameMultFile(sstablePath, "Filter")
-	isFound, err := sstm.searchFilter(filterFilename, 0, 0, key)
+	files, err := openMultipleFiles(sstablePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open files: %v", err)
+	}
+	defer files.Close()
+
+	isFound, err := sstm.searchFilter(files.filterFile, 0, 0, key)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read bloom filter: %v", err)
 	}
@@ -244,8 +227,7 @@ func (sstm *SSTableManager) getMultipleFiles(key string, sstablePath string) (*R
 		return nil, nil
 	}
 
-	summaryFilename := sstableFilenameMultFile(sstablePath, "Summary")
-	isFound, offset, err := sstm.searchSummary(summaryFilename, 0, 0, key)
+	isFound, offset, err := sstm.searchSummary(files.summaryFile, 0, 0, key)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search summary file: %v", err)
 	}
@@ -253,14 +235,12 @@ func (sstm *SSTableManager) getMultipleFiles(key string, sstablePath string) (*R
 		return nil, nil
 	}
 
-	indexFilename := sstableFilenameMultFile(sstablePath, "Index")
-	offset, err = sstm.searchIndex(indexFilename, key, offset, 0)
+	offset, err = sstm.searchIndex(files.indexFile, key, offset, 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search index file: %v", err)
 	}
 
-	dataFilename := sstableFilenameMultFile(sstablePath, "Data")
-	return sstm.parseData(dataFilename, offset, key)
+	return sstm.parseData(files.dataFile, offset, key)
 }
 
 // FIXME: Use the struct for flush as well
@@ -271,14 +251,8 @@ type oneFileFooter struct {
 	MetadataStart uint64
 }
 
-func (m *SSTableManager) readOneFileFooter(sstablePath string) (*oneFileFooter, error) {
-	f, err := os.Open(sstablePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open SSTable file: %v", err)
-	}
-	defer f.Close()
-
-	stat, err := f.Stat()
+func (m *SSTableManager) readOneFileFooter(file *os.File) (*oneFileFooter, error) {
+	stat, err := file.Stat()
 	if err != nil {
 		return nil, fmt.Errorf("failed to stat SSTable file: %v", err)
 	}
@@ -287,7 +261,7 @@ func (m *SSTableManager) readOneFileFooter(sstablePath string) (*oneFileFooter, 
 	}
 
 	offset := uint64(stat.Size() - FOOTER_L)
-	reader := newBlockReader(f, m.bm, offset)
+	reader := newBlockReader(file, m.bm, offset)
 
 	bufferReader := NewBufferReader(FOOTER_L)
 	_, err = reader.Read(bufferReader.Buf)
@@ -305,14 +279,19 @@ func (m *SSTableManager) readOneFileFooter(sstablePath string) (*oneFileFooter, 
 	return footer, nil
 }
 
-// FIXME: Do this without opening and closing the file multiple times
 func (m *SSTableManager) getOneFile(key string, sstablePath string) (*Record, error) {
-	footer, err := m.readOneFileFooter(sstablePath)
+	file, err := os.Open(sstablePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open SSTable file: %v", err)
+	}
+	defer file.Close()
+
+	footer, err := m.readOneFileFooter(file)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read footer: %v", err)
 	}
 
-	isFound, err := m.searchFilter(sstablePath, 0, footer.DataStart, key)
+	isFound, err := m.searchFilter(file, 0, footer.DataStart, key)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read bloom filter: %v", err)
 	}
@@ -322,7 +301,7 @@ func (m *SSTableManager) getOneFile(key string, sstablePath string) (*Record, er
 		return nil, nil
 	}
 
-	isFound, offset, err := m.searchSummary(sstablePath, footer.SummaryStart, footer.MetadataStart, key)
+	isFound, offset, err := m.searchSummary(file, footer.SummaryStart, footer.MetadataStart, key)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search summary file: %v", err)
 	}
@@ -330,10 +309,10 @@ func (m *SSTableManager) getOneFile(key string, sstablePath string) (*Record, er
 		return nil, nil
 	}
 
-	offset, err = m.searchIndex(sstablePath, key, offset, footer.SummaryStart)
+	offset, err = m.searchIndex(file, key, offset, footer.SummaryStart)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search index file: %v", err)
 	}
 
-	return m.parseData(sstablePath, offset, key)
+	return m.parseData(file, offset, key)
 }
