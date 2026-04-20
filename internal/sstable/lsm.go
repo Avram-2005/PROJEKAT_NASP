@@ -28,14 +28,14 @@ type LSM struct {
 }
 
 func NewLSM(lsmConfig LSMConfig, tablesRoot string, sstConfig SSTableConfig, bm *BlockManager.BlockManager) (*LSM, error) {
-	m, err := SetupSSTableManager(tablesRoot, sstConfig, bm)
+	sstm, err := SetupSSTableManager(tablesRoot, sstConfig, bm)
 	if err != nil {
 		return nil, fmt.Errorf("failed to setup SSTableManager: %v", err)
 	}
 	lsm := LSM{
 		levels: make([]*Level, lsmConfig.NumLevels),
 		config: lsmConfig,
-		sstm:   m,
+		sstm:   sstm,
 	}
 	lsm.levels[0] = &Level{
 		levelNum: 0,
@@ -43,14 +43,14 @@ func NewLSM(lsmConfig LSMConfig, tablesRoot string, sstConfig SSTableConfig, bm 
 		tables:   []*SSTable{},
 	}
 
-	files, err := os.ReadDir(m.TablesRoot)
+	files, err := os.ReadDir(sstm.TablesRoot)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read tables directory: %v", err)
 	}
 
 	for _, file := range files {
-		sstablePath := filepath.Join(m.TablesRoot, file.Name())
-		sstable, err := createSSTable(sstablePath)
+		sstablePath := filepath.Join(sstm.TablesRoot, file.Name())
+		sstable, err := sstm.createSSTable(sstablePath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create SSTable from file %s: %v", sstablePath, err)
 		}

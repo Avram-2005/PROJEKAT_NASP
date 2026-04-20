@@ -243,42 +243,6 @@ func (sstm *SSTableManager) getMultipleFiles(key string, sstablePath string) (*R
 	return sstm.parseData(files.dataFile, offset, key)
 }
 
-// FIXME: Use the struct for flush as well
-type oneFileFooter struct {
-	SummaryStart  uint64
-	IndexStart    uint64
-	DataStart     uint64
-	MetadataStart uint64
-}
-
-func (m *SSTableManager) readOneFileFooter(file *os.File) (*oneFileFooter, error) {
-	stat, err := file.Stat()
-	if err != nil {
-		return nil, fmt.Errorf("failed to stat SSTable file: %v", err)
-	}
-	if stat.Size() < FOOTER_L {
-		return nil, fmt.Errorf("file size is too small to contain footer")
-	}
-
-	offset := uint64(stat.Size() - FOOTER_L)
-	reader := newBlockReader(file, m.bm, offset)
-
-	bufferReader := NewBufferReader(FOOTER_L)
-	_, err = reader.Read(bufferReader.Buf)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read footer: %v", err)
-	}
-
-	footer := &oneFileFooter{
-		SummaryStart:  bufferReader.ReadOffset(),
-		IndexStart:    bufferReader.ReadOffset(),
-		DataStart:     bufferReader.ReadOffset(),
-		MetadataStart: bufferReader.ReadOffset(),
-	}
-
-	return footer, nil
-}
-
 func (m *SSTableManager) getOneFile(key string, sstablePath string) (*Record, error) {
 	file, err := os.Open(sstablePath)
 	if err != nil {
@@ -286,7 +250,7 @@ func (m *SSTableManager) getOneFile(key string, sstablePath string) (*Record, er
 	}
 	defer file.Close()
 
-	footer, err := m.readOneFileFooter(file)
+	footer, err := m.GetOneFileFooter(file)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read footer: %v", err)
 	}

@@ -38,15 +38,6 @@ func writeSummaryHeader(writer *blockWriter, firstKey string, lastKey string) {
 	writer.Write([]byte(lastKey))
 }
 
-func writeOneFileFooter(writer *blockWriter, summaryStart uint64, indexStart uint64, dataStart uint64, metadataStart uint64) {
-	footrerBuf := NewBufferWriter(FOOTER_L)
-	footrerBuf.WriteOffset(summaryStart)
-	footrerBuf.WriteOffset(indexStart)
-	footrerBuf.WriteOffset(dataStart)
-	footrerBuf.WriteOffset(metadataStart)
-	writer.Write(footrerBuf.Buf)
-}
-
 func (m *SSTableManager) multipleFilesFlush(mem Memtable, tableNum int) (*SSTable, error) {
 	sstablePath := m.sstableFilepath(0, tableNum)
 	files, err := openMultipleFiles(sstablePath)
@@ -122,6 +113,7 @@ func (m *SSTableManager) oneFileFlush(mem Memtable, tableNum int) (*SSTable, err
 		return nil, fmt.Errorf("failed to create SSTable file: %v", err)
 	}
 	defer f.Close()
+	footer := OneFileFooter{}
 
 	writer := newBlockWriter(f, m.bm)
 
@@ -138,7 +130,7 @@ func (m *SSTableManager) oneFileFlush(mem Memtable, tableNum int) (*SSTable, err
 
 	filterData := bf.Dump()
 	writer.Write(filterData)
-	dataStart := writer.CurrOffset()
+	footer.DataStart = writer.CurrOffset()
 
 	// FIXME: Do this without copying into a new slice
 	var merkleData [][]byte
@@ -153,7 +145,7 @@ func (m *SSTableManager) oneFileFlush(mem Memtable, tableNum int) (*SSTable, err
 		})
 	}
 
-	indexStart := writer.CurrOffset()
+	footer.IndexStart = writer.CurrOffset()
 	summaryOffsets := make([]indexEntry, 0, len(index)/m.config.SummaryInterval+1)
 	i := 0
 	for _, entry := range index {
@@ -167,14 +159,14 @@ func (m *SSTableManager) oneFileFlush(mem Memtable, tableNum int) (*SSTable, err
 		i++
 	}
 
-	summaryStart := writer.CurrOffset()
+	footer.SummaryStart = writer.CurrOffset()
 	firstEntry, lastEntry := sortedEntries[0], sortedEntries[len(sortedEntries)-1]
 	writeSummaryHeader(writer, firstEntry.Key, lastEntry.Key)
 	for _, entry := range summaryOffsets {
 		writeIndex(writer, entry.Key, entry.Offset)
 	}
 
-	metadataStart := writer.CurrOffset()
+	footer.MetadataStart = writer.CurrOffset()
 	tree, err := merkleTree.NewMerkleTree(merkleData)
 	if err != nil {
 		return nil, err
@@ -186,12 +178,13 @@ func (m *SSTableManager) oneFileFlush(mem Memtable, tableNum int) (*SSTable, err
 		return nil, fmt.Errorf("memtable is empty, no data written")
 	}
 
-	writeOneFileFooter(writer, summaryStart, indexStart, dataStart, metadataStart)
+	footer.Write(writer)
 
 	writer.Finalize()
 	return &SSTable{
 		path:        sstableFilename,
 		size:        writer.CurrOffset(),
 		isMultFiles: false,
+		footer:      &footer,
 	}, nil
 }
