@@ -124,6 +124,46 @@ func TestGetSpecificNonExistentKeyOneFile(t *testing.T) {
 	}
 }
 
+func testSSTableIterator(t *testing.T, multFiles bool) {
+	m, sst := flush1(t, multFiles)
+
+	iter, err := m.NewSSTableIterator(sst)
+	if err != nil {
+		t.Fatalf("Failed to create iterator: %v", err)
+	}
+	defer iter.Close()
+
+	expectedKeyNum := 0
+	for {
+		rec := iter.Rec
+		expectedKey := fmt.Sprintf("key%03d", expectedKeyNum)
+		expectedValue := fmt.Sprintf("value%03d", expectedKeyNum)
+		if rec.Key != expectedKey || string(rec.Value) != expectedValue {
+			t.Fatalf("Expected key '%s' with value '%s', but got key '%s' with value '%s'", expectedKey, expectedValue, rec.Key, rec.Value)
+		}
+		expectedKeyNum++
+
+		iterHasNext, err := iter.Next()
+		if err != nil {
+			t.Fatalf("Error when iterating: %v", err)
+		}
+		if !iterHasNext {
+			break
+		}
+	}
+	if expectedKeyNum != 1000 {
+		t.Fatalf("Expected to iterate over 1000 keys, but iterated over %d", expectedKeyNum)
+	}
+}
+
+func TestSSTableIteratorOneFile(t *testing.T) {
+	testSSTableIterator(t, false)
+}
+
+func TestSSTableIteratorMultipleFiles(t *testing.T) {
+	testSSTableIterator(t, true)
+}
+
 func TestGet(t *testing.T) {
 	flush1(t, true)
 	flush2(t, false)
