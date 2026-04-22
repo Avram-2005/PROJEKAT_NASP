@@ -50,7 +50,7 @@ func NewLSM(lsmConfig LSMConfig, tablesRoot string, sstConfig SSTableConfig, bm 
 
 	for _, file := range files {
 		sstablePath := filepath.Join(sstm.TablesRoot, file.Name())
-		sstable, err := sstm.createSSTable(sstablePath)
+		sstable, err := sstm.loadSSTable(sstablePath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create SSTable from file %s: %v", sstablePath, err)
 		}
