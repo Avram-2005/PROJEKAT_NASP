@@ -74,6 +74,7 @@ func (sstm *SSTableManager) createSSTable(path string) (*SSTable, error) {
 
 	var filterFile *os.File
 	var filterSize uint64
+	var filterStart uint64
 
 	if sst.isMultFiles {
 		filterPath := sstableFilenameMultFile(path, "Filter")
@@ -88,6 +89,7 @@ func (sstm *SSTableManager) createSSTable(path string) (*SSTable, error) {
 			return nil, fmt.Errorf("failed to stat filter file: %v", err)
 		}
 		filterSize = uint64(info.Size())
+		filterStart = 0
 	} else {
 		file, err := os.Open(path)
 		if err != nil {
@@ -101,11 +103,12 @@ func (sstm *SSTableManager) createSSTable(path string) (*SSTable, error) {
 		}
 		sst.footer = footer
 
-		filterSize = footer.DataStart
+		filterSize = footer.IndexStart - footer.FilterStart
 		filterFile = file
+		filterStart = footer.FilterStart
 	}
 
-	bf, err := sstm.GetFilter(filterFile, 0, filterSize)
+	bf, err := sstm.GetFilter(filterFile, filterStart, filterSize)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load bloom filter: %v", err)
 	}
@@ -206,9 +209,9 @@ func (files *sstableFiles) Close() {
 }
 
 type OneFileFooter struct {
-	SummaryStart  uint64
+	FilterStart   uint64
 	IndexStart    uint64
-	DataStart     uint64
+	SummaryStart  uint64
 	MetadataStart uint64
 }
 
@@ -231,9 +234,9 @@ func (sstm *SSTableManager) GetOneFileFooter(file *os.File) (*OneFileFooter, err
 	}
 
 	footer := &OneFileFooter{
-		SummaryStart:  bufferReader.ReadOffset(),
+		FilterStart:   bufferReader.ReadOffset(),
 		IndexStart:    bufferReader.ReadOffset(),
-		DataStart:     bufferReader.ReadOffset(),
+		SummaryStart:  bufferReader.ReadOffset(),
 		MetadataStart: bufferReader.ReadOffset(),
 	}
 
@@ -242,9 +245,9 @@ func (sstm *SSTableManager) GetOneFileFooter(file *os.File) (*OneFileFooter, err
 
 func (off *OneFileFooter) Write(writer *blockWriter) {
 	footrerBuf := NewBufferWriter(FOOTER_L)
-	footrerBuf.WriteOffset(off.SummaryStart)
+	footrerBuf.WriteOffset(off.FilterStart)
 	footrerBuf.WriteOffset(off.IndexStart)
-	footrerBuf.WriteOffset(off.DataStart)
+	footrerBuf.WriteOffset(off.SummaryStart)
 	footrerBuf.WriteOffset(off.MetadataStart)
 	writer.Write(footrerBuf.Buf)
 }
@@ -288,7 +291,7 @@ func (sstm *SSTableManager) validateOneFile(filename string) (bool, [][]byte, er
 		return false, nil, fmt.Errorf("failed to deserialize merkle tree")
 	}
 
-	dataReader := newBlockReader(f, sstm.bm, footer.DataStart)
+	dataReader := newBlockReader(f, sstm.bm, 0)
 
 	var currentData [][]byte
 	for {

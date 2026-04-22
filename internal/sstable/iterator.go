@@ -15,7 +15,6 @@ type SSTableIterator struct {
 
 func (sstm *SSTableManager) NewSSTableIterator(sst *SSTable) (*SSTableIterator, error) {
 	var file *os.File
-	var offset uint64
 	var err error
 	var stopOffset uint64
 
@@ -25,7 +24,6 @@ func (sstm *SSTableManager) NewSSTableIterator(sst *SSTable) (*SSTableIterator, 
 		if err != nil {
 			return nil, err
 		}
-		offset = uint64(0)
 		info, err := file.Stat()
 		if err != nil {
 			return nil, err
@@ -36,12 +34,11 @@ func (sstm *SSTableManager) NewSSTableIterator(sst *SSTable) (*SSTableIterator, 
 		if err != nil {
 			return nil, err
 		}
-		offset = sst.footer.DataStart
-		stopOffset = sst.footer.IndexStart
+		stopOffset = sst.footer.FilterStart
 	}
 
 	it := &SSTableIterator{
-		br:         newBlockReader(file, sstm.bm, offset),
+		br:         newBlockReader(file, sstm.bm, 0),
 		sstm:       sstm,
 		stopOffset: stopOffset,
 	}

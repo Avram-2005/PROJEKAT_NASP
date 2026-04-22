@@ -134,87 +134,105 @@ type indexEntry struct {
 	Offset uint64
 }
 
-// FIXME: Do this per entry. Consider dumping the data section first
-func (sstm *SSTableManager) oneFileFlush(mem Memtable, tableNum int) (*SSTable, error) {
+type oneFileFlushState struct {
+	writer         *blockWriter
+	bf             *BloomFilter.BloomFilter
+	merkleData     [][]byte
+	index          []indexEntry
+	summaryOffsets []indexEntry
+}
+
+func (sstm *SSTableManager) oneFileFlushInit(tableNum int, numRecs uint) (*oneFileFlushState, error) {
 	sstableFilename := sstm.sstableFilepath(0, tableNum)
 	f, err := os.Create(sstableFilename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create SSTable file: %v", err)
 	}
-	defer f.Close()
-	footer := OneFileFooter{}
-
 	writer := newBlockWriter(f, sstm.bm)
-
-	bf, err := BloomFilter.NewBloomFilter(uint(len(mem.GetSortedEntries())), BLOOM_FILTER_RATE)
+	bf, err := BloomFilter.NewBloomFilter(numRecs, BLOOM_FILTER_RATE)
 	if err != nil {
 		return nil, err
 	}
+	return &oneFileFlushState{
+		writer:         writer,
+		bf:             bf,
+		index:          make([]indexEntry, 0, numRecs),
+		merkleData:     make([][]byte, 0, numRecs),
+		summaryOffsets: make([]indexEntry, 0, numRecs/uint(sstm.config.SummaryInterval+1)),
+	}, nil
+}
 
-	// TODO: Consider doing this in a single pass
-	sortedEntries := mem.GetSortedEntries()
-	for _, entry := range sortedEntries {
-		bf.Set([]byte(entry.Key))
-	}
+func (sstm *SSTableManager) oneFileFlushRecord(entry Record, state *oneFileFlushState) {
+	state.bf.Set([]byte(entry.Key)) // dodaj kljuc u filter
+	state.merkleData = append(state.merkleData, entry.Value)
+	offset := writeData(state.writer, entry)
+	state.index = append(state.index, indexEntry{
+		Key:    entry.Key,
+		Offset: offset,
+	})
+}
 
-	filterData := bf.Dump()
-	writer.Write(filterData)
-	footer.DataStart = writer.CurrOffset()
+func (sstm *SSTableManager) oneFileFlushFinalize(state *oneFileFlushState, tableNum int) (*SSTable, error) {
+	footer := OneFileFooter{}
 
-	// FIXME: Do this without copying into a new slice
-	var merkleData [][]byte
+	footer.FilterStart = state.writer.CurrOffset()
+	filterData := state.bf.Dump()
+	state.writer.Write(filterData)
 
-	index := make([]indexEntry, 0)
-	for _, entry := range mem.GetSortedEntries() {
-		merkleData = append(merkleData, entry.Value)
-		offset := writeData(writer, entry)
-		index = append(index, indexEntry{
-			Key:    entry.Key,
-			Offset: offset,
-		})
-	}
-
-	footer.IndexStart = writer.CurrOffset()
-	summaryOffsets := make([]indexEntry, 0, len(index)/sstm.config.SummaryInterval+1)
-	i := 0
-	for _, entry := range index {
-		indexOffset := writeIndex(writer, entry.Key, entry.Offset)
+	footer.IndexStart = state.writer.CurrOffset()
+	summaryOffsets := make([]indexEntry, 0, len(state.index)/sstm.config.SummaryInterval+1)
+	for i, entry := range state.index {
+		indexOffset := writeIndex(state.writer, entry.Key, entry.Offset)
 		if i%sstm.config.SummaryInterval == 0 {
 			summaryOffsets = append(summaryOffsets, indexEntry{
 				Key:    entry.Key,
 				Offset: indexOffset,
 			})
 		}
-		i++
 	}
 
-	footer.SummaryStart = writer.CurrOffset()
+	sortedEntries := state.index
+
+	footer.SummaryStart = state.writer.CurrOffset()
 	firstEntry, lastEntry := sortedEntries[0], sortedEntries[len(sortedEntries)-1]
-	writeSummaryHeader(writer, firstEntry.Key, lastEntry.Key)
+	writeSummaryHeader(state.writer, firstEntry.Key, lastEntry.Key)
 	for _, entry := range summaryOffsets {
-		writeIndex(writer, entry.Key, entry.Offset)
+		writeIndex(state.writer, entry.Key, entry.Offset)
 	}
 
-	footer.MetadataStart = writer.CurrOffset()
-	tree, err := merkleTree.NewMerkleTree(merkleData)
+	footer.MetadataStart = state.writer.CurrOffset()
+	tree, err := merkleTree.NewMerkleTree(state.merkleData)
 	if err != nil {
 		return nil, err
 	}
 	serializedTree := tree.Serialize()
-	writer.Write(serializedTree)
+	state.writer.Write(serializedTree)
 
-	if writer.currBlockNum == 0 && writer.currByte == 0 {
+	if state.writer.currBlockNum == 0 && state.writer.currByte == 0 {
 		return nil, fmt.Errorf("memtable is empty, no data written")
 	}
 
-	footer.Write(writer)
+	footer.Write(state.writer)
 
-	writer.Finalize()
+	state.writer.Finalize()
 	return &SSTable{
-		path:        sstableFilename,
-		size:        writer.CurrOffset(),
+		path:        sstm.sstableFilepath(0, tableNum),
+		size:        state.writer.CurrOffset(),
 		isMultFiles: false,
 		footer:      &footer,
-		filter:      bf,
+		filter:      state.bf,
 	}, nil
+}
+
+func (sstm *SSTableManager) oneFileFlush(mem Memtable, tableNum int) (*SSTable, error) {
+	state, err := sstm.oneFileFlushInit(tableNum, uint(len(mem.GetSortedEntries())))
+	if err != nil {
+		return nil, err
+	}
+
+	for _, entry := range mem.GetSortedEntries() {
+		sstm.oneFileFlushRecord(entry, state)
+	}
+
+	return sstm.oneFileFlushFinalize(state, tableNum)
 }
