@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 
-	"github.com/Avram-2005/PROJEKAT_NASP/BloomFilter"
 	. "github.com/Avram-2005/PROJEKAT_NASP/Record"
 	. "github.com/Avram-2005/PROJEKAT_NASP/utils"
 )
@@ -144,19 +143,6 @@ func (sstm *SSTableManager) searchSummary(file *os.File, offset uint64, sectionE
 
 	offset, err = findPreviousKeyOffset(key, summaryReader, sectionEnd)
 	return true, offset, err
-}
-
-func (sstm *SSTableManager) GetFilter(file *os.File, offset uint64, readSize uint64) (*BloomFilter.BloomFilter, error) {
-	filterReader := newBlockReader(file, sstm.bm, offset)
-	filterData := make([]byte, readSize)
-	_, err := filterReader.Read(filterData)
-	if err != nil {
-		return nil, err
-	}
-
-	bf := BloomFilter.LoadBloomFilter(filterData)
-
-	return bf, nil
 }
 
 func (sstm *SSTableManager) parseData(reader *blockReader) (*Record, error) {
