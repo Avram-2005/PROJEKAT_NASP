@@ -38,45 +38,52 @@ func writeSummaryHeader(writer *blockWriter, firstKey string, lastKey string) {
 	writer.Write([]byte(lastKey))
 }
 
-func (sstm *SSTableManager) multipleFilesFlush(mem Memtable, tableNum int) (*SSTable, error) {
+type multipleFilesFlushState struct {
+	dataWriter     *blockWriter
+	indexWriter    *blockWriter
+	summaryWriter  *blockWriter
+	filterWriter   *blockWriter
+	metadataWriter *blockWriter
+	bf             *BloomFilter.BloomFilter
+	merkleData     [][]byte
+}
+
+func (sstm *SSTableManager) multipleFilesFlushInit(tableNum int, numRecs uint) (*multipleFilesFlushState, error) {
 	sstablePath := sstm.sstableFilepath(0, tableNum)
 	files, err := openMultipleFiles(sstablePath)
 	if err != nil {
 		return nil, err
 	}
-	defer files.Close()
-
-	sortedEntries := mem.GetSortedEntries()
-	bf, err := BloomFilter.NewBloomFilter(uint(len(sortedEntries)), BLOOM_FILTER_RATE)
+	state := &multipleFilesFlushState{
+		dataWriter:     newBlockWriter(files.dataFile, sstm.bm),
+		indexWriter:    newBlockWriter(files.indexFile, sstm.bm),
+		summaryWriter:  newBlockWriter(files.summaryFile, sstm.bm),
+		filterWriter:   newBlockWriter(files.filterFile, sstm.bm),
+		metadataWriter: newBlockWriter(files.metadataFile, sstm.bm),
+		merkleData:     make([][]byte, 0, numRecs),
+	}
+	state.bf, err = BloomFilter.NewBloomFilter(numRecs, BLOOM_FILTER_RATE)
 	if err != nil {
 		return nil, err
 	}
+	return state, nil
+}
 
-	dataWriter := newBlockWriter(files.dataFile, sstm.bm)
-	indexWriter := newBlockWriter(files.indexFile, sstm.bm)
-	summaryWriter := newBlockWriter(files.summaryFile, sstm.bm)
-	filterWriter := newBlockWriter(files.filterFile, sstm.bm)
-	metadataWriter := newBlockWriter(files.metadataFile, sstm.bm)
-
-	firstEntry, lastEntry := sortedEntries[0], sortedEntries[len(sortedEntries)-1]
-	writeSummaryHeader(summaryWriter, firstEntry.Key, lastEntry.Key)
-
-	// FIXME: Do this without copying into a new slice
-	var merkleData [][]byte
-
-	for i, entry := range sortedEntries {
-		bf.Set([]byte(entry.Key)) // dodaj kljuc u filter
-		merkleData = append(merkleData, entry.Value)
-		offset := writeData(dataWriter, entry)
-		offset = writeIndex(indexWriter, entry.Key, offset)
-		if i%sstm.config.SummaryInterval == 0 {
-			writeIndex(summaryWriter, entry.Key, offset)
-		}
+func (sstm *SSTableManager) multipleFilesFlushRecord(record Record, state *multipleFilesFlushState, shouldWriteSummary bool) {
+	state.bf.Set([]byte(record.Key)) // dodaj kljuc u filter
+	state.merkleData = append(state.merkleData, record.Value)
+	offset := writeData(state.dataWriter, record)
+	offset = writeIndex(state.indexWriter, record.Key, offset)
+	if shouldWriteSummary {
+		writeIndex(state.summaryWriter, record.Key, offset)
 	}
-	filterWriter.Write(bf.Dump())
+}
 
-	// TODO: Seperate this into a different function
-	tree, err := merkleTree.NewMerkleTree(merkleData)
+func (sstm *SSTableManager) multipleFilesFlushFinalize(state *multipleFilesFlushState, tableNum int) (*SSTable, error) {
+	filterData := state.bf.Dump()
+	state.filterWriter.Write(filterData)
+
+	tree, err := merkleTree.NewMerkleTree(state.merkleData)
 	if err != nil {
 		return nil, err
 	}
@@ -84,23 +91,42 @@ func (sstm *SSTableManager) multipleFilesFlush(mem Memtable, tableNum int) (*SST
 
 	sizeHeader := make([]byte, 4)
 	binary.BigEndian.PutUint32(sizeHeader, uint32(len(serializedTree)))
-	metadataWriter.Write(sizeHeader)
+	state.metadataWriter.Write(sizeHeader)
 
-	metadataWriter.Write(serializedTree)
+	state.metadataWriter.Write(serializedTree)
 
-	dataWriter.Finalize()
-	indexWriter.Finalize()
-	summaryWriter.Finalize()
-	filterWriter.Finalize()
-	metadataWriter.Finalize()
+	state.dataWriter.Finalize()
+	state.indexWriter.Finalize()
+	state.summaryWriter.Finalize()
+	state.filterWriter.Finalize()
+	state.metadataWriter.Finalize()
 
 	return &SSTable{
-		path:        sstablePath,
-		size:        dataWriter.CurrOffset() + indexWriter.CurrOffset() + summaryWriter.CurrOffset() + filterWriter.CurrOffset(),
+		path:        sstm.sstableFilepath(0, tableNum),
+		size:        state.dataWriter.CurrOffset() + state.indexWriter.CurrOffset() + state.summaryWriter.CurrOffset() + state.filterWriter.CurrOffset(),
 		isMultFiles: true,
 		footer:      nil,
-		filter:      bf,
+		filter:      state.bf,
 	}, nil
+}
+
+func (sstm *SSTableManager) multipleFilesFlush(mem Memtable, tableNum int) (*SSTable, error) {
+	entries := mem.GetSortedEntries()
+
+	state, err := sstm.multipleFilesFlushInit(tableNum, uint(len(entries)))
+	if err != nil {
+		return nil, err
+	}
+
+	firstEntry, lastEntry := entries[0], entries[len(entries)-1]
+	writeSummaryHeader(state.summaryWriter, firstEntry.Key, lastEntry.Key)
+
+	for i, entry := range entries {
+		shouldWriteSummary := i%sstm.config.SummaryInterval == 0
+		sstm.multipleFilesFlushRecord(entry, state, shouldWriteSummary)
+	}
+
+	return sstm.multipleFilesFlushFinalize(state, tableNum)
 }
 
 type indexEntry struct {
@@ -108,6 +134,7 @@ type indexEntry struct {
 	Offset uint64
 }
 
+// FIXME: Do this per entry. Consider dumping the data section first
 func (sstm *SSTableManager) oneFileFlush(mem Memtable, tableNum int) (*SSTable, error) {
 	sstableFilename := sstm.sstableFilepath(0, tableNum)
 	f, err := os.Create(sstableFilename)
