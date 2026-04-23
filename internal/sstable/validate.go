@@ -17,7 +17,7 @@ func (sstm *SSTableManager) validateOneFile(filename string) (bool, [][]byte, er
 	}
 	defer f.Close()
 
-	footer, err := sstm.GetOneFileFooter(f)
+	footer, err := sstm.loadOneFileFooter(f)
 	if err != nil {
 		return false, nil, fmt.Errorf("failed to read SSTable footer: %v", err)
 	}

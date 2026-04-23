@@ -239,7 +239,7 @@ func (sstm *SSTableManager) getOneFile(key string, sst *SSTable) (*Record, error
 	}
 	defer file.Close()
 
-	footer, err := sstm.GetOneFileFooter(file)
+	footer, err := sstm.loadOneFileFooter(file)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read footer: %v", err)
 	}
