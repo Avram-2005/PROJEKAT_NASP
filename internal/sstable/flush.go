@@ -46,6 +46,7 @@ type multipleFilesFlushState struct {
 	metadataWriter *blockWriter
 	bf             *BloomFilter.BloomFilter
 	merkleData     [][]byte
+	summary        *Summary
 }
 
 func (sstm *SSTableManager) multipleFilesFlushInit(tableNum int, numRecs uint) (*multipleFilesFlushState, error) {
@@ -61,6 +62,7 @@ func (sstm *SSTableManager) multipleFilesFlushInit(tableNum int, numRecs uint) (
 		filterWriter:   newBlockWriter(files.filterFile, sstm.bm),
 		metadataWriter: newBlockWriter(files.metadataFile, sstm.bm),
 		merkleData:     make([][]byte, 0, numRecs),
+		summary:        sstm.NewSummary(numRecs),
 	}
 	state.bf, err = BloomFilter.NewBloomFilter(numRecs, BLOOM_FILTER_RATE)
 	if err != nil {
@@ -76,6 +78,7 @@ func (sstm *SSTableManager) multipleFilesFlushRecord(record Record, state *multi
 	offset = writeIndex(state.indexWriter, record.Key, offset)
 	if shouldWriteSummary {
 		writeIndex(state.summaryWriter, record.Key, offset)
+		state.summary.AddEntry(record.Key, offset)
 	}
 }
 
@@ -107,6 +110,7 @@ func (sstm *SSTableManager) multipleFilesFlushFinalize(state *multipleFilesFlush
 		isMultFiles: true,
 		footer:      nil,
 		filter:      state.bf,
+		summary:     state.summary,
 	}, nil
 }
 
@@ -120,6 +124,7 @@ func (sstm *SSTableManager) multipleFilesFlush(mem Memtable, tableNum int) (*SST
 
 	firstEntry, lastEntry := entries[0], entries[len(entries)-1]
 	writeSummaryHeader(state.summaryWriter, firstEntry.Key, lastEntry.Key)
+	state.summary.SetFirstAndLast(firstEntry.Key, lastEntry.Key)
 
 	for i, entry := range entries {
 		shouldWriteSummary := i%sstm.config.SummaryInterval == 0
@@ -129,17 +134,12 @@ func (sstm *SSTableManager) multipleFilesFlush(mem Memtable, tableNum int) (*SST
 	return sstm.multipleFilesFlushFinalize(state, tableNum)
 }
 
-type indexEntry struct {
-	Key    string
-	Offset uint64
-}
-
 type oneFileFlushState struct {
-	writer         *blockWriter
-	bf             *BloomFilter.BloomFilter
-	merkleData     [][]byte
-	index          []indexEntry
-	summaryOffsets []indexEntry
+	writer     *blockWriter
+	bf         *BloomFilter.BloomFilter
+	merkleData [][]byte
+	index      []indexEntry
+	summary    *Summary
 }
 
 func (sstm *SSTableManager) oneFileFlushInit(tableNum int, numRecs uint) (*oneFileFlushState, error) {
@@ -154,15 +154,15 @@ func (sstm *SSTableManager) oneFileFlushInit(tableNum int, numRecs uint) (*oneFi
 		return nil, err
 	}
 	return &oneFileFlushState{
-		writer:         writer,
-		bf:             bf,
-		index:          make([]indexEntry, 0, numRecs),
-		merkleData:     make([][]byte, 0, numRecs),
-		summaryOffsets: make([]indexEntry, 0, numRecs/uint(sstm.config.SummaryInterval+1)),
+		writer:     writer,
+		bf:         bf,
+		index:      make([]indexEntry, 0, numRecs),
+		merkleData: make([][]byte, 0, numRecs),
+		summary:    sstm.NewSummary(numRecs),
 	}, nil
 }
 
-func (sstm *SSTableManager) oneFileFlushRecord(entry Record, state *oneFileFlushState) {
+func (sstm *SSTableManager) oneFileFlushRecord(i int, entry Record, state *oneFileFlushState) {
 	state.bf.Set([]byte(entry.Key)) // dodaj kljuc u filter
 	state.merkleData = append(state.merkleData, entry.Value)
 	offset := writeData(state.writer, entry)
@@ -180,23 +180,18 @@ func (sstm *SSTableManager) oneFileFlushFinalize(state *oneFileFlushState, table
 	state.writer.Write(filterData)
 
 	footer.IndexStart = state.writer.CurrOffset()
-	summaryOffsets := make([]indexEntry, 0, len(state.index)/sstm.config.SummaryInterval+1)
 	for i, entry := range state.index {
 		indexOffset := writeIndex(state.writer, entry.Key, entry.Offset)
 		if i%sstm.config.SummaryInterval == 0 {
-			summaryOffsets = append(summaryOffsets, indexEntry{
-				Key:    entry.Key,
-				Offset: indexOffset,
-			})
+			state.summary.AddEntry(entry.Key, indexOffset)
 		}
 	}
 
-	sortedEntries := state.index
-
 	footer.SummaryStart = state.writer.CurrOffset()
-	firstEntry, lastEntry := sortedEntries[0], sortedEntries[len(sortedEntries)-1]
+	firstEntry, lastEntry := state.index[0], state.index[len(state.index)-1]
 	writeSummaryHeader(state.writer, firstEntry.Key, lastEntry.Key)
-	for _, entry := range summaryOffsets {
+	state.summary.SetFirstAndLast(firstEntry.Key, lastEntry.Key)
+	for _, entry := range state.summary.entries {
 		writeIndex(state.writer, entry.Key, entry.Offset)
 	}
 
@@ -221,6 +216,7 @@ func (sstm *SSTableManager) oneFileFlushFinalize(state *oneFileFlushState, table
 		isMultFiles: false,
 		footer:      &footer,
 		filter:      state.bf,
+		summary:     state.summary,
 	}, nil
 }
 
@@ -230,8 +226,8 @@ func (sstm *SSTableManager) oneFileFlush(mem Memtable, tableNum int) (*SSTable, 
 		return nil, err
 	}
 
-	for _, entry := range mem.GetSortedEntries() {
-		sstm.oneFileFlushRecord(entry, state)
+	for i, entry := range mem.GetSortedEntries() {
+		sstm.oneFileFlushRecord(i, entry, state)
 	}
 
 	return sstm.oneFileFlushFinalize(state, tableNum)

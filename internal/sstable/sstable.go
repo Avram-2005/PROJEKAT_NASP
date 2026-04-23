@@ -55,8 +55,59 @@ type SSTable struct {
 	isMultFiles bool
 	footer      *OneFileFooter
 	filter      *BloomFilter.BloomFilter
+	summary     *Summary
 }
 
+type Summary struct {
+	firstKey string
+	lastKey  string
+	entries  []indexEntry
+}
+
+type indexEntry struct {
+	Key    string
+	Offset uint64
+}
+
+func (sstm *SSTableManager) NewSummary(numRecs uint) *Summary {
+	return &Summary{
+		entries: make([]indexEntry, 0, numRecs/uint(sstm.config.SummaryInterval+1)),
+	}
+}
+
+func (s *Summary) SetFirstAndLast(firstKey string, lastKey string) {
+	s.firstKey = firstKey
+	s.lastKey = lastKey
+}
+
+func (s *Summary) AddEntry(key string, offset uint64) {
+	s.entries = append(s.entries, indexEntry{
+		Key:    key,
+		Offset: offset,
+	})
+}
+
+func (s *Summary) IsFound(key string) (bool, uint64, error) {
+	if key < s.firstKey || key > s.lastKey {
+		return false, 0, nil
+	}
+
+	low, high := 0, len(s.entries)-1
+	for low <= high {
+		mid := low + (high-low)/2
+		if s.entries[mid].Key == key {
+			return true, s.entries[mid].Offset, nil
+		} else if s.entries[mid].Key < key {
+			low = mid + 1
+		} else {
+			high = mid - 1
+		}
+	}
+
+	return true, s.entries[high].Offset, nil
+}
+
+// FIXME: Load the Summary as well
 func (sstm *SSTableManager) loadSSTable(path string) (*SSTable, error) {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -69,24 +120,18 @@ func (sstm *SSTableManager) loadSSTable(path string) (*SSTable, error) {
 		isMultFiles: info.IsDir(),
 	}
 
-	var filterFile *os.File
-	var filterSize uint64
-	var filterStart uint64
-
 	if sst.isMultFiles {
-		filterPath := sstableFilenameMultFile(path, "Filter")
-		filterFile, err = os.Open(filterPath)
+		filter, err := sstm.getFilterMultFile(sst)
 		if err != nil {
-			return nil, fmt.Errorf("failed to open filter file: %v", err)
+			return nil, fmt.Errorf("failed to load bloom filter: %v", err)
 		}
-		defer filterFile.Close()
+		sst.filter = filter
 
-		info, err := filterFile.Stat()
+		summary, err := sstm.loadSummaryMultFile(sst)
 		if err != nil {
-			return nil, fmt.Errorf("failed to stat filter file: %v", err)
+			return nil, fmt.Errorf("failed to load summary: %v", err)
 		}
-		filterSize = uint64(info.Size())
-		filterStart = 0
+		sst.summary = summary
 	} else {
 		file, err := os.Open(path)
 		if err != nil {
@@ -100,20 +145,102 @@ func (sstm *SSTableManager) loadSSTable(path string) (*SSTable, error) {
 		}
 		sst.footer = footer
 
-		filterSize = footer.IndexStart - footer.FilterStart
-		filterFile = file
-		filterStart = footer.FilterStart
-	}
+		filter, err := sstm.getFilterOneFile(footer, file)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load bloom filter: %v", err)
+		}
+		sst.filter = filter
 
-	filterReader := newBlockReader(filterFile, sstm.bm, filterStart)
-	filterData := make([]byte, filterSize)
-	_, err = filterReader.Read(filterData)
-	if err != nil {
-		return nil, err
+		summary, err := sstm.loadSummaryOneFile(footer, file)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load summary: %v", err)
+		}
+		sst.summary = summary
 	}
-	sst.filter = BloomFilter.LoadBloomFilter(filterData)
 
 	return sst, nil
+}
+
+func (sstm *SSTableManager) getFilterMultFile(sst *SSTable) (*BloomFilter.BloomFilter, error) {
+	path := sstableFilenameMultFile(sst.path, "Filter")
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open filter file: %v", err)
+	}
+	defer file.Close()
+
+	info, err := file.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat filter file: %v", err)
+	}
+	size := uint64(info.Size())
+	start := uint64(0)
+
+	return sstm.loadBloomFilter(file, start, size)
+}
+
+func (sstm *SSTableManager) getFilterOneFile(footer *OneFileFooter, file *os.File) (*BloomFilter.BloomFilter, error) {
+	size := footer.IndexStart - footer.FilterStart
+	start := footer.FilterStart
+
+	return sstm.loadBloomFilter(file, start, size)
+}
+
+func (sstm *SSTableManager) loadBloomFilter(file *os.File, start uint64, size uint64) (*BloomFilter.BloomFilter, error) {
+	reader := newBlockReader(file, sstm.bm, start)
+	data := make([]byte, size)
+	_, err := reader.Read(data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read bloom filter data: %v", err)
+	}
+
+	return BloomFilter.LoadBloomFilter(data), nil
+}
+
+func (sstm *SSTableManager) loadSummaryMultFile(sst *SSTable) (*Summary, error) {
+	path := sstableFilenameMultFile(sst.path, "Summary")
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open summary file: %v", err)
+	}
+	defer file.Close()
+
+	info, err := file.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat summary file: %v", err)
+	}
+	size := uint64(info.Size())
+	start := uint64(0)
+
+	return sstm.loadSummary(file, start, size)
+}
+
+func (sstm *SSTableManager) loadSummaryOneFile(footer *OneFileFooter, file *os.File) (*Summary, error) {
+	size := footer.MetadataStart - footer.SummaryStart
+	start := footer.SummaryStart
+
+	return sstm.loadSummary(file, start, size)
+}
+
+func (sstm *SSTableManager) loadSummary(file *os.File, start uint64, size uint64) (*Summary, error) {
+	summary := sstm.NewSummary(0)
+
+	reader := newBlockReader(file, sstm.bm, start)
+	first, last, err := sstm.loadFirstLastSummaryKeys(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read first and last keys from summary: %v", err)
+	}
+	summary.SetFirstAndLast(first, last)
+
+	for reader.CurrOffset() < start+size {
+		indexEntry, _, err := readNextIndexEntry(reader)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read summary entry: %v", err)
+		}
+		summary.entries = append(summary.entries, indexEntry)
+	}
+
+	return summary, nil
 }
 
 // TODO: Compression (1.3[DZ3])
