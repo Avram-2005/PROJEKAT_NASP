@@ -507,3 +507,64 @@ func TestMetadataCorruptionMultipleFiles(t *testing.T) {
 	}
 }
 */
+
+func testMergeFiles(t *testing.T, ssts []*SSTable, config SSTableConfig, expectedKeys []string, expectedValues []string, unexpectedKeys []string) {
+	m, err := SetupSSTableManager(t.TempDir(), config, bm)
+	if err != nil {
+		t.Fatalf("Failed to setup SSTableManager: %v", err)
+	}
+
+	mergedSST, err := m.Merge(ssts, 0, len(ssts)+1)
+	if err != nil {
+		t.Fatalf("Merge failed: %v", err)
+	}
+
+	for i, key := range expectedKeys {
+		val, err := m.Get(key, mergedSST)
+		if err != nil {
+			t.Fatalf("Failed to get key '%s' after merge: %v", key, err)
+		}
+		if val == nil {
+			t.Fatalf("Key '%s' not found in merged SSTable", key)
+		}
+		if string(val.Value) != expectedValues[i] {
+			t.Fatalf("Expected value '%s' for key '%s', but got %v", expectedValues[i], key, val)
+		}
+	}
+
+	for _, key := range unexpectedKeys {
+		val, err := m.Get(key, mergedSST)
+		if err != nil {
+			t.Fatalf("Failed to get key '%s' after merge: %v", key, err)
+		}
+		if val != nil {
+			t.Fatalf("Expected key '%s' to not be found in merged SSTable, but got value %v", key, val)
+		}
+	}
+}
+
+func TestMergeMultipleFiles(t *testing.T) {
+	_, sst1, err := testFlush(t.TempDir(), smallSmallKeyKVMemtable{}, 1, true)
+	if err != nil {
+		t.Fatalf("Flush failed: %v", err)
+	}
+	_, sst2, err := testFlush(t.TempDir(), fewLargeKeyKVMemtable{}, 2, true)
+	if err != nil {
+		t.Fatalf("Flush failed: %v", err)
+	}
+	_, sst3, err := testFlush(t.TempDir(), manySmallKeyKVMemtable{}, 3, true)
+	if err != nil {
+		t.Fatalf("Flush failed: %v", err)
+	}
+
+	expectedKeys := []string{"a", "b", "c", "key000", "key001", "key125", "key989", "long2"}
+
+	largeValue := make([]byte, 10000)
+	for i := range largeValue {
+		largeValue[i] = 'A'
+	}
+	expectedValues := []string{"value1", "value2", "value3", "value000", "value001", "value125", "value989", string(largeValue)}
+	unexpectedKeys := []string{"asdf", "test"}
+
+	testMergeFiles(t, []*SSTable{sst1, sst2, sst3}, SSTableConfig{SummaryInterval: 100, MultipleFiles: true}, expectedKeys, expectedValues, unexpectedKeys)
+}

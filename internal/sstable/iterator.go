@@ -49,6 +49,7 @@ func (sstm *SSTableManager) NewSSTableIterator(sst *SSTable) (*SSTableIterator, 
 
 func (it *SSTableIterator) Next() (bool, error) {
 	if it.br.CurrOffset() >= it.stopOffset {
+		it.Rec = nil
 		return false, nil
 	}
 	record, err := it.sstm.parseData(it.br)

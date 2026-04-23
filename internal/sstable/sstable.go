@@ -121,6 +121,13 @@ func (sstm *SSTableManager) Flush(mem Memtable, tableNum int) (*SSTable, error) 
 	return sstm.oneFileFlush(mem, tableNum)
 }
 
+func (sstm *SSTableManager) Merge(ssts []*SSTable, level int, tableNum int) (*SSTable, error) {
+	if sstm.config.MultipleFiles {
+		return sstm.multipleFilesMerge(ssts, level, tableNum)
+	}
+	return sstm.oneFileMerge(ssts, level, tableNum)
+}
+
 func (sstm *SSTableManager) Get(key string, sst *SSTable) (*Record, error) {
 	if sst.isMultFiles {
 		return sstm.getMultipleFiles(key, sst)
