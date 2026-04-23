@@ -113,6 +113,9 @@ func TestFlushFewSmallKVMultipleFiles(t *testing.T) {
 			t.Fatalf("Failed to get key '%s' after flush: %v", key, err)
 		}
 		expectedValue := fmt.Sprintf("value%d", i+1)
+		if val == nil {
+			t.Fatalf("Key '%s' not found in SSTable", key)
+		}
 		if string(val.Value) != expectedValue {
 			t.Fatalf("Expected value '%s' for key '%s', but got %v", expectedValue, key, val)
 		}
