@@ -38,6 +38,15 @@ func writeSummaryHeader(writer *blockWriter, firstKey string, lastKey string) {
 	writer.Write([]byte(lastKey))
 }
 
+func (off *OneFileFooter) Write(writer *blockWriter) {
+	footrerBuf := NewBufferWriter(FOOTER_L)
+	footrerBuf.WriteOffset(off.FilterStart)
+	footrerBuf.WriteOffset(off.IndexStart)
+	footrerBuf.WriteOffset(off.SummaryStart)
+	footrerBuf.WriteOffset(off.MetadataStart)
+	writer.Write(footrerBuf.Buf)
+}
+
 type multipleFilesFlushState struct {
 	dataWriter     *blockWriter
 	indexWriter    *blockWriter
