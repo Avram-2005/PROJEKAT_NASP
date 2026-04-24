@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
-	"go.yaml.in/yaml/v4"
 )
 
 func TestInitialize(t *testing.T) {
@@ -27,12 +26,38 @@ func TestInitialize(t *testing.T) {
 		t.FailNow()
 	}
 
-	config.BufferPoolConfig.BlockSize = 4
-	config.BufferPoolConfig.MaxSize = 4
-	data, err := yaml.Marshal(config)
-	if err != nil {
-		fmt.Print(err)
+	if config.BufferPoolConfig.BlockSize != 4 || config.BufferPoolConfig.MaxSize != 8 {
+		fmt.Print("Wrong bufferpool configuration")
+		fmt.Print(config.BufferPoolConfig)
 		t.FailNow()
 	}
-	fmt.Print(string(data))
+	if config.CacheConfig.MaxSize != 20 {
+		fmt.Print("Wrong cache configuration")
+		fmt.Print(config.CacheConfig)
+		t.FailNow()
+	}
+	if config.MemtableConfig.MaxCount != 2 || config.MemtableConfig.Type != "hashmap" ||
+		config.MemtableConfig.MaxSizeBytes != 100 || config.MemtableConfig.MaxSizeEntries != 100 ||
+		config.MemtableConfig.BPlusTreeDegree != 0 || config.MemtableConfig.SkipListMaxHeight != 0 {
+		fmt.Print("Wrong memtable configuration")
+		fmt.Print(config.MemtableConfig)
+		t.FailNow()
+	}
+	if config.TokenBucketConfig.MaxNumTokens != 3 || config.TokenBucketConfig.RefillTime != 60 {
+		fmt.Print("Wrong token bucket configuration")
+		fmt.Print(config.TokenBucketConfig)
+		t.FailNow()
+	}
+	if config.SSTableConfig.TablesRoot != "sstables" || config.SSTableConfig.SummaryInterval != 40 || config.SSTableConfig.MultipleFiles != false {
+		fmt.Print("Wrong sstable configuration")
+		fmt.Print(config.SSTableConfig)
+		t.FailNow()
+	}
+	if config.WriteAheadLogConfig.SegmentSize != 40 {
+		fmt.Print("Wrong WAL configuration")
+		fmt.Print(config.WriteAheadLogConfig)
+		t.FailNow()
+	}
+
+	file.Close()
 }

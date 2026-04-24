@@ -22,7 +22,7 @@ type Config struct {
 		MaxCount          int    `yaml:"MaxCount"`
 		Type              string `yaml:"Type"`
 		MaxSizeBytes      int    `yaml:"MaxSizeBytes"`
-		MaxSizeEntries    int    `yaml:"MaxSizeBytes"`
+		MaxSizeEntries    int    `yaml:"MaxSizeEntries"`
 		BPlusTreeDegree   int    `yaml:"BPlusTreeDegree"`
 		SkipListMaxHeight int    `yaml:"SkipListMaxHeight"`
 	} `yaml:"MemtableConfig"`
@@ -36,8 +36,7 @@ type Config struct {
 		MultipleFiles   bool   `yaml:"MultipleFiles"`
 	} `yaml:"SSTableConfig"`
 	WriteAheadLogConfig struct {
-		Segmented   bool `yaml:"Segmented"`
-		SegmentSize int  `yaml:"SegmentSize"`
+		SegmentSize int `yaml:"SegmentSize"`
 	} `yaml:"WriteAheadLogConfig"`
 }
 
