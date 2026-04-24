@@ -25,10 +25,9 @@ TokenBucketConfig:
   #Number of seconds between refills
   RefillTime: 60
 SSTableConfig:
-  TablesRoot: sstable
+  TablesRoot: sstables
   SummaryInterval: 40
   MultipleFiles: false
 WriteAheadLogConfig:
-  Segmented: false
-  SegmentSize: 0
+  SegmentSize: 40
 
