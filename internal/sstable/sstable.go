@@ -58,10 +58,11 @@ type SSTable struct {
 }
 
 type OneFileFooter struct {
-	FilterStart   uint64
 	IndexStart    uint64
 	SummaryStart  uint64
 	MetadataStart uint64
+	FilterStart   uint64
+	FooterStart   uint64
 }
 
 type Summary struct {

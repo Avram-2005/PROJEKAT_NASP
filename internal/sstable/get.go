@@ -13,7 +13,7 @@ import (
 const (
 	DATA_HEADER_L  = CRC_L + TIMESTAMP_L + TOMBSTONE_L + KEY_SIZE_L + VALUE_SIZE_L
 	INDEX_HEADER_L = KEY_SIZE_L + OFFSET_L
-	FOOTER_L       = 4 * OFFSET_L
+	FOOTER_L       = 5 * OFFSET_L
 )
 
 func readNextIndexEntry(reader *blockReader) (indexEntry, int, error) {
