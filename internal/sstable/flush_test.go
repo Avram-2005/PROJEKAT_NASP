@@ -568,3 +568,29 @@ func TestMergeMultipleFiles(t *testing.T) {
 
 	testMergeFiles(t, []*SSTable{sst1, sst2, sst3}, SSTableConfig{SummaryInterval: 100, MultipleFiles: true}, expectedKeys, expectedValues, unexpectedKeys)
 }
+
+func TestMergeOneFile(t *testing.T) {
+	_, sst1, err := testFlush(t.TempDir(), smallSmallKeyKVMemtable{}, 1, false)
+	if err != nil {
+		t.Fatalf("Flush failed: %v", err)
+	}
+	_, sst2, err := testFlush(t.TempDir(), fewLargeKeyKVMemtable{}, 2, false)
+	if err != nil {
+		t.Fatalf("Flush failed: %v", err)
+	}
+	_, sst3, err := testFlush(t.TempDir(), manySmallKeyKVMemtable{}, 3, false)
+	if err != nil {
+		t.Fatalf("Flush failed: %v", err)
+	}
+
+	expectedKeys := []string{"a", "b", "c", "key000", "key001", "key125", "key989", "long2"}
+
+	largeValue := make([]byte, 10000)
+	for i := range largeValue {
+		largeValue[i] = 'A'
+	}
+	expectedValues := []string{"value1", "value2", "value3", "value000", "value001", "value125", "value989", string(largeValue)}
+	unexpectedKeys := []string{"asdf", "test"}
+
+	testMergeFiles(t, []*SSTable{sst1, sst2, sst3}, SSTableConfig{SummaryInterval: 100, MultipleFiles: false}, expectedKeys, expectedValues, unexpectedKeys)
+}
