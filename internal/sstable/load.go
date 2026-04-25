@@ -80,7 +80,7 @@ func (sstm *SSTableManager) loadFilterMultFile(sst *SSTable) (*BloomFilter.Bloom
 }
 
 func (sstm *SSTableManager) loadFilterOneFile(footer *OneFileFooter, file *os.File) (*BloomFilter.BloomFilter, error) {
-	size := footer.IndexStart - footer.FilterStart
+	size := footer.FooterStart - footer.FilterStart
 	start := footer.FilterStart
 
 	return sstm.loadBloomFilter(file, start, size)
@@ -162,10 +162,11 @@ func (sstm *SSTableManager) loadOneFileFooter(file *os.File) (*OneFileFooter, er
 	}
 
 	footer := &OneFileFooter{
-		FilterStart:   bufferReader.ReadOffset(),
 		IndexStart:    bufferReader.ReadOffset(),
 		SummaryStart:  bufferReader.ReadOffset(),
 		MetadataStart: bufferReader.ReadOffset(),
+		FilterStart:   bufferReader.ReadOffset(),
+		FooterStart:   bufferReader.ReadOffset(),
 	}
 
 	return footer, nil

@@ -34,7 +34,7 @@ func (sstm *SSTableManager) NewSSTableIterator(sst *SSTable) (*SSTableIterator, 
 		if err != nil {
 			return nil, err
 		}
-		stopOffset = sst.footer.FilterStart
+		stopOffset = sst.footer.IndexStart
 	}
 
 	it := &SSTableIterator{

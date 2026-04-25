@@ -40,10 +40,11 @@ func writeSummaryHeader(writer *blockWriter, firstKey string, lastKey string) {
 
 func (off *OneFileFooter) Write(writer *blockWriter) {
 	footrerBuf := NewBufferWriter(FOOTER_L)
-	footrerBuf.WriteOffset(off.FilterStart)
 	footrerBuf.WriteOffset(off.IndexStart)
 	footrerBuf.WriteOffset(off.SummaryStart)
 	footrerBuf.WriteOffset(off.MetadataStart)
+	footrerBuf.WriteOffset(off.FilterStart)
+	footrerBuf.WriteOffset(off.FooterStart)
 	writer.Write(footrerBuf.Buf)
 }
 
@@ -267,10 +268,6 @@ func (sstm *SSTableManager) oneFileFlushRecord(i int, entry Record, state *oneFi
 func (sstm *SSTableManager) oneFileFlushFinalize(state *oneFileFlushState, tableNum int) (*SSTable, error) {
 	footer := OneFileFooter{}
 
-	footer.FilterStart = state.writer.CurrOffset()
-	filterData := state.bf.Dump()
-	state.writer.Write(filterData)
-
 	footer.IndexStart = state.writer.CurrOffset()
 	for i, entry := range state.index {
 		indexOffset := writeIndex(state.writer, entry.Key, entry.Offset)
@@ -295,10 +292,15 @@ func (sstm *SSTableManager) oneFileFlushFinalize(state *oneFileFlushState, table
 	serializedTree := tree.Serialize()
 	state.writer.Write(serializedTree)
 
+	footer.FilterStart = state.writer.CurrOffset()
+	filterData := state.bf.Dump()
+	state.writer.Write(filterData)
+
 	if state.writer.currBlockNum == 0 && state.writer.currByte == 0 {
 		return nil, fmt.Errorf("memtable is empty, no data written")
 	}
 
+	footer.FooterStart = state.writer.CurrOffset()
 	footer.Write(state.writer)
 
 	state.writer.Finalize()
