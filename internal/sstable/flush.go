@@ -92,7 +92,7 @@ func (sstm *SSTableManager) multipleFilesFlushRecord(record Record, state *multi
 	}
 }
 
-func (sstm *SSTableManager) multipleFilesFlushFinalize(state *multipleFilesFlushState, tableNum int) (*SSTable, error) {
+func (sstm *SSTableManager) multipleFilesFlushFinalize(level int, state *multipleFilesFlushState, tableNum int) (*SSTable, error) {
 	filterData := state.bf.Dump()
 	state.filterWriter.Write(filterData)
 
@@ -115,7 +115,7 @@ func (sstm *SSTableManager) multipleFilesFlushFinalize(state *multipleFilesFlush
 	state.metadataWriter.Finalize()
 
 	return &SSTable{
-		path:        sstm.sstableFilepath(0, tableNum),
+		path:        sstm.sstableFilepath(level, tableNum),
 		size:        state.dataWriter.CurrOffset() + state.indexWriter.CurrOffset() + state.summaryWriter.CurrOffset() + state.filterWriter.CurrOffset(),
 		isMultFiles: true,
 		footer:      nil,
@@ -141,90 +141,7 @@ func (sstm *SSTableManager) multipleFilesFlush(mem Memtable, tableNum int) (*SST
 		sstm.multipleFilesFlushRecord(entry, state, shouldWriteSummary)
 	}
 
-	return sstm.multipleFilesFlushFinalize(state, tableNum)
-}
-
-func (sstm *SSTableManager) multipleFilesMerge(ssts []*SSTable, level int, tableNum int) (*SSTable, error) {
-	// Cannot calculate number of records in advance, so we set it to 0 for now
-	state, err := sstm.multipleFilesFlushInit(level, tableNum, 0)
-	if err != nil {
-		return nil, err
-	}
-
-	var minKey, maxKey string
-	for _, sst := range ssts {
-		if minKey == "" || sst.summary.firstKey < minKey {
-			minKey = sst.summary.firstKey
-		}
-		if maxKey == "" || sst.summary.lastKey > maxKey {
-			maxKey = sst.summary.lastKey
-		}
-	}
-	state.summary.SetFirstAndLast(minKey, maxKey)
-	writeSummaryHeader(state.summaryWriter, state.summary)
-
-	iters := make([]*SSTableIterator, len(ssts))
-	for i, sst := range ssts {
-		iter, err := sstm.NewSSTableIterator(sst)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create iterator for SSTable %s: %v", sst.path, err)
-		}
-		iters[i] = iter
-	}
-
-	// FIXME: Use a priority queue for better performance when merging many SSTables
-	i := 0
-	for {
-		var minRec *Record
-		var minIter *SSTableIterator
-
-		for _, iter := range iters {
-			if iter.Rec != nil && !iter.Rec.Tombstone && (minRec == nil || iter.Rec.Key < minRec.Key || (iter.Rec.Key == minRec.Key && iter.Rec.Timestamp.After(minRec.Timestamp))) {
-				minRec = iter.Rec
-				minIter = iter
-			}
-		}
-		if minRec == nil {
-			break
-		}
-		shouldWriteSummary := i%sstm.config.SummaryInterval == 0
-		sstm.multipleFilesFlushRecord(*minRec, state, shouldWriteSummary)
-		i++
-		if _, err := minIter.Next(); err != nil {
-			return nil, fmt.Errorf("failed to advance iterator: %v", err)
-		}
-	}
-	sst, err := sstm.multipleFilesFlushFinalize(state, tableNum)
-
-	bf, err := BloomFilter.NewBloomFilter(uint(i), BLOOM_FILTER_RATE)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create Bloom filter: %v", err)
-	}
-
-	iter, err := sstm.NewSSTableIterator(sst)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create iterator for new SSTable: %v", err)
-	}
-
-	for iter.Rec != nil {
-		bf.Set([]byte(iter.Rec.Key))
-		if _, err := iter.Next(); err != nil {
-			return nil, fmt.Errorf("failed to advance iterator: %v", err)
-		}
-	}
-
-	sst.filter = bf
-	filterData := bf.Dump()
-	state.filterWriter.Write(filterData)
-	state.filterWriter.Finalize()
-
-	for _, iter := range iters {
-		if err := iter.Close(); err != nil {
-			return nil, fmt.Errorf("failed to close iterator: %v", err)
-		}
-	}
-
-	return sst, err
+	return sstm.multipleFilesFlushFinalize(0, state, tableNum)
 }
 
 type oneFileFlushState struct {
@@ -235,8 +152,8 @@ type oneFileFlushState struct {
 	summary    *Summary
 }
 
-func (sstm *SSTableManager) oneFileFlushInit(tableNum int, numRecs uint) (*oneFileFlushState, error) {
-	sstableFilename := sstm.sstableFilepath(0, tableNum)
+func (sstm *SSTableManager) oneFileFlushInit(level int, tableNum int, numRecs uint) (*oneFileFlushState, error) {
+	sstableFilename := sstm.sstableFilepath(level, tableNum)
 	f, err := os.Create(sstableFilename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create SSTable file: %v", err)
@@ -265,7 +182,7 @@ func (sstm *SSTableManager) oneFileFlushRecord(i int, entry Record, state *oneFi
 	})
 }
 
-func (sstm *SSTableManager) oneFileFlushFinalize(state *oneFileFlushState, tableNum int) (*SSTable, error) {
+func (sstm *SSTableManager) oneFileFlushFinalize(level int, state *oneFileFlushState, tableNum int) (*SSTable, error) {
 	footer := OneFileFooter{}
 
 	footer.IndexStart = state.writer.CurrOffset()
@@ -305,7 +222,7 @@ func (sstm *SSTableManager) oneFileFlushFinalize(state *oneFileFlushState, table
 
 	state.writer.Finalize()
 	return &SSTable{
-		path:        sstm.sstableFilepath(0, tableNum),
+		path:        sstm.sstableFilepath(level, tableNum),
 		size:        state.writer.CurrOffset(),
 		isMultFiles: false,
 		footer:      &footer,
@@ -315,7 +232,7 @@ func (sstm *SSTableManager) oneFileFlushFinalize(state *oneFileFlushState, table
 }
 
 func (sstm *SSTableManager) oneFileFlush(mem Memtable, tableNum int) (*SSTable, error) {
-	state, err := sstm.oneFileFlushInit(tableNum, uint(len(mem.GetSortedEntries())))
+	state, err := sstm.oneFileFlushInit(0, tableNum, uint(len(mem.GetSortedEntries())))
 	if err != nil {
 		return nil, err
 	}
@@ -324,9 +241,5 @@ func (sstm *SSTableManager) oneFileFlush(mem Memtable, tableNum int) (*SSTable, 
 		sstm.oneFileFlushRecord(i, entry, state)
 	}
 
-	return sstm.oneFileFlushFinalize(state, tableNum)
-}
-
-func (sstm *SSTableManager) oneFileMerge(ssts []*SSTable, level int, tableNum int) (*SSTable, error) {
-	return nil, fmt.Errorf("multiple files merge not implemented yet")
+	return sstm.oneFileFlushFinalize(0, state, tableNum)
 }

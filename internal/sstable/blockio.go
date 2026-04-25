@@ -68,6 +68,11 @@ func (bw *blockWriter) Finalize() {
 	}
 }
 
+func (bw *blockWriter) Seek(offset int) {
+	bw.currBlockNum = offset / cap(bw.block)
+	bw.currByte = offset % cap(bw.block)
+}
+
 type blockReader struct {
 	block        []byte
 	currBlockNum int
