@@ -70,12 +70,8 @@ func (m *SSTableManager) multipleFilesFlush(mem Memtable, tableNum int) error {
 	firstEntry, lastEntry := sortedEntries[0], sortedEntries[len(sortedEntries)-1]
 	writeSummaryHeader(summaryWriter, firstEntry.Key, lastEntry.Key)
 
-	// FIXME: Do this without copying into a new slice
-	var merkleData [][]byte
-
 	for i, entry := range sortedEntries {
 		bf.Set([]byte(entry.Key)) // dodaj kljuc u filter
-		merkleData = append(merkleData, entry.Value)
 		offset := writeData(dataWriter, entry)
 		offset = writeIndex(indexWriter, entry.Key, offset)
 		if i%m.config.SummaryInterval == 0 {
@@ -85,7 +81,7 @@ func (m *SSTableManager) multipleFilesFlush(mem Memtable, tableNum int) error {
 	filterWriter.Write(bf.Dump())
 
 	// TODO: Seperate this into a different function
-	tree, err := merkleTree.NewMerkleTree(merkleData)
+	tree, err := merkleTree.NewMerkleTree(sortedEntries)
 	if err != nil {
 		return err
 	}
@@ -136,12 +132,8 @@ func (m *SSTableManager) oneFileFlush(mem Memtable, tableNum int) error {
 	writer.Write(filterData)
 	dataStart := writer.CurrOffset()
 
-	// FIXME: Do this without copying into a new slice
-	var merkleData [][]byte
-
 	index := make([]indexEntry, 0)
 	for _, entry := range mem.GetSortedEntries() {
-		merkleData = append(merkleData, entry.Value)
 		offset := writeData(writer, entry)
 		index = append(index, indexEntry{
 			Key:    entry.Key,
@@ -171,7 +163,7 @@ func (m *SSTableManager) oneFileFlush(mem Memtable, tableNum int) error {
 	}
 
 	metadataStart := writer.CurrOffset()
-	tree, err := merkleTree.NewMerkleTree(merkleData)
+	tree, err := merkleTree.NewMerkleTree(sortedEntries)
 	if err != nil {
 		return err
 	}

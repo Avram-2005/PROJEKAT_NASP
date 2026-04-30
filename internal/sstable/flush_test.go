@@ -384,7 +384,7 @@ func TestMetadataCorruptionOneFile(t *testing.T) {
 	}
 	m.bm = newBM
 
-	isValid, corruptedData, err := m.ValidateSSTable(2)
+	isValid, corruptedKeys, err := m.ValidateSSTable(2)
 	if err != nil {
 		t.Fatalf("Validation error: %v", err)
 	}
@@ -392,12 +392,12 @@ func TestMetadataCorruptionOneFile(t *testing.T) {
 	if isValid {
 		t.Fatalf("Merkle failed to detect change")
 	}
-	if len(corruptedData) == 0 {
+	if len(corruptedKeys) == 0 {
 		t.Fatalf("Corrupted data not detected")
 	}
 
-	if string(corruptedData[0]) != "value1" {
-		t.Fatalf("Expected corrupted data 'value1', got '%s'", string(corruptedData[0]))
+	if corruptedKeys[0] != "a" {
+		t.Fatalf("Expected corrupted key 'a', got '%s'", string(corruptedKeys[0]))
 	}
 }
 
@@ -483,7 +483,7 @@ func TestMetadataCorruptionMultipleFiles(t *testing.T) {
 	}
 	m.bm = newBM
 
-	isValid, corruptedData, err := m.ValidateSSTable(1)
+	isValid, corruptedKeys, err := m.ValidateSSTable(1)
 	if err != nil {
 		t.Fatalf("Validation error: %v", err)
 	}
@@ -491,18 +491,11 @@ func TestMetadataCorruptionMultipleFiles(t *testing.T) {
 	if isValid {
 		t.Fatalf("Merkle failed to detect change")
 	}
-	if len(corruptedData) == 0 {
+	if len(corruptedKeys) == 0 {
 		t.Fatalf("Corrupted data not detected")
 	}
 
-	found := false
-	for _, data := range corruptedData {
-		if string(data) == "value1" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Fatalf("Expected corrupted data 'value1', got: %v", corruptedData)
+	if corruptedKeys[0] != "a" {
+		t.Fatalf("Expected corrupted key 'a', got '%s'", string(corruptedKeys[0]))
 	}
 }
