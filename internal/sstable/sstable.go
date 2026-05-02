@@ -136,7 +136,7 @@ func (sstm *SSTableManager) Get(key string, sst *SSTable) (*Record, error) {
 	return sstm.getOneFile(key, sst)
 }
 
-func (sstm *SSTableManager) ValidateSSTable(sst *SSTable) (bool, [][]byte, error) {
+func (sstm *SSTableManager) ValidateSSTable(sst *SSTable) (bool, []Record, error) {
 	if sst.isMultFiles {
 		return sstm.validateMultipleFiles(sst.path)
 	}

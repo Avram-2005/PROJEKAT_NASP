@@ -10,7 +10,7 @@ import (
 	. "github.com/Avram-2005/PROJEKAT_NASP/Record"
 )
 
-func (sstm *SSTableManager) validateOneFile(filename string) (bool, [][]byte, error) {
+func (sstm *SSTableManager) validateOneFile(filename string) (bool, []Record, error) {
 	f, err := os.Open(filename)
 	if err != nil {
 		return false, nil, fmt.Errorf("failed to open SSTable file: %v", err)
@@ -41,7 +41,7 @@ func (sstm *SSTableManager) validateOneFile(filename string) (bool, [][]byte, er
 
 	dataReader := newBlockReader(f, sstm.bm, 0)
 
-	var currentData [][]byte
+	var currentRecords []Record
 	for {
 		currentOffset := dataReader.CurrOffset()
 		if currentOffset >= footer.IndexStart {
@@ -55,17 +55,30 @@ func (sstm *SSTableManager) validateOneFile(filename string) (bool, [][]byte, er
 		}
 
 		header := DeserializeRecordHeader(dataHeaderBuf[:])
-		dataReader.Skip(header.KeySize)
+
+		keyBuf := make([]byte, header.KeySize)
+		_, err = dataReader.Read(keyBuf)
+		if err != nil {
+			break
+		}
+
 		valueBuf := make([]byte, header.ValueSize)
 		_, err = dataReader.Read(valueBuf)
 		if err != nil {
 			break
 		}
 
-		currentData = append(currentData, valueBuf)
+		rec := Record{
+			Timestamp: header.Timestamp,
+			Tombstone: header.Tombstone,
+			Key:       string(keyBuf),
+			Value:     valueBuf,
+		}
+
+		currentRecords = append(currentRecords, rec)
 	}
 
-	currentTree, err := merkleTree.NewMerkleTree(currentData)
+	currentTree, err := merkleTree.NewMerkleTree(currentRecords)
 	if err != nil {
 		return false, nil, err
 	}
@@ -79,7 +92,7 @@ func (sstm *SSTableManager) validateOneFile(filename string) (bool, [][]byte, er
 	return false, diffs, nil
 }
 
-func (sstm *SSTableManager) validateMultipleFiles(sstablePath string) (bool, [][]byte, error) {
+func (sstm *SSTableManager) validateMultipleFiles(sstablePath string) (bool, []Record, error) {
 	metadataFilename := sstableFilenameMultFile(sstablePath, "Metadata")
 	metadataFile, err := os.Open(metadataFilename)
 	if err != nil {
@@ -126,7 +139,7 @@ func (sstm *SSTableManager) validateMultipleFiles(sstablePath string) (bool, [][
 
 	dataReader := newBlockReader(dataFile, sstm.bm, 0)
 
-	var currentData [][]byte
+	var currentRecords []Record
 	for {
 		if int64(dataReader.CurrOffset()) >= fileSize {
 			break
@@ -139,17 +152,30 @@ func (sstm *SSTableManager) validateMultipleFiles(sstablePath string) (bool, [][
 		}
 
 		header := DeserializeRecordHeader(dataHeaderBuf[:])
-		dataReader.Skip(header.KeySize)
+
+		keyBuf := make([]byte, header.KeySize)
+		_, err = dataReader.Read(keyBuf)
+		if err != nil {
+			break
+		}
+
 		valueBuf := make([]byte, header.ValueSize)
 		_, err = dataReader.Read(valueBuf)
 		if err != nil {
 			break
 		}
 
-		currentData = append(currentData, valueBuf)
+		rec := Record{
+			Timestamp: header.Timestamp,
+			Tombstone: header.Tombstone,
+			Key:       string(keyBuf),
+			Value:     valueBuf,
+		}
+
+		currentRecords = append(currentRecords, rec)
 	}
 
-	currentTree, err := merkleTree.NewMerkleTree(currentData)
+	currentTree, err := merkleTree.NewMerkleTree(currentRecords)
 	if err != nil {
 		return false, nil, err
 	}

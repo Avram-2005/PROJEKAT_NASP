@@ -3,8 +3,9 @@ package MerkleTree
 import (
 	"bytes"
 	"crypto/sha256" //hash funkcija
-	"encoding/binary"
 	"fmt"
+
+	. "github.com/Avram-2005/PROJEKAT_NASP/Record"
 )
 
 var emptyHash = make([]byte, 32) // prazan hash
@@ -14,24 +15,75 @@ type MerkleNode struct {
 	right  *MerkleNode // pokazivac na desno dete
 	parent *MerkleNode // pokazivac na roditelja
 	hash   []byte      // hash vrednost cvora
-	data   []byte      // podaci
+	record *Record
 }
 
 type MerkleTree struct {
 	root *MerkleNode
 }
 
-func NewMerkleTree(data [][]byte) (*MerkleTree, error) {
-	if len(data) == 0 {
+func NewMerkleTree(records []Record) (*MerkleTree, error) {
+	if len(records) == 0 {
 		return nil, fmt.Errorf("Empty data set")
 	}
 
 	var nodes []*MerkleNode
 
 	// listovi
-	for _, d := range data {
-		h := sha256.Sum256(d)
-		nodes = append(nodes, &MerkleNode{hash: h[:], data: d})
+	for _, rec := range records {
+		h := sha256.Sum256(rec.Serialize())
+		nodes = append(nodes, &MerkleNode{hash: h[:], record: &rec})
+	}
+
+	for len(nodes) > 1 { // dok ne ostane jedan cvor(koren)
+		var level []*MerkleNode // sledeci nivo
+
+		for i := 0; i < len(nodes); i += 2 {
+			left := nodes[i]
+			var right *MerkleNode
+
+			// ako postoji desno dete
+			if i+1 < len(nodes) {
+				right = nodes[i+1]
+			} else {
+				right = &MerkleNode{
+					hash: emptyHash, // prazan hash
+				}
+			}
+
+			// hash levog i desnog deteta
+			combined := append(left.hash, right.hash...)
+			h := sha256.Sum256(combined)
+
+			parent := &MerkleNode{
+				left:  left,
+				right: right,
+				hash:  h[:],
+			}
+			left.parent = parent
+			right.parent = parent
+
+			level = append(level, parent)
+		}
+		nodes = level // prelazak na sledeci nivo stabla
+	}
+
+	return &MerkleTree{
+		root: nodes[0], //koren
+	}, nil
+}
+
+func NewMerkleTreeHashes(records []Record) (*MerkleTree, error) {
+	if len(records) == 0 {
+		return nil, fmt.Errorf("Empty data set")
+	}
+
+	var nodes []*MerkleNode
+
+	// listovi
+	for _, rec := range records {
+		h := sha256.Sum256(rec.Serialize())
+		nodes = append(nodes, &MerkleNode{hash: h[:]})
 	}
 
 	for len(nodes) > 1 { // dok ne ostane jedan cvor(koren)
@@ -79,7 +131,7 @@ func (m *MerkleTree) Verify(expectedRoot []byte) bool {
 	return bytes.Equal(m.root.hash, expectedRoot) // da li su hash-evi isti
 }
 
-func FindDifference(a, b *MerkleNode) [][]byte {
+func FindDifference(a, b *MerkleNode) []Record {
 	if a == nil || b == nil {
 		return nil
 	}
@@ -91,11 +143,11 @@ func FindDifference(a, b *MerkleNode) [][]byte {
 
 	// hash se razlikuje, a dosli smo do lista stabla, znaci dosli smo do izmene
 	if a.left == nil && a.right == nil {
-		return [][]byte{a.data}
+		return []Record{*b.record}
 	}
 
 	// cuvace sve pronadjene razlike u listovima
-	var diffs [][]byte
+	var diffs []Record
 
 	// rekurzivno trazimo razlike
 	diffs = append(diffs, FindDifference(a.left, b.left)...)
@@ -121,24 +173,17 @@ func serializeNode(n *MerkleNode) []byte {
 	// dodajemo flag da li je list(1-da, 0-ne)
 	if n.left == nil && n.right == nil {
 		result = append(result, byte(1)) // list
+		result = append(result, n.hash...)
 	} else {
 		result = append(result, byte(0)) // unutrasnji cvor
+
+		// dodajemo hash (32 bajta za sha256)
+		result = append(result, n.hash...)
+
+		// rekurzivno dodajemo decu
+		result = append(result, serializeNode(n.left)...)
+		result = append(result, serializeNode(n.right)...)
 	}
-
-	// dodajemo hash (32 bajta za sha256)
-	result = append(result, n.hash...)
-
-	// ako je list, dodajemo duzinu podataka i podatke
-	if n.left == nil && n.right == nil && n.data != nil {
-		dataLen := make([]byte, 4)
-		binary.BigEndian.PutUint32(dataLen, uint32(len(n.data)))
-		result = append(result, dataLen...)
-		result = append(result, n.data...)
-	}
-
-	// rekurzivno dodajemo decu
-	result = append(result, serializeNode(n.left)...)
-	result = append(result, serializeNode(n.right)...)
 
 	return result
 }
@@ -185,19 +230,7 @@ func deserializeNode(data []byte, offset int, maxLen int) (*MerkleNode, int) {
 	n.hash = data[offset : offset+32]
 	offset += 32
 
-	// ako je list, procitaj podatke
-	if isLeaf {
-		if offset+4 > maxLen {
-			return nil, offset
-		}
-		dataLen := binary.BigEndian.Uint32(data[offset : offset+4])
-		offset += 4
-		if offset+int(dataLen) > maxLen {
-			return nil, offset
-		}
-		n.data = data[offset : offset+int(dataLen)]
-		offset += int(dataLen)
-	} else { // rekurzivna deserijalizacija levog i desnog deteta
+	if !isLeaf { // rekurzivna deserijalizacija levog i desnog deteta
 		n.left, offset = deserializeNode(data, offset, maxLen)
 		n.right, offset = deserializeNode(data, offset, maxLen)
 
