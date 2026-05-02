@@ -7,13 +7,8 @@ import (
 	"testing"
 )
 
-var flushCounter int
 var testTempDirs = make(map[testHelper]string)
-
-func getNextFlushNum() int {
-	flushCounter++
-	return flushCounter
-}
+var testManagers = make(map[testHelper]*SSTableManager)
 
 type testHelper interface {
 	Helper()
@@ -22,8 +17,6 @@ type testHelper interface {
 }
 
 func flush(t testHelper, multFiles bool, mem Memtable) (*SSTableManager, *SSTable) {
-	flushNum := getNextFlushNum()
-
 	// Get or create temp directory for this test
 	tempDir, exists := testTempDirs[t]
 	if !exists {
@@ -31,14 +24,21 @@ func flush(t testHelper, multFiles bool, mem Memtable) (*SSTableManager, *SSTabl
 		testTempDirs[t] = tempDir
 	}
 
-	m, err := SetupSSTableManager(tempDir, SSTableConfig{
-		SummaryInterval: 10,
-		MultipleFiles:   multFiles,
-	}, bm)
-	if err != nil {
-		t.Fatalf("Failed to setup SSTable: %v", err)
+	m, exists := testManagers[t]
+	if !exists {
+		var err error
+		m, err = SetupSSTableManager(tempDir, SSTableConfig{
+			SummaryInterval: 10,
+			MultipleFiles:   multFiles,
+		}, bm)
+		if err != nil {
+			t.Fatalf("Failed to setup SSTable: %v", err)
+		}
+		testManagers[t] = m
 	}
-	sst, err := m.Flush(mem, flushNum)
+	m.config.MultipleFiles = multFiles
+
+	sst, err := m.Flush(mem)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}

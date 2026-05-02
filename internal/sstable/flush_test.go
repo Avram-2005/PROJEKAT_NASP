@@ -12,6 +12,7 @@ import (
 )
 
 var bm *BlockManager.BlockManager
+var testSSTManagers = make(map[string]*SSTableManager)
 
 func TestMain(m *testing.M) {
 	var err error
@@ -23,20 +24,26 @@ func TestMain(m *testing.M) {
 	m.Run()
 }
 
-func testFlush(tempDir string, mem Memtable, numFlush int, multFiles bool) (*SSTableManager, *SSTable, error) {
-	m, err := SetupSSTableManager(tempDir, SSTableConfig{
-		SummaryInterval: 10,
-		MultipleFiles:   multFiles,
-	}, bm)
-	if err != nil {
-		return nil, nil, fmt.Errorf("Failed to setup SSTable: %v", err)
+func testFlush(tempDir string, mem Memtable, multFiles bool) (*SSTableManager, *SSTable, error) {
+	m, exists := testSSTManagers[tempDir]
+	if !exists {
+		var err error
+		m, err = SetupSSTableManager(tempDir, SSTableConfig{
+			SummaryInterval: 10,
+			MultipleFiles:   multFiles,
+		}, bm)
+		if err != nil {
+			return nil, nil, fmt.Errorf("Failed to setup SSTable: %v", err)
+		}
+		testSSTManagers[tempDir] = m
 	}
+	m.config.MultipleFiles = multFiles
 
-	// f, _ := os.Create(filepath.Join(tempDir, fmt.Sprintf("cpu_profile_flush_%d.prof", numFlush)))
+	// f, _ := os.Create(filepath.Join(tempDir, "cpu_profile_flush.prof"))
 	// pprof.StartCPUProfile(f)
 	// defer pprof.StopCPUProfile()
 
-	sst, err := m.Flush(mem, numFlush)
+	sst, err := m.Flush(mem)
 	if err != nil {
 		return nil, nil, fmt.Errorf("Flush failed: %v", err)
 	}
@@ -102,7 +109,7 @@ func oneFileSize(keyCount int, keyLen int, valueLen int, metadataSize int64, sum
 
 func TestFlushFewSmallKVMultipleFiles(t *testing.T) {
 	mem := smallSmallKeyKVMemtable{}
-	m, sst, err := testFlush(t.TempDir(), mem, 1, true)
+	m, sst, err := testFlush(t.TempDir(), mem, true)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
@@ -121,7 +128,7 @@ func TestFlushFewSmallKVMultipleFiles(t *testing.T) {
 		}
 	}
 
-	sstablePath := m.sstableFilepath(0, 1)
+	sstablePath := m.sstableFilepath(0, 0)
 	dataFilename := sstableFilenameMultFile(sstablePath, "Data")
 	expectedSize := calcDataSectionSize(3, 1, 6) // 3 entries, each with 1 byte key and 6 byte value
 	testFileSize(t, dataFilename, expectedSize)
@@ -145,7 +152,7 @@ func TestFlushFewSmallKVMultipleFiles(t *testing.T) {
 
 func TestFlushFewSmallKVOneFile(t *testing.T) {
 	mem := smallSmallKeyKVMemtable{}
-	m, sst, err := testFlush(t.TempDir(), mem, 1, false)
+	m, sst, err := testFlush(t.TempDir(), mem, false)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
@@ -164,7 +171,7 @@ func TestFlushFewSmallKVOneFile(t *testing.T) {
 		}
 	}
 
-	sstablePath := m.sstableFilepath(0, 1)
+	sstablePath := m.sstableFilepath(0, 0)
 	info, err := os.Stat(sstablePath)
 	if err != nil {
 		t.Fatalf("Failed to stat file: %v", err)
@@ -179,12 +186,12 @@ func TestFlushFewSmallKVOneFile(t *testing.T) {
 
 func TestFlushFewLargeKVMultipleFiles(t *testing.T) {
 	mem := fewLargeKeyKVMemtable{}
-	m, _, err := testFlush(t.TempDir(), mem, 2, true)
+	m, _, err := testFlush(t.TempDir(), mem, true)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	sstablePath := m.sstableFilepath(0, 2)
+	sstablePath := m.sstableFilepath(0, 0)
 	dataFilename := sstableFilenameMultFile(sstablePath, "Data")
 	expectedSize := calcDataSectionSize(3, 5, 10000) // 3 entries, each with 5 byte key and 10000 byte value
 	testFileSize(t, dataFilename, expectedSize)
@@ -208,12 +215,12 @@ func TestFlushFewLargeKVMultipleFiles(t *testing.T) {
 
 func TestFlushFewLargeKVOneFile(t *testing.T) {
 	mem := fewLargeKeyKVMemtable{}
-	m, _, err := testFlush(t.TempDir(), mem, 2, false)
+	m, _, err := testFlush(t.TempDir(), mem, false)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	sstablePath := m.sstableFilepath(0, 2)
+	sstablePath := m.sstableFilepath(0, 0)
 	info, err := os.Stat(sstablePath)
 	if err != nil {
 		t.Fatalf("Failed to stat file: %v", err)
@@ -227,12 +234,12 @@ func TestFlushFewLargeKVOneFile(t *testing.T) {
 
 func TestFlushManySmallKVMultipleFiles(t *testing.T) {
 	mem := manySmallKeyKVMemtable{}
-	m, _, err := testFlush(t.TempDir(), mem, 3, true)
+	m, _, err := testFlush(t.TempDir(), mem, true)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	sstablePath := m.sstableFilepath(0, 3)
+	sstablePath := m.sstableFilepath(0, 0)
 	dataFilename := sstableFilenameMultFile(sstablePath, "Data")
 	expectedSize := calcDataSectionSize(1000, 6, 8) // 1000 entries, each with 6 byte key and 8 byte value
 	testFileSize(t, dataFilename, expectedSize)
@@ -256,12 +263,12 @@ func TestFlushManySmallKVMultipleFiles(t *testing.T) {
 
 func TestFlushManySmallKVOneFile(t *testing.T) {
 	mem := manySmallKeyKVMemtable{}
-	m, _, err := testFlush(t.TempDir(), mem, 3, false)
+	m, _, err := testFlush(t.TempDir(), mem, false)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	sstablePath := m.sstableFilepath(0, 3)
+	sstablePath := m.sstableFilepath(0, 0)
 	info, err := os.Stat(sstablePath)
 	if err != nil {
 		t.Fatalf("Failed to stat file: %v", err)
@@ -275,12 +282,12 @@ func TestFlushManySmallKVOneFile(t *testing.T) {
 
 func TestFlushManyLargeKVMultipleFIles(t *testing.T) {
 	mem := manyLargeKeyKVMemtable{}
-	m, _, err := testFlush(t.TempDir(), mem, 4, true)
+	m, _, err := testFlush(t.TempDir(), mem, true)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	sstablePath := m.sstableFilepath(0, 4)
+	sstablePath := m.sstableFilepath(0, 0)
 	dataFilename := sstableFilenameMultFile(sstablePath, "Data")
 	expectedSize := calcDataSectionSize(10000, 11, 10000) // 10000 entries, each with 11 byte key and 10000 byte value
 	testFileSize(t, dataFilename, expectedSize)
@@ -304,12 +311,12 @@ func TestFlushManyLargeKVMultipleFIles(t *testing.T) {
 
 func TestFlushManyLargeKVOneFile(t *testing.T) {
 	mem := manyLargeKeyKVMemtable{}
-	m, _, err := testFlush(t.TempDir(), mem, 4, false)
+	m, _, err := testFlush(t.TempDir(), mem, false)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	sstablePath := m.sstableFilepath(0, 4)
+	sstablePath := m.sstableFilepath(0, 0)
 	info, err := os.Stat(sstablePath)
 	if err != nil {
 		t.Fatalf("Failed to stat file: %v", err)
@@ -327,7 +334,7 @@ func testMergeFiles(t *testing.T, ssts []*SSTable, config SSTableConfig, expecte
 		t.Fatalf("Failed to setup SSTableManager: %v", err)
 	}
 
-	mergedSST, err := m.Merge(ssts, 0, len(ssts)+1)
+	mergedSST, err := m.Merge(ssts, 0)
 	if err != nil {
 		t.Fatalf("Merge failed: %v", err)
 	}
@@ -357,15 +364,16 @@ func testMergeFiles(t *testing.T, ssts []*SSTable, config SSTableConfig, expecte
 }
 
 func TestMergeMultipleFiles(t *testing.T) {
-	_, sst1, err := testFlush(t.TempDir(), smallSmallKeyKVMemtable{}, 1, true)
+	tempDir := t.TempDir()
+	_, sst1, err := testFlush(tempDir, smallSmallKeyKVMemtable{}, true)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
-	_, sst2, err := testFlush(t.TempDir(), fewLargeKeyKVMemtable{}, 2, true)
+	_, sst2, err := testFlush(tempDir, fewLargeKeyKVMemtable{}, true)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
-	_, sst3, err := testFlush(t.TempDir(), manySmallKeyKVMemtable{}, 3, true)
+	_, sst3, err := testFlush(tempDir, manySmallKeyKVMemtable{}, true)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
@@ -383,15 +391,16 @@ func TestMergeMultipleFiles(t *testing.T) {
 }
 
 func TestMergeOneFile(t *testing.T) {
-	_, sst1, err := testFlush(t.TempDir(), smallSmallKeyKVMemtable{}, 1, false)
+	tempDir := t.TempDir()
+	_, sst1, err := testFlush(tempDir, smallSmallKeyKVMemtable{}, false)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
-	_, sst2, err := testFlush(t.TempDir(), fewLargeKeyKVMemtable{}, 2, false)
+	_, sst2, err := testFlush(tempDir, fewLargeKeyKVMemtable{}, false)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
-	_, sst3, err := testFlush(t.TempDir(), manySmallKeyKVMemtable{}, 3, false)
+	_, sst3, err := testFlush(tempDir, manySmallKeyKVMemtable{}, false)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
