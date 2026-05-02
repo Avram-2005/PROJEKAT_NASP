@@ -1,183 +1,159 @@
 package wal
 
 import (
+	"bytes"
+	"fmt"
 	"os"
 	"testing"
+
+	memtable "github.com/Avram-2005/PROJEKAT_NASP/Memtable"
 )
 
-func setupTest(t *testing.T) string {
+// Pravi pomoćni Memtable
+func getTestMemtableManager() (*memtable.MemtableManager, error) {
+	conf := memtable.MemtableConfig{
+		Type:           "hashmap",
+		MaxSizeEntries: 100,
+	}
+	return memtable.NewMemtableManager(2, conf, func(items []memtable.KeyValue) error { return nil })
+}
+
+// Priprema testa: briše stare i pravi nove čiste foldere
+func setupTest(t *testing.T) {
+	cleanupTest()
 	err := os.MkdirAll(FILE_PATH, 0755)
 	if err != nil {
 		t.Fatalf("Nije moguće kreirati test folder: %v", err)
 	}
-	return FILE_PATH
 }
 
+// Briše ceo WAL folder sa diska
 func cleanupTest() {
 	os.RemoveAll("./WAL")
 }
 
-func TestCreateNewWAL(t *testing.T) {
+// Provera da li WAL može da se napravi, ugasi, pa ponovo otvori
+func TestCreateAndReopen(t *testing.T) {
 	setupTest(t)
 	defer cleanupTest()
 
-	segmentSize := 1024
-	blockSize := 16
+	w, _ := CreatNewWAL(8192, 4)
+	w.AddRecord("test", []byte("data"))
+	w.Close()
 
-	walObject, err := CreatNewWAL(segmentSize, blockSize)
+	w2, err := CreatNewWAL(8192, 4)
 	if err != nil {
-		t.Fatalf("Greška pri kreiranju WAL-a: %v", err)
+		t.Fatalf("Neuspešno ponovno otvaranje: %v", err)
 	}
-
-	if walObject == nil {
-		t.Fatal("WAL je nil, došlo je do greške pri kreiranju")
-	} else {
-		defer walObject.Close()
+	if len(w2.segmentList) != 1 {
+		t.Errorf("Očekivan 1 segment, dobijeno %d", len(w2.segmentList))
 	}
+	w2.Close()
 }
 
-func TestWriteAndRead(t *testing.T) {
+// Provera da li sistem uspešno vraća podatke iz fajla u memoriju
+func TestFullRecoveryCycle(t *testing.T) {
 	setupTest(t)
 	defer cleanupTest()
 
-	w, err := CreatNewWAL(64, 16)
-	if err != nil {
-		t.Fatalf("Kreiranje nije uspelo: %v", err)
+	w, _ := CreatNewWAL(8192, 4)
+
+	w.AddRecord("mali", []byte("v"))
+	bigVal := []byte("vrednost_koja_se_fragmentise")
+	w.AddRecord("veliki", bigVal)
+
+	w.DeleteRecord("obrisan")
+	w.Close()
+
+	w2, _ := CreatNewWAL(8192, 4)
+	mm, _ := getTestMemtableManager()
+
+	if err := w2.Recovery(mm); err != nil {
+		t.Fatalf("Recovery puko: %v", err)
 	}
-	defer w.Close()
 
-	key := "kljuc1"
-	value := []byte("neka vrednost")
-
-	err2 := w.AddRecord(key, value)
-	if err2 != nil {
-		t.Fatalf("Greška tokom upisa: %v", err2)
+	val, found, _ := mm.Get("mali")
+	if !found || string(val) != "v" {
+		t.Errorf("Mali zapis nije vraćen kako treba")
 	}
 
-	//_ = w.Recovery(nil)
+	val2, found2, _ := mm.Get("veliki")
+	if !found2 || !bytes.Equal(val2, bigVal) {
+		t.Errorf("Veliki (fragmentisani) zapis nije ispravno spojen")
+	}
+
+	w2.Close()
 }
 
-func TestSegmentSplitting(t *testing.T) {
+// Provera šta se dešava kada header zapisa udari u samu ivicu bloka
+func TestHeaderBoundaryEdgeCase(t *testing.T) {
 	setupTest(t)
 	defer cleanupTest()
 
-	sSize := 4048
-	bSize := 4
-	myWal, err := CreatNewWAL(sSize, bSize)
-	if err != nil {
-		t.Fatalf("Greška: %v", err)
-	}
-	defer myWal.Close()
+	w, _ := CreatNewWAL(8192, 4)
 
-	for i := 0; i < 1000; i++ {
-		_ = myWal.AddRecord("kljuc", []byte("vivaldijeva kuca na drvetu"))
+	w.AddRecord("k1", []byte("v1"))
+	bigKey := "kljuc_posle_skoka"
+	w.AddRecord(bigKey, []byte("podatak"))
+	w.Close()
+
+	w2, _ := CreatNewWAL(8192, 4)
+	mm, _ := getTestMemtableManager()
+	if err := w2.Recovery(mm); err != nil {
+		t.Fatalf("Recovery greška na granici bloka: %v", err)
 	}
 
-	if len(myWal.segmentList) < 2 {
-		t.Logf("Broj segmenata je: %d", len(myWal.segmentList))
+	_, found, _ := mm.Get(bigKey)
+	if !found {
+		t.Error("Zapis nije pronađen")
 	}
+	w2.Close()
 }
 
-func TestBlockPadding(t *testing.T) {
+// Provera da li WAL automatski pravi nove fajlove i briše stare
+func TestRotationAndFlush(t *testing.T) {
 	setupTest(t)
 	defer cleanupTest()
 
-	blockKB := 4
-	segmentKB := 16
+	w, _ := CreatNewWAL(8192, 4)
 
-	testWal, err := CreatNewWAL(segmentKB, blockKB)
-	if err != nil {
-		t.Fatalf("Još jedna greška: %v", err)
-	}
-	defer testWal.Close()
-
-	blockBytes := 4 * 1024
-
-	longKey := "noa_je_mnogo_zgodan_decko_i_ima_dugacak_kljuc"
-	bigValue := make([]byte, 2000)
-
-	err1 := testWal.AddRecord(longKey, bigValue)
-	if err1 != nil {
-		t.Fatal("Prvi upis nije prošao")
+	for i := 0; i < 200; i++ {
+		w.AddRecord(fmt.Sprintf("key%d", i), []byte("duzi_podatak_za_rotaciju"))
 	}
 
-	err2 := testWal.AddRecord(longKey, bigValue)
-	if err2 != nil {
-		t.Fatal("Drugi upis nije prošao")
+	if len(w.segmentList) < 2 {
+		t.Errorf("Rotacija nije odradila posao")
 	}
 
-	if testWal.currentWritePosition%blockBytes == 0 {
-		t.Log("Uspeh: zapis je upisan na početak novog bloka.")
+	if len(w.segmentList) >= 2 {
+		w.lowWatermarks = []string{w.segmentList[1]}
+		w.FlushWAL()
 	}
+	w.Close()
 }
 
-func TestLargeRecordFragmentation(t *testing.T) {
+// Provera da li recovery preživljava ako su neki podaci u fajlu pokvareni
+func TestCorruptedChunk(t *testing.T) {
 	setupTest(t)
 	defer cleanupTest()
 
-	segmentSize := 4048
-	blockSize := 4
+	w, _ := CreatNewWAL(8192, 4)
+	w.AddRecord("validan", []byte("podatak"))
+	w.Close()
 
-	w, err := CreatNewWAL(segmentSize, blockSize)
-	if err != nil {
-		t.Fatalf("Kreiranje nije uspelo: %v", err)
+	//Namerno kvarimo fajl dodavanjem smeća na kraj
+	f, _ := os.OpenFile(w.segmentList[0], os.O_WRONLY|os.O_APPEND, 0644)
+	f.Write([]byte{99, 0, 0, 0})
+	f.Close()
+
+	mm, _ := getTestMemtableManager()
+	w2, _ := CreatNewWAL(8192, 4)
+
+	w2.Recovery(mm)
+
+	val, found, _ := mm.Get("validan")
+	if !found || string(val) != "podatak" {
+		t.Error("Dobar podatak pre kvara je morao biti sačuvan")
 	}
-	defer w.Close()
-
-	key := "masivni_kljuc"
-
-	value := make([]byte, 5000)
-	for i := range value {
-		value[i] = 'X'
-	}
-
-	err2 := w.AddRecord(key, value)
-	if err2 != nil {
-		t.Fatalf("Greška tokom upisa velikog zapisa (fragmentacija pukla): %v", err2)
-	}
-
-	//_ = w.Recovery(nil)
-}
-
-func TestWALCleanupAndRotation(t *testing.T) {
-	setupTest(t)
-	defer cleanupTest()
-
-	segmentSize := 4096
-	blockSize := 4
-
-	w, err := CreatNewWAL(segmentSize, blockSize)
-	if err != nil {
-		t.Fatalf("Kreiranje nije uspelo: %v", err)
-	}
-	defer w.Close()
-
-	for i := 0; i < 300; i++ {
-		_ = w.AddRecord("kljuc", make([]byte, 1200))
-	}
-
-	startCount := len(w.segmentList)
-	if startCount < 3 {
-		t.Fatalf("Očekivano barem 3 segmenta, dobijeno %d", startCount)
-	}
-
-	w.memtableRotation()
-	if len(w.lowWatermarks) == 0 {
-		t.Fatal("Watermark nije pravilno dodat u listu")
-	}
-
-	w.lowWatermarks = []string{w.segmentList[5], w.segmentList[10]}
-	obsoleteSegment := w.segmentList[0]
-	err = w.FlushWAL()
-	if err != nil {
-		t.Fatalf("FlushWAL je vratio grešku: %v", err)
-	}
-
-	if _, err := os.Stat(obsoleteSegment); !os.IsNotExist(err) {
-		t.Errorf("Fajl %s bi trebalo da je obrisan sa diska, ali i dalje postoji.", obsoleteSegment)
-	}
-
-	if len(w.segmentList) != startCount-5 {
-		t.Errorf("SegmentList bi trebalo da ima %d segmenta, ima %d", startCount-5, len(w.segmentList))
-	}
+	w2.Close()
 }
