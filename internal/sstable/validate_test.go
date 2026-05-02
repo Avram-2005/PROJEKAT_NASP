@@ -13,7 +13,7 @@ import (
 
 func TestMetadataValidationOneFile(t *testing.T) {
 	mem := smallSmallKeyKVMemtable{}
-	m, sst, err := testFlush(t.TempDir(), mem, 1, false)
+	m, sst, err := testFlush(t.TempDir(), mem, false)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
@@ -31,7 +31,7 @@ func TestMetadataValidationOneFile(t *testing.T) {
 
 func TestMetadataCorruptionOneFile(t *testing.T) {
 	mem := smallSmallKeyKVMemtable{}
-	m, sst, err := testFlush(t.TempDir(), mem, 2, false)
+	m, sst, err := testFlush(t.TempDir(), mem, false)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
@@ -104,7 +104,7 @@ func TestMetadataCorruptionOneFile(t *testing.T) {
 
 func TestMetadataValidationMultipleFiles(t *testing.T) {
 	mem := smallSmallKeyKVMemtable{}
-	m, sst, err := testFlush(t.TempDir(), mem, 1, true)
+	m, sst, err := testFlush(t.TempDir(), mem, true)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
@@ -122,12 +122,12 @@ func TestMetadataValidationMultipleFiles(t *testing.T) {
 
 func TestMetadataCorruptionMultipleFiles(t *testing.T) {
 	mem := smallSmallKeyKVMemtable{}
-	m, sst, err := testFlush(t.TempDir(), mem, 1, true)
+	m, sst, err := testFlush(t.TempDir(), mem, true)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	sstablePath := m.sstableFilepath(0, 1)
+	sstablePath := m.sstableFilepath(0, 0)
 	dataFile := sstableFilenameMultFile(sstablePath, "Data")
 
 	readFile, err := os.Open(dataFile)

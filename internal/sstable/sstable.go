@@ -29,6 +29,7 @@ type SSTableManager struct {
 	config     SSTableConfig
 	TablesRoot string
 	bm         *BlockManager.BlockManager
+	numTables  int
 }
 
 const BLOOM_FILTER_RATE = 0.01
@@ -115,18 +116,33 @@ func (s *Summary) IsFound(key string) (bool, uint64, error) {
 }
 
 // TODO: Compression (1.3[DZ3])
-func (sstm *SSTableManager) Flush(mem Memtable, tableNum int) (*SSTable, error) {
+func (sstm *SSTableManager) Flush(mem Memtable) (*SSTable, error) {
+	var sst *SSTable
+	var err error
 	if sstm.config.MultipleFiles {
-		return sstm.multipleFilesFlush(mem, tableNum)
+		sst, err = sstm.multipleFilesFlush(mem, sstm.numTables)
+	} else {
+		sst, err = sstm.oneFileFlush(mem, sstm.numTables)
 	}
-	return sstm.oneFileFlush(mem, tableNum)
+	if err != nil {
+		return nil, fmt.Errorf("failed to flush memtable: %v", err)
+	}
+	sstm.numTables++
+	return sst, err
 }
 
-func (sstm *SSTableManager) Merge(ssts []*SSTable, level int, tableNum int) (*SSTable, error) {
+func (sstm *SSTableManager) Merge(ssts []*SSTable, level int) (*SSTable, error) {
+	var sst *SSTable
+	var err error
 	if sstm.config.MultipleFiles {
-		return sstm.multipleFilesMerge(ssts, level, tableNum)
+		sst, err = sstm.multipleFilesMerge(ssts, level, sstm.numTables)
+	} else {
+		sst, err = sstm.oneFileMerge(ssts, level, sstm.numTables)
 	}
-	return sstm.oneFileMerge(ssts, level, tableNum)
+	if err != nil {
+		return nil, fmt.Errorf("failed to merge SSTables: %v", err)
+	}
+	return sst, nil
 }
 
 func (sstm *SSTableManager) Get(key string, sst *SSTable) (*Record, error) {

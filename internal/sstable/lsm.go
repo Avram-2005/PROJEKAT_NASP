@@ -89,7 +89,7 @@ func (lsm *LSM) Compact() error {
 }
 
 func (lsm *LSM) Flush(mem Memtable) error {
-	sst, err := lsm.sstm.Flush(mem, len(lsm.levels[0].tables))
+	sst, err := lsm.sstm.Flush(mem)
 	if err != nil {
 		return fmt.Errorf("failed to flush memtable: %v", err)
 	}
