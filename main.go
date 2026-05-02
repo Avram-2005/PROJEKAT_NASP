@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	wal, err := WAL.CreatNewWAL(4048, 4)
+	wal, err := WAL.CreatNewWAL(16192, 4)
 	if err != nil {
 		fmt.Print(err)
 	}
