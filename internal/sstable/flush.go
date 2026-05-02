@@ -57,6 +57,7 @@ type multipleFilesFlushState struct {
 	bf             *BloomFilter.BloomFilter
 	merkleData     []Record
 	summary        *Summary
+	files          *sstableFiles
 }
 
 func (sstm *SSTableManager) multipleFilesFlushInit(level int, tableNum int, numRecs uint) (*multipleFilesFlushState, error) {
@@ -73,6 +74,7 @@ func (sstm *SSTableManager) multipleFilesFlushInit(level int, tableNum int, numR
 		metadataWriter: newBlockWriter(files.metadataFile, sstm.bm),
 		merkleData:     make([]Record, 0, numRecs),
 		summary:        sstm.NewSummary(numRecs),
+		files:          files,
 	}
 	state.bf, err = BloomFilter.NewBloomFilter(numRecs, BLOOM_FILTER_RATE)
 	if err != nil {
@@ -131,6 +133,7 @@ func (sstm *SSTableManager) multipleFilesFlush(mem Memtable, tableNum int) (*SST
 	if err != nil {
 		return nil, err
 	}
+	defer state.files.Close()
 
 	firstEntry, lastEntry := entries[0], entries[len(entries)-1]
 	writeSummaryHeader(state.summaryWriter, firstEntry.Key, lastEntry.Key)
@@ -150,15 +153,16 @@ type oneFileFlushState struct {
 	merkleData []Record
 	index      []indexEntry
 	summary    *Summary
+	file       *os.File
 }
 
 func (sstm *SSTableManager) oneFileFlushInit(level int, tableNum int, numRecs uint) (*oneFileFlushState, error) {
 	sstableFilename := sstm.sstableFilepath(level, tableNum)
-	f, err := os.Create(sstableFilename)
+	file, err := os.Create(sstableFilename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create SSTable file: %v", err)
 	}
-	writer := newBlockWriter(f, sstm.bm)
+	writer := newBlockWriter(file, sstm.bm)
 	bf, err := BloomFilter.NewBloomFilter(numRecs, BLOOM_FILTER_RATE)
 	if err != nil {
 		return nil, err
@@ -169,6 +173,7 @@ func (sstm *SSTableManager) oneFileFlushInit(level int, tableNum int, numRecs ui
 		index:      make([]indexEntry, 0, numRecs),
 		merkleData: make([]Record, 0, numRecs),
 		summary:    sstm.NewSummary(numRecs),
+		file:       file,
 	}, nil
 }
 
@@ -236,6 +241,7 @@ func (sstm *SSTableManager) oneFileFlush(mem Memtable, tableNum int) (*SSTable, 
 	if err != nil {
 		return nil, err
 	}
+	defer state.file.Close()
 
 	for i, entry := range mem.GetSortedEntries() {
 		sstm.oneFileFlushRecord(i, entry, state)

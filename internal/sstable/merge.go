@@ -76,6 +76,7 @@ func reconstructFilter(sstm *SSTableManager, sst *SSTable, numRecs int) error {
 	if err != nil {
 		return fmt.Errorf("failed to create iterator for new SSTable: %v", err)
 	}
+	defer iter.Close()
 
 	for iter.Rec != nil {
 		bf.Set([]byte(iter.Rec.Key))
@@ -93,6 +94,7 @@ func (sstm *SSTableManager) multipleFilesMerge(ssts []*SSTable, level int, table
 	if err != nil {
 		return nil, err
 	}
+	defer state.files.Close()
 
 	minKey, maxKey := findMinMaxKeys(ssts)
 	state.summary.SetFirstAndLast(minKey, maxKey)
@@ -102,6 +104,7 @@ func (sstm *SSTableManager) multipleFilesMerge(ssts []*SSTable, level int, table
 	if err != nil {
 		return nil, fmt.Errorf("failed to create iterator heap: %v", err)
 	}
+	defer h.Close()
 
 	numRecs := 0
 	for h.Len() > 0 {
@@ -113,24 +116,25 @@ func (sstm *SSTableManager) multipleFilesMerge(ssts []*SSTable, level int, table
 		numRecs++
 
 		if hasNext, err := minIter.Next(); err != nil {
+			_ = minIter.Close()
 			return nil, fmt.Errorf("failed to advance iterator: %v", err)
 		} else if hasNext {
 			heap.Push(h, minIter)
+		} else {
+			if err := minIter.Close(); err != nil {
+				return nil, fmt.Errorf("failed to close iterator: %v", err)
+			}
 		}
 	}
 	sst, err := sstm.multipleFilesFlushFinalize(level, state, tableNum)
 
-	reconstructFilter(sstm, sst, numRecs)
+	if err := reconstructFilter(sstm, sst, numRecs); err != nil {
+		return nil, err
+	}
 
 	filterData := sst.filter.Dump()
 	state.filterWriter.Write(filterData)
 	state.filterWriter.Finalize()
-
-	for _, iter := range *h {
-		if err := iter.Close(); err != nil {
-			return nil, fmt.Errorf("failed to close iterator: %v", err)
-		}
-	}
 
 	return sst, err
 }
@@ -141,11 +145,13 @@ func (sstm *SSTableManager) oneFileMerge(ssts []*SSTable, level int, tableNum in
 	if err != nil {
 		return nil, err
 	}
+	defer state.file.Close()
 
 	h, err := newIterHeap(ssts, sstm)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create iterator heap: %v", err)
 	}
+	defer h.Close()
 
 	numRecs := 0
 	for h.Len() > 0 {
@@ -156,14 +162,21 @@ func (sstm *SSTableManager) oneFileMerge(ssts []*SSTable, level int, tableNum in
 		numRecs++
 
 		if hasNext, err := minIter.Next(); err != nil {
+			_ = minIter.Close()
 			return nil, fmt.Errorf("failed to advance iterator: %v", err)
 		} else if hasNext {
 			heap.Push(h, minIter)
+		} else {
+			if err := minIter.Close(); err != nil {
+				return nil, fmt.Errorf("failed to close iterator: %v", err)
+			}
 		}
 	}
 	sst, err := sstm.oneFileFlushFinalize(level, state, tableNum)
 
-	reconstructFilter(sstm, sst, numRecs)
+	if err := reconstructFilter(sstm, sst, numRecs); err != nil {
+		return nil, err
+	}
 
 	filterData := sst.filter.Dump()
 	state.writer.Seek(int(sst.footer.FilterStart))
@@ -172,12 +185,6 @@ func (sstm *SSTableManager) oneFileMerge(ssts []*SSTable, level int, tableNum in
 	sst.footer.FooterStart = state.writer.CurrOffset()
 	sst.footer.Write(state.writer)
 	state.writer.Finalize()
-
-	for _, iter := range *h {
-		if err := iter.Close(); err != nil {
-			return nil, fmt.Errorf("failed to close iterator: %v", err)
-		}
-	}
 
 	return sst, err
 }
