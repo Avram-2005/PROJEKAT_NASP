@@ -81,7 +81,7 @@ func (m *SSTableManager) multipleFilesFlush(mem Memtable, tableNum int) error {
 	filterWriter.Write(bf.Dump())
 
 	// TODO: Seperate this into a different function
-	tree, err := merkleTree.NewMerkleTree(sortedEntries)
+	tree, err := merkleTree.NewMerkleTreeHashes(sortedEntries)
 	if err != nil {
 		return err
 	}
@@ -163,7 +163,7 @@ func (m *SSTableManager) oneFileFlush(mem Memtable, tableNum int) error {
 	}
 
 	metadataStart := writer.CurrOffset()
-	tree, err := merkleTree.NewMerkleTree(sortedEntries)
+	tree, err := merkleTree.NewMerkleTreeHashes(sortedEntries)
 	if err != nil {
 		return err
 	}
