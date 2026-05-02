@@ -38,7 +38,7 @@ func TestDetectChange(t *testing.T) {
 
 	diffs := FindDifference(m1.Root(), m2.Root())
 	for _, d := range diffs {
-		t.Log("Izmenjen podatak pod kljucem: ", string(d))
+		t.Logf("Izmenjen podatak pod kljucem: %s, sa podatkom: %s, sa timestamp: %s, sa tombstone: %t", string(d.Key), string(d.Value), d.Timestamp.String(), d.Tombstone)
 	}
 
 	// test 2 - isti podaci
@@ -70,7 +70,7 @@ func TestDetectChange(t *testing.T) {
 
 	diffs2 := FindDifference(m3.Root(), m4.Root())
 	for _, d := range diffs2 {
-		t.Fatal("Izmenjen podatak pod kljucem: ", string(d))
+		t.Fatalf("Izmenjen podatak pod kljucem: %s, sa podatkom: %s, sa timestamp: %s, sa tombstone: %t", string(d.Key), string(d.Value), d.Timestamp.String(), d.Tombstone)
 	}
 
 	// test 3 - izmenjeni podaci pod kljucevima a i c
@@ -102,7 +102,7 @@ func TestDetectChange(t *testing.T) {
 
 	diffs3 := FindDifference(m5.Root(), m6.Root())
 	for _, d := range diffs3 {
-		t.Log("Izmenjen podatak pod kljucem: ", string(d))
+		t.Logf("Izmenjen podatak pod kljucem: %s, sa podatkom: %s, sa timestamp: %s, sa tombstone: %t", string(d.Key), string(d.Value), d.Timestamp.String(), d.Tombstone)
 	}
 
 	// test 4 - izmenjen kljuc a i Timestamp pod kljucem c
@@ -134,7 +134,7 @@ func TestDetectChange(t *testing.T) {
 
 	diffs4 := FindDifference(m7.Root(), m8.Root())
 	for _, d := range diffs4 {
-		t.Log("Izmenjen podatak pod kljucem: ", string(d))
+		t.Logf("Izmenjen podatak pod kljucem: %s, sa podatkom: %s, sa timestamp: %s, sa tombstone: %t", string(d.Key), string(d.Value), d.Timestamp.String(), d.Tombstone)
 	}
 }
 
@@ -161,6 +161,6 @@ func TestSerializeDeserialize(t *testing.T) {
 
 	diffs := FindDifference(m1.Root(), m2.Root())
 	for _, d := range diffs {
-		t.Fatal("Izmenjen podatak pod kljucem: ", string(d))
+		t.Fatalf("Izmenjen podatak pod kljucem: %s, sa podatkom: %s, sa timestamp: %s, sa tombstone: %t", string(d.Key), string(d.Value), d.Timestamp.String(), d.Tombstone)
 	}
 }

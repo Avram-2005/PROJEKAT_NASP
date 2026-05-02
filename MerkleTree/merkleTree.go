@@ -3,7 +3,6 @@ package MerkleTree
 import (
 	"bytes"
 	"crypto/sha256" //hash funkcija
-	"encoding/binary"
 	"fmt"
 
 	. "github.com/Avram-2005/PROJEKAT_NASP/Record"
@@ -16,8 +15,7 @@ type MerkleNode struct {
 	right  *MerkleNode // pokazivac na desno dete
 	parent *MerkleNode // pokazivac na roditelja
 	hash   []byte      // hash vrednost cvora
-	key    string
-	data   []byte // podaci
+	record *Record
 }
 
 type MerkleTree struct {
@@ -34,7 +32,58 @@ func NewMerkleTree(records []Record) (*MerkleTree, error) {
 	// listovi
 	for _, rec := range records {
 		h := sha256.Sum256(rec.Serialize())
-		nodes = append(nodes, &MerkleNode{hash: h[:], key: rec.Key, data: rec.Value})
+		nodes = append(nodes, &MerkleNode{hash: h[:], record: &rec})
+	}
+
+	for len(nodes) > 1 { // dok ne ostane jedan cvor(koren)
+		var level []*MerkleNode // sledeci nivo
+
+		for i := 0; i < len(nodes); i += 2 {
+			left := nodes[i]
+			var right *MerkleNode
+
+			// ako postoji desno dete
+			if i+1 < len(nodes) {
+				right = nodes[i+1]
+			} else {
+				right = &MerkleNode{
+					hash: emptyHash, // prazan hash
+				}
+			}
+
+			// hash levog i desnog deteta
+			combined := append(left.hash, right.hash...)
+			h := sha256.Sum256(combined)
+
+			parent := &MerkleNode{
+				left:  left,
+				right: right,
+				hash:  h[:],
+			}
+			left.parent = parent
+			right.parent = parent
+
+			level = append(level, parent)
+		}
+		nodes = level // prelazak na sledeci nivo stabla
+	}
+
+	return &MerkleTree{
+		root: nodes[0], //koren
+	}, nil
+}
+
+func NewMerkleTreeHashes(records []Record) (*MerkleTree, error) {
+	if len(records) == 0 {
+		return nil, fmt.Errorf("Empty data set")
+	}
+
+	var nodes []*MerkleNode
+
+	// listovi
+	for _, rec := range records {
+		h := sha256.Sum256(rec.Serialize())
+		nodes = append(nodes, &MerkleNode{hash: h[:]})
 	}
 
 	for len(nodes) > 1 { // dok ne ostane jedan cvor(koren)
@@ -82,7 +131,7 @@ func (m *MerkleTree) Verify(expectedRoot []byte) bool {
 	return bytes.Equal(m.root.hash, expectedRoot) // da li su hash-evi isti
 }
 
-func FindDifference(a, b *MerkleNode) []string {
+func FindDifference(a, b *MerkleNode) []Record {
 	if a == nil || b == nil {
 		return nil
 	}
@@ -94,11 +143,11 @@ func FindDifference(a, b *MerkleNode) []string {
 
 	// hash se razlikuje, a dosli smo do lista stabla, znaci dosli smo do izmene
 	if a.left == nil && a.right == nil {
-		return []string{a.key}
+		return []Record{*b.record}
 	}
 
 	// cuvace sve pronadjene razlike u listovima
-	var diffs []string
+	var diffs []Record
 
 	// rekurzivno trazimo razlike
 	diffs = append(diffs, FindDifference(a.left, b.left)...)
@@ -125,11 +174,6 @@ func serializeNode(n *MerkleNode) []byte {
 	if n.left == nil && n.right == nil {
 		result = append(result, byte(1)) // list
 		result = append(result, n.hash...)
-
-		keyLen := make([]byte, 4)
-		binary.BigEndian.PutUint32(keyLen, uint32(len(n.key)))
-		result = append(result, keyLen...)
-		result = append(result, []byte(n.key)...)
 	} else {
 		result = append(result, byte(0)) // unutrasnji cvor
 
@@ -186,19 +230,7 @@ func deserializeNode(data []byte, offset int, maxLen int) (*MerkleNode, int) {
 	n.hash = data[offset : offset+32]
 	offset += 32
 
-	if isLeaf {
-		if offset+4 > maxLen {
-			return nil, offset
-		}
-		keyLen := binary.BigEndian.Uint32(data[offset : offset+4])
-		offset += 4
-
-		if offset+int(keyLen) > maxLen {
-			return nil, offset
-		}
-		n.key = string(data[offset : offset+int(keyLen)])
-		offset += int(keyLen)
-	} else { // rekurzivna deserijalizacija levog i desnog deteta
+	if !isLeaf { // rekurzivna deserijalizacija levog i desnog deteta
 		n.left, offset = deserializeNode(data, offset, maxLen)
 		n.right, offset = deserializeNode(data, offset, maxLen)
 
