@@ -3,6 +3,7 @@ package sstable
 import (
 	"fmt"
 	"math/rand"
+	"runtime"
 	"testing"
 )
 
@@ -110,6 +111,8 @@ func TestGetSpecificNonExistentKeyMultipleFiles(t *testing.T) {
 	if value != nil {
 		t.Fatalf("Expected nil value when getting non-existent key, but got %v", value)
 	}
+
+	runtime.GC()
 }
 
 func TestGetSpecificNonExistentKeyOneFile(t *testing.T) {

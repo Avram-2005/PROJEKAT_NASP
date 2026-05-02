@@ -55,7 +55,7 @@ type multipleFilesFlushState struct {
 	filterWriter   *blockWriter
 	metadataWriter *blockWriter
 	bf             *BloomFilter.BloomFilter
-	merkleData     [][]byte
+	merkleData     []Record
 	summary        *Summary
 }
 
@@ -71,7 +71,7 @@ func (sstm *SSTableManager) multipleFilesFlushInit(level int, tableNum int, numR
 		summaryWriter:  newBlockWriter(files.summaryFile, sstm.bm),
 		filterWriter:   newBlockWriter(files.filterFile, sstm.bm),
 		metadataWriter: newBlockWriter(files.metadataFile, sstm.bm),
-		merkleData:     make([][]byte, 0, numRecs),
+		merkleData:     make([]Record, 0, numRecs),
 		summary:        sstm.NewSummary(numRecs),
 	}
 	state.bf, err = BloomFilter.NewBloomFilter(numRecs, BLOOM_FILTER_RATE)
@@ -83,7 +83,7 @@ func (sstm *SSTableManager) multipleFilesFlushInit(level int, tableNum int, numR
 
 func (sstm *SSTableManager) multipleFilesFlushRecord(record Record, state *multipleFilesFlushState, shouldWriteSummary bool) {
 	state.bf.Set([]byte(record.Key)) // dodaj kljuc u filter
-	state.merkleData = append(state.merkleData, record.Value)
+	state.merkleData = append(state.merkleData, record)
 	offset := writeData(state.dataWriter, record)
 	offset = writeIndex(state.indexWriter, record.Key, offset)
 	if shouldWriteSummary {
@@ -96,7 +96,7 @@ func (sstm *SSTableManager) multipleFilesFlushFinalize(level int, state *multipl
 	filterData := state.bf.Dump()
 	state.filterWriter.Write(filterData)
 
-	tree, err := merkleTree.NewMerkleTree(state.merkleData)
+	tree, err := merkleTree.NewMerkleTreeHashes(state.merkleData)
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +147,7 @@ func (sstm *SSTableManager) multipleFilesFlush(mem Memtable, tableNum int) (*SST
 type oneFileFlushState struct {
 	writer     *blockWriter
 	bf         *BloomFilter.BloomFilter
-	merkleData [][]byte
+	merkleData []Record
 	index      []indexEntry
 	summary    *Summary
 }
@@ -167,14 +167,14 @@ func (sstm *SSTableManager) oneFileFlushInit(level int, tableNum int, numRecs ui
 		writer:     writer,
 		bf:         bf,
 		index:      make([]indexEntry, 0, numRecs),
-		merkleData: make([][]byte, 0, numRecs),
+		merkleData: make([]Record, 0, numRecs),
 		summary:    sstm.NewSummary(numRecs),
 	}, nil
 }
 
 func (sstm *SSTableManager) oneFileFlushRecord(i int, entry Record, state *oneFileFlushState) {
 	state.bf.Set([]byte(entry.Key)) // dodaj kljuc u filter
-	state.merkleData = append(state.merkleData, entry.Value)
+	state.merkleData = append(state.merkleData, entry)
 	offset := writeData(state.writer, entry)
 	state.index = append(state.index, indexEntry{
 		Key:    entry.Key,
@@ -202,7 +202,7 @@ func (sstm *SSTableManager) oneFileFlushFinalize(level int, state *oneFileFlushS
 	}
 
 	footer.MetadataStart = state.writer.CurrOffset()
-	tree, err := merkleTree.NewMerkleTree(state.merkleData)
+	tree, err := merkleTree.NewMerkleTreeHashes(state.merkleData)
 	if err != nil {
 		return nil, err
 	}
