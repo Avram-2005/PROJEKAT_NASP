@@ -1,14 +1,11 @@
 package sstable
 
 import (
-	"encoding/binary"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 
 	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
-	merkleTree "github.com/Avram-2005/PROJEKAT_NASP/MerkleTree"
 	. "github.com/Avram-2005/PROJEKAT_NASP/Record"
 )
 
@@ -172,191 +169,10 @@ func (files *sstableFiles) close() {
 	files.metadataFile.Close()
 }
 
-func (m *SSTableManager) ValidateSSTable(tableNum int) (bool, []string, error) {
+func (m *SSTableManager) ValidateSSTable(tableNum int) (bool, []Record, error) {
 	filename := m.sstableFilepath(tableNum)
 	if isSSTableMultFiles(filename) {
 		return m.validateMultipleFiles(tableNum)
 	}
 	return m.validateOneFile(filename)
-}
-
-// TODO: Move this to a separate file
-func (m *SSTableManager) validateOneFile(filename string) (bool, []string, error) {
-	footer, err := readOneFileFooter(filename, m.bm)
-	if err != nil {
-		return false, nil, fmt.Errorf("failed to read SSTable footer: %v", err)
-	}
-
-	f, err := os.Open(filename)
-	if err != nil {
-		return false, nil, fmt.Errorf("failed to open SSTable file: %v", err)
-	}
-	defer f.Close()
-
-	metadataReader := newBlockReader(f, m.bm, footer.MetadataStart)
-
-	stat, _ := f.Stat()
-	footerStart := uint64(stat.Size()) - FOOTER_L
-	metadataSize := footerStart - footer.MetadataStart
-
-	metadataData := make([]byte, metadataSize)
-	_, err = metadataReader.Read(metadataData)
-	if err != nil && err != io.EOF {
-		return false, nil, err
-	}
-
-	originalTree := merkleTree.Deserialize(metadataData)
-	if originalTree == nil {
-		return false, nil, fmt.Errorf("failed to deserialize merkle tree")
-	}
-
-	dataReader := newBlockReader(f, m.bm, footer.DataStart)
-
-	var currentRecords []Record
-	for {
-		currentOffset := dataReader.CurrOffset()
-		if currentOffset >= footer.IndexStart {
-			break
-		}
-
-		var dataHeaderBuf [DATA_HEADER_L]byte
-		_, err := dataReader.Read(dataHeaderBuf[:])
-		if err != nil {
-			break
-		}
-
-		header := DeserializeRecordHeader(dataHeaderBuf[:])
-
-		keyBuf := make([]byte, header.KeySize)
-		_, err = dataReader.Read(keyBuf)
-		if err != nil {
-			break
-		}
-
-		valueBuf := make([]byte, header.ValueSize)
-		_, err = dataReader.Read(valueBuf)
-		if err != nil {
-			break
-		}
-
-		rec := Record{
-			Timestamp: header.Timestamp,
-			Tombstone: header.Tombstone,
-			Key:       string(keyBuf),
-			Value:     valueBuf,
-		}
-
-		currentRecords = append(currentRecords, rec)
-	}
-
-	currentTree, err := merkleTree.NewMerkleTree(currentRecords)
-	if err != nil {
-		return false, nil, err
-	}
-
-	if originalTree.Verify(currentTree.RootHash()) {
-		return true, nil, nil
-	}
-
-	diffs := merkleTree.FindDifference(originalTree.Root(), currentTree.Root())
-
-	return false, diffs, nil
-}
-
-func (m *SSTableManager) validateMultipleFiles(tableNum int) (bool, []string, error) {
-	sstablePath := m.sstableFilepath(tableNum)
-	metadataFilename := sstableFilenameMultFile(sstablePath, "Metadata")
-	metadataFile, err := os.Open(metadataFilename)
-	if err != nil {
-		return false, nil, fmt.Errorf("failed to open metadata file: %v", err)
-	}
-	defer metadataFile.Close()
-
-	metadataReader := newBlockReader(metadataFile, m.bm, 0)
-
-	sizeHeader := make([]byte, 4)
-	_, err = metadataReader.Read(sizeHeader)
-	if err != nil {
-		return false, nil, fmt.Errorf("failed to read size header: %v", err)
-	}
-	treeSize := binary.BigEndian.Uint32(sizeHeader)
-
-	if treeSize == 0 {
-		return false, nil, fmt.Errorf("invalid tree size: %d", treeSize)
-	}
-
-	metadataData := make([]byte, treeSize)
-	_, err = metadataReader.Read(metadataData)
-	if err != nil {
-		return false, nil, err
-	}
-
-	originalTree := merkleTree.Deserialize(metadataData)
-	if originalTree == nil {
-		return false, nil, fmt.Errorf("failed to deserialize merkle tree")
-	}
-
-	dataFilename := sstableFilenameMultFile(sstablePath, "Data")
-	dataFile, err := os.Open(dataFilename)
-	if err != nil {
-		return false, nil, fmt.Errorf("failed to open data file: %v", err)
-	}
-	defer dataFile.Close()
-
-	stat, err := dataFile.Stat()
-	if err != nil {
-		return false, nil, err
-	}
-	fileSize := stat.Size()
-
-	dataReader := newBlockReader(dataFile, m.bm, 0)
-
-	var currentRecords []Record
-	for {
-		if int64(dataReader.CurrOffset()) >= fileSize {
-			break
-		}
-
-		var dataHeaderBuf [DATA_HEADER_L]byte
-		_, err := dataReader.Read(dataHeaderBuf[:])
-		if err != nil {
-			break
-		}
-
-		header := DeserializeRecordHeader(dataHeaderBuf[:])
-
-		keyBuf := make([]byte, header.KeySize)
-		_, err = dataReader.Read(keyBuf)
-		if err != nil {
-			break
-		}
-
-		valueBuf := make([]byte, header.ValueSize)
-		_, err = dataReader.Read(valueBuf)
-		if err != nil {
-			break
-		}
-
-		rec := Record{
-			Timestamp: header.Timestamp,
-			Tombstone: header.Tombstone,
-			Key:       string(keyBuf),
-			Value:     valueBuf,
-		}
-
-		currentRecords = append(currentRecords, rec)
-	}
-
-	currentTree, err := merkleTree.NewMerkleTree(currentRecords)
-	if err != nil {
-		return false, nil, err
-	}
-
-	if originalTree.Verify(currentTree.RootHash()) {
-		return true, nil, nil
-	}
-
-	diffs := merkleTree.FindDifference(originalTree.Root(), currentTree.Root())
-
-	return false, diffs, nil
 }
