@@ -72,3 +72,24 @@ func (m manyLargeKeyKVMemtable) GetSortedEntries() []Record {
 	}
 	return entries
 }
+
+type tombstoneOlderMemtable struct {
+}
+
+func (m tombstoneOlderMemtable) GetSortedEntries() []Record {
+	ts := time.Unix(100, 0)
+	r1, _ := NewRecord("dead", []byte("alive-old"), false, ts)
+	r2, _ := NewRecord("keep", []byte("keep-old"), false, ts)
+	return []Record{*r1, *r2}
+}
+
+type tombstoneNewerMemtable struct {
+}
+
+func (m tombstoneNewerMemtable) GetSortedEntries() []Record {
+	ts := time.Unix(200, 0)
+	r1, _ := NewRecord("dead", []byte{}, true, ts)
+	r2, _ := NewRecord("fresh", []byte("fresh-val"), false, ts)
+	r3, _ := NewRecord("keep", []byte("keep-new"), false, ts)
+	return []Record{*r1, *r2, *r3}
+}
