@@ -41,7 +41,7 @@ func TestSnapshotManager(t *testing.T) {
 	bm.PutSpecific(file, 0, 300, 100, &data1)
 
 	timestamp1 := time.Now()
-	snapshot1, err := snapshot.NewSnapshot(filepath, 0, 0, 100, timestamp1, bm)
+	snapshot1, err := snapshot.NewSnapshotSSTable(filepath, 0, 0, 100, timestamp1, bm)
 	if err != nil {
 		fmt.Print(err)
 		t.Errorf("pogresna 1 inicijalizacija")
@@ -49,14 +49,14 @@ func TestSnapshotManager(t *testing.T) {
 	}
 
 	timestamp2 := time.Now()
-	snapshot2, err := snapshot.NewSnapshot(filepath, 0, 100, 100, timestamp2, bm)
+	snapshot2, err := snapshot.NewSnapshotSSTable(filepath, 0, 100, 100, timestamp2, bm)
 	if err != nil {
 		fmt.Print(err)
 		t.Errorf("pogresna 2 inicijalizacija")
 		t.FailNow()
 	}
 	timestamp3 := time.Now()
-	snapshot3, err := snapshot.NewSnapshot(filepath, 0, 200, 100, timestamp3, bm)
+	snapshot3, err := snapshot.NewSnapshotSSTable(filepath, 0, 200, 100, timestamp3, bm)
 	if err != nil {
 		fmt.Print(err)
 		t.Errorf("pogresna 3 inicijalizacija")
@@ -64,7 +64,7 @@ func TestSnapshotManager(t *testing.T) {
 	}
 
 	timestamp4 := time.Now()
-	snapshot4, err := snapshot.NewSnapshot(filepath, 0, 200, 100, timestamp4, bm)
+	snapshot4, err := snapshot.NewSnapshotSSTable(filepath, 0, 200, 100, timestamp4, bm)
 	if err != nil {
 		fmt.Print(err)
 		t.Errorf("pogresna 4 inicijalizacija")
@@ -234,7 +234,7 @@ func TestConnectionWithSnapshot(t *testing.T) {
 	bm.PutSpecific(file, 0, 200, 100, &data3)
 
 	timestamp1 := time.Now()
-	snapshot1, err := snapshot.NewSnapshot(filepath, 0, 0, 100, timestamp1, bm)
+	snapshot1, err := snapshot.NewSnapshotSSTable(filepath, 0, 0, 100, timestamp1, bm)
 	if err != nil {
 		fmt.Print(err)
 		t.Errorf("pogresna 1 inicijalizacija")
@@ -242,14 +242,14 @@ func TestConnectionWithSnapshot(t *testing.T) {
 	}
 
 	timestamp2 := time.Now()
-	snapshot2, err := snapshot.NewSnapshot(filepath, 0, 100, 100, timestamp2, bm)
+	snapshot2, err := snapshot.NewSnapshotSSTable(filepath, 0, 100, 100, timestamp2, bm)
 	if err != nil {
 		fmt.Print(err)
 		t.Errorf("pogresna 2 inicijalizacija")
 		t.FailNow()
 	}
 	timestamp3 := time.Now()
-	snapshot3, err := snapshot.NewSnapshot(filepath, 0, 200, 100, timestamp3, bm)
+	snapshot3, err := snapshot.NewSnapshotSSTable(filepath, 0, 200, 100, timestamp3, bm)
 	if err != nil {
 		fmt.Print(err)
 		t.Errorf("pogresna 3 inicijalizacija")

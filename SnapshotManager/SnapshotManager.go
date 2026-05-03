@@ -29,7 +29,7 @@ func NewSnapshotManager() (*SnapshotManager, error) {
 // ili dodaje novu vrednost u postojeci
 // key-kljuc pod koji dodajemo
 // value-niz bajtova, najnovija vrednost
-func (sp *SnapshotManager) Add(key string, value *snapshot.Snapshot) error {
+func (sp *SnapshotManager) Add(key string, value snapshot.SnapshotInterface) error {
 	foundList, ok := sp.SnapshotManagerMap[key]
 	// ako kljuc nije pronadjen, stvaramo nov snapshot
 	if !ok {
@@ -47,7 +47,7 @@ func (sp *SnapshotManager) Add(key string, value *snapshot.Snapshot) error {
 // key-kljuc koji se trazi
 // version-verzija kljuca koju trazimo, gde je prva dodata vrednost nulta verzija,
 // i svaka naredna je veca za jedan
-func (sp *SnapshotManager) Get(key string, version int) (*snapshot.Snapshot, error) {
+func (sp *SnapshotManager) Get(key string, version int) (snapshot.SnapshotInterface, error) {
 	foundList, ok := sp.SnapshotManagerMap[key]
 	//error ako kljuc koji trazimo ne postoji
 	if !ok || foundList.Len() == 0 {
@@ -57,7 +57,7 @@ func (sp *SnapshotManager) Get(key string, version int) (*snapshot.Snapshot, err
 	for elem := foundList.Back(); elem != nil; elem = elem.Prev() {
 		// da bi pronasli odgovarajucu verziju koristimo brojac i petlju
 		if counter == version {
-			return elem.Value.(*snapshot.Snapshot), nil
+			return elem.Value.(snapshot.SnapshotInterface), nil
 		}
 		counter += 1
 	}
@@ -67,7 +67,7 @@ func (sp *SnapshotManager) Get(key string, version int) (*snapshot.Snapshot, err
 // Funkcija koja dobavlja odredjenu verziju naseg podatka
 // key-kljuc koji se trazi
 // timestamp-timestamp verzije koju trazimo
-func (sp *SnapshotManager) GetByTimestamp(key string, timestamp time.Time) (*snapshot.Snapshot, error) {
+func (sp *SnapshotManager) GetByTimestamp(key string, timestamp time.Time) (snapshot.SnapshotInterface, error) {
 	foundList, ok := sp.SnapshotManagerMap[key]
 	//error ako kljuc koji trazimo ne postoji
 	if !ok || foundList.Len() == 0 {
@@ -75,7 +75,7 @@ func (sp *SnapshotManager) GetByTimestamp(key string, timestamp time.Time) (*sna
 	}
 	for elem := foundList.Back(); elem != nil; elem = elem.Prev() {
 		// da bi pronasli odgovarajucu verziju koristimo brojac i petlju
-		snapshot := elem.Value.(*snapshot.Snapshot)
+		snapshot := elem.Value.(snapshot.SnapshotInterface)
 		if snapshot.GetTimestamp().Equal(timestamp) {
 			return snapshot, nil
 		}
@@ -117,22 +117,23 @@ func (sp *SnapshotManager) GetValueByTimestamp(key string, timestamp time.Time, 
 
 // Funkcija koja dobavlja nultu verziju nase vrednosti
 // key-kljuc pod kojim se trazi
-func (sp *SnapshotManager) GetFirst(key string) (*snapshot.Snapshot, error) {
+func (sp *SnapshotManager) GetFirst(key string) (snapshot.SnapshotInterface, error) {
 	foundList, ok := sp.SnapshotManagerMap[key]
 	if !ok || foundList.Len() == 0 {
 		return nil, fmt.Errorf("key not found in SnapshotManager")
 	}
-	return foundList.Back().Value.(*snapshot.Snapshot), nil
+	return foundList.Back().Value.(snapshot.SnapshotInterface), nil
 }
 
 // Funkcija dobavlja poslednju verziju nase vrednosti
 // key-kljuc pod kojim trazimo
-func (sp *SnapshotManager) GetLatest(key string) (*snapshot.Snapshot, error) {
+func (sp *SnapshotManager) GetLatest(key string) (snapshot.SnapshotInterface, error) {
 	foundList, ok := sp.SnapshotManagerMap[key]
 	if !ok || foundList.Len() == 0 {
 		return nil, fmt.Errorf("key not found in SnapshotManager")
 	}
-	return foundList.Front().Value.(*snapshot.Snapshot), nil
+	returnValue := foundList.Front().Value.(snapshot.SnapshotInterface)
+	return returnValue, nil
 }
 
 // Funkcija dobavlja prvu vrednost odredjenog kljuca

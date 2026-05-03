@@ -1,4 +1,4 @@
-package snapshot
+package Snapshot
 
 import (
 	"os"
@@ -7,7 +7,7 @@ import (
 	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
 )
 
-type Snapshot struct {
+type SnapshotSSTable struct {
 	filepath    string
 	blockNumber int
 	offset      int
@@ -15,7 +15,7 @@ type Snapshot struct {
 	timestamp   time.Time
 }
 
-func NewSnapshot(filepath string, blockNumber int, offset int, size int, timestamp time.Time, bm *BlockManager.BlockManager) (*Snapshot, error) {
+func NewSnapshotSSTable(filepath string, blockNumber int, offset int, size int, timestamp time.Time, bm *BlockManager.BlockManager) (*SnapshotSSTable, error) {
 	file, err := os.Open(filepath)
 	if err != nil {
 		return nil, err
@@ -25,7 +25,7 @@ func NewSnapshot(filepath string, blockNumber int, offset int, size int, timesta
 	if err != nil {
 		return nil, err
 	}
-	return &Snapshot{
+	return &SnapshotSSTable{
 		filepath:    filepath,
 		blockNumber: blockNumber,
 		offset:      offset,
@@ -34,11 +34,11 @@ func NewSnapshot(filepath string, blockNumber int, offset int, size int, timesta
 	}, nil
 }
 
-func (sp *Snapshot) GetTimestamp() time.Time {
+func (sp *SnapshotSSTable) GetTimestamp() time.Time {
 	return sp.timestamp
 }
 
-func (sp *Snapshot) GetValue(bm *BlockManager.BlockManager) (*[]byte, error) {
+func (sp *SnapshotSSTable) GetValue(bm *BlockManager.BlockManager) (*[]byte, error) {
 	file, err := os.Open(sp.filepath)
 	if err != nil {
 
