@@ -11,9 +11,10 @@ import (
 )
 
 const (
-	DATA_HEADER_L  = CRC_L + TIMESTAMP_L + TOMBSTONE_L + KEY_SIZE_L + VALUE_SIZE_L
-	INDEX_HEADER_L = KEY_SIZE_L + OFFSET_L
-	FOOTER_L       = 5 * OFFSET_L
+	DATA_HEADER_L        = CRC_L + TIMESTAMP_L + TOMBSTONE_L + KEY_SIZE_L + VALUE_SIZE_L
+	DATA_HEADER_VARINT_L = CRC_VARINT_MAX_L + TIMESTAMP_VARINT_MAX_L + TOMBSTONE_L + KEY_SIZE_VARINT_MAX_L + VALUE_SIZE_VARINT_MAX_L
+	INDEX_HEADER_L       = KEY_SIZE_L + OFFSET_L
+	FOOTER_L             = 5 * OFFSET_L
 )
 
 func readNextIndexEntry(reader *blockReader) (indexEntry, int, error) {
@@ -158,14 +159,20 @@ func (sstm *SSTableManager) loadFirstLastSummaryKeys(reader *blockReader) (strin
 	return firstKey, lastKey, nil
 }
 
-func (sstm *SSTableManager) parseData(reader *blockReader) (*Record, error) {
-	var dataHeaderBuf [DATA_HEADER_L]byte
+func (sstm *SSTableManager) parseData(reader *blockReader, checkCRC bool) (*Record, error) {
+	offset := reader.CurrOffset()
+	var dataHeaderBuf [DATA_HEADER_VARINT_L]byte
 	_, err := reader.Read(dataHeaderBuf[:])
-	if err != nil {
+	if err != io.EOF && err != nil {
 		return nil, fmt.Errorf("failed to read data header: %v", err)
 	}
 
-	header := DeserializeRecordHeader(dataHeaderBuf[:])
+	header, headerLen, crcStart, err := DeserializeRecordHeaderVarInt(dataHeaderBuf[:])
+	if err != nil {
+		return nil, fmt.Errorf("failed to deserialize record header: %v", err)
+	}
+	offset += uint64(headerLen)
+	reader.Seek(int(offset))
 
 	valueBuf := make([]byte, header.ValueSize)
 	keyBuf := make([]byte, header.KeySize)
@@ -180,13 +187,15 @@ func (sstm *SSTableManager) parseData(reader *blockReader) (*Record, error) {
 		return nil, fmt.Errorf("failed to read value: %v", err)
 	}
 
-	crcHash := crc32.NewIEEE()
-	crcHash.Write(dataHeaderBuf[CRC_L:])
-	crcHash.Write(keyBuf)
-	crcHash.Write(valueBuf)
-	realCrc := crcHash.Sum32()
-	if header.CRC != realCrc {
-		return nil, fmt.Errorf("CRC mismatch: expected %d, got %d", header.CRC, realCrc)
+	if checkCRC {
+		crcHash := crc32.NewIEEE()
+		crcHash.Write(dataHeaderBuf[crcStart:headerLen])
+		crcHash.Write(keyBuf)
+		crcHash.Write(valueBuf)
+		realCrc := crcHash.Sum32()
+		if header.CRC != realCrc {
+			return nil, fmt.Errorf("CRC mismatch: expected %d, got %d", header.CRC, realCrc)
+		}
 	}
 
 	return &Record{
@@ -229,7 +238,7 @@ func (sstm *SSTableManager) getMultipleFiles(key string, sst *SSTable) (*Record,
 	}
 
 	dataReader := newBlockReader(files.dataFile, sstm.bm, offset)
-	return sstm.parseData(dataReader)
+	return sstm.parseData(dataReader, true)
 }
 
 func (sstm *SSTableManager) getOneFile(key string, sst *SSTable) (*Record, error) {
@@ -269,5 +278,5 @@ func (sstm *SSTableManager) getOneFile(key string, sst *SSTable) (*Record, error
 	}
 
 	dataReader := newBlockReader(file, sstm.bm, offset)
-	return sstm.parseData(dataReader)
+	return sstm.parseData(dataReader, true)
 }

@@ -128,17 +128,18 @@ func (br *blockReader) Read(dest []byte) (int, error) {
 		totalRead += n
 		toRead -= n
 	}
-
-	if toRead > 0 {
-		if totalRead == 0 {
-			return 0, io.EOF
-		}
-		return totalRead, io.ErrUnexpectedEOF
-	}
-
 	return totalRead, nil
 }
 
 func (br *blockReader) Skip(offset int) {
 	br.currByte += offset
+}
+
+func (br *blockReader) Seek(offset int) {
+	lastBlockNum := br.currBlockNum
+	br.currBlockNum = offset / cap(br.block)
+	br.currByte = offset % cap(br.block)
+	if br.currBlockNum != lastBlockNum {
+		br.readBlock()
+	}
 }
