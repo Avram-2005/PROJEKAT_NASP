@@ -107,7 +107,8 @@ func (lsm *LSM) Flush(mem Memtable) error {
 
 func (lsm *LSM) Get(key string) ([]byte, error) {
 	for _, level := range lsm.levels {
-		for _, sstable := range level.tables {
+		for i := len(level.tables) - 1; i >= 0; i-- {
+			sstable := level.tables[i]
 			rec, err := lsm.sstm.Get(key, sstable)
 			if err != nil {
 				return nil, fmt.Errorf("error getting key from SSTable %s: %v", sstable.path, err)
