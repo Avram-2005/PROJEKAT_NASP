@@ -13,7 +13,7 @@ import (
 const (
 	DATA_HEADER_L        = CRC_L + TIMESTAMP_L + TOMBSTONE_L + KEY_SIZE_L + VALUE_SIZE_L
 	DATA_HEADER_VARINT_L = CRC_VARINT_MAX_L + TIMESTAMP_VARINT_MAX_L + TOMBSTONE_L + KEY_SIZE_VARINT_MAX_L + VALUE_SIZE_VARINT_MAX_L
-	INDEX_HEADER_L       = KEY_SIZE_L + OFFSET_L
+	INDEX_HEADER_L       = KEY_SIZE_VARINT_MAX_L + OFFSET_VARINT_MAX_L
 	FOOTER_L             = 5 * OFFSET_L
 )
 
@@ -33,8 +33,14 @@ func readNextIndexEntry(reader *blockReader) (indexEntry, int, error) {
 		return indexEntry{}, 0, fmt.Errorf("failed to read index header: short read (%d/%d)", n, INDEX_HEADER_L)
 	}
 
-	keySize := bufferReader.ReadKeySize()
-	offset := bufferReader.ReadOffset()
+	keySize, err := bufferReader.ReadKeySizeVarint()
+	if err != nil {
+		return indexEntry{}, 0, fmt.Errorf("failed to read key size: %v", err)
+	}
+	offset, err := bufferReader.ReadOffsetVarint()
+	if err != nil {
+		return indexEntry{}, 0, fmt.Errorf("failed to read offset: %v", err)
+	}
 
 	bufferReader = NewBufferReader(keySize)
 	n, err = reader.Read(bufferReader.Buf)
@@ -144,8 +150,14 @@ func (sstm *SSTableManager) loadFirstLastSummaryKeys(reader *blockReader) (strin
 		return "", "", fmt.Errorf("failed to read summary header: %v", err)
 	}
 
-	firstKeySize := bufferReader.ReadKeySize()
-	lastKeySize := bufferReader.ReadKeySize()
+	firstKeySize, err := bufferReader.ReadKeySizeVarint()
+	if err != nil {
+		return "", "", fmt.Errorf("failed to read first key size: %v", err)
+	}
+	lastKeySize, err := bufferReader.ReadKeySizeVarint()
+	if err != nil {
+		return "", "", fmt.Errorf("failed to read last key size: %v", err)
+	}
 
 	firstKey, err := readKey(reader, firstKeySize)
 	if err != nil {

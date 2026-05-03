@@ -19,8 +19,8 @@ func writeData(writer *blockWriter, record Record) uint64 {
 
 func writeIndex(writer *blockWriter, key string, offset uint64) uint64 {
 	bufferWriter := NewBufferWriter(INDEX_HEADER_L)
-	bufferWriter.WriteKeySize(len(key))
-	bufferWriter.WriteOffset(offset)
+	bufferWriter.WriteKeySizeVarint(len(key))
+	bufferWriter.WriteOffsetVarint(offset)
 
 	oldOffset := writer.CurrOffset()
 	writer.Write(bufferWriter.Buf)
@@ -30,8 +30,8 @@ func writeIndex(writer *blockWriter, key string, offset uint64) uint64 {
 
 func writeSummaryHeader(writer *blockWriter, firstKey string, lastKey string) {
 	bufferWriter := NewBufferWriter(2 * KEY_SIZE_L)
-	bufferWriter.WriteKeySize(len(firstKey))
-	bufferWriter.WriteKeySize(len(lastKey))
+	bufferWriter.WriteKeySizeVarint(len(firstKey))
+	bufferWriter.WriteKeySizeVarint(len(lastKey))
 
 	writer.Write(bufferWriter.Buf)
 	writer.Write([]byte(firstKey))
