@@ -195,18 +195,28 @@ func openMultipleFiles(sstablePath string) (*sstableFiles, error) {
 	}
 	indexFile, err := os.OpenFile(sstableFilenameMultFile(sstablePath, "Index"), os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
+		dataFile.Close()
 		return nil, fmt.Errorf("failed to open index file: %v", err)
 	}
 	summaryFile, err := os.OpenFile(sstableFilenameMultFile(sstablePath, "Summary"), os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
+		dataFile.Close()
+		indexFile.Close()
 		return nil, fmt.Errorf("failed to open summary file: %v", err)
 	}
 	filterFile, err := os.OpenFile(sstableFilenameMultFile(sstablePath, "Filter"), os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
+		dataFile.Close()
+		indexFile.Close()
+		summaryFile.Close()
 		return nil, fmt.Errorf("failed to open filter file: %v", err)
 	}
 	metadataFile, err := os.OpenFile(sstableFilenameMultFile(sstablePath, "Metadata"), os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
+		dataFile.Close()
+		indexFile.Close()
+		summaryFile.Close()
+		filterFile.Close()
 		return nil, fmt.Errorf("failed to open metadata file: %v", err)
 	}
 

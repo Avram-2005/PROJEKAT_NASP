@@ -1,14 +1,13 @@
 package sstable
 
 import (
-	"encoding/binary"
 	"os"
 	"runtime"
 	"testing"
 
 	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
 	merkleTree "github.com/Avram-2005/PROJEKAT_NASP/MerkleTree"
-	. "github.com/Avram-2005/PROJEKAT_NASP/utils"
+	record "github.com/Avram-2005/PROJEKAT_NASP/Record"
 )
 
 func TestMetadataValidationOneFile(t *testing.T) {
@@ -42,23 +41,17 @@ func TestMetadataCorruptionOneFile(t *testing.T) {
 	}
 	defer file.Close()
 
-	footer, err := m.loadOneFileFooter(file)
-	if err != nil {
-		t.Fatalf("Failed to read footer: %v", err)
-	}
-
-	dataReader := newBlockReader(file, m.bm, 0)
-	var dataHeaderBuf [DATA_HEADER_L]byte
-	_, err = dataReader.Read(dataHeaderBuf[:])
+	var dataHeaderBuf [DATA_HEADER_VARINT_L]byte
+	_, err = file.ReadAt(dataHeaderBuf[:], 0)
 	if err != nil {
 		t.Fatalf("Failed to read data header: %v", err)
 	}
 
-	currByte := CRC_L + TIMESTAMP_L + TOMBSTONE_L
-	keySize := binary.BigEndian.Uint32(dataHeaderBuf[currByte:])
-	currByte += KEY_SIZE_L
-
-	valueOffset := footer.IndexStart - 100 + DATA_HEADER_L + uint64(keySize)
+	header, headerLen, _, err := record.DeserializeRecordHeaderVarInt(dataHeaderBuf[:])
+	if err != nil {
+		t.Fatalf("Failed to deserialize varint header: %v", err)
+	}
+	valueOffset := uint64(headerLen + header.KeySize)
 
 	f2, err := os.OpenFile(sst.path, os.O_RDWR, 0644)
 	if err != nil {
@@ -137,18 +130,17 @@ func TestMetadataCorruptionMultipleFiles(t *testing.T) {
 	defer readFile.Close()
 
 	reader := newBlockReader(readFile, bm, 0)
-
-	var dataHeaderBuf [DATA_HEADER_L]byte
+	var dataHeaderBuf [DATA_HEADER_VARINT_L]byte
 	_, err = reader.Read(dataHeaderBuf[:])
 	if err != nil {
 		t.Fatalf("Failed to read data header: %v", err)
 	}
 
-	currByte := CRC_L + TIMESTAMP_L + TOMBSTONE_L
-	keySize := binary.BigEndian.Uint32(dataHeaderBuf[currByte:])
-	currByte += KEY_SIZE_L
-
-	valueOffset := DATA_HEADER_L + uint64(keySize)
+	header, headerLen, _, err := record.DeserializeRecordHeaderVarInt(dataHeaderBuf[:])
+	if err != nil {
+		t.Fatalf("Failed to deserialize varint header: %v", err)
+	}
+	valueOffset := uint64(headerLen + header.KeySize)
 
 	f2, err := os.OpenFile(dataFile, os.O_RDWR, 0644)
 	if err != nil {

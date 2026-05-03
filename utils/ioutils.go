@@ -13,6 +13,12 @@ const (
 	KEY_SIZE_L   = 4
 	VALUE_SIZE_L = 4
 	OFFSET_L     = 8
+
+	CRC_VARINT_MAX_L        = binary.MaxVarintLen32
+	TIMESTAMP_VARINT_MAX_L  = binary.MaxVarintLen64
+	KEY_SIZE_VARINT_MAX_L   = binary.MaxVarintLen32
+	VALUE_SIZE_VARINT_MAX_L = binary.MaxVarintLen32
+	OFFSET_VARINT_MAX_L     = binary.MaxVarintLen64
 )
 
 type BufferWriter struct {
@@ -222,4 +228,8 @@ func (r *BufferReader) ReadBytes(size int) []byte {
 	copy(data, r.Buf[r.pos:r.pos+size])
 	r.pos += size
 	return data
+}
+
+func (r *BufferReader) CurrOffset() int {
+	return r.pos
 }

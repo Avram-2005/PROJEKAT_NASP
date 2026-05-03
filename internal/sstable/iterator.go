@@ -26,6 +26,7 @@ func (sstm *SSTableManager) NewSSTableIterator(sst *SSTable) (*SSTableIterator, 
 		}
 		info, err := file.Stat()
 		if err != nil {
+			file.Close()
 			return nil, err
 		}
 		stopOffset = uint64(info.Size())
@@ -43,7 +44,11 @@ func (sstm *SSTableManager) NewSSTableIterator(sst *SSTable) (*SSTableIterator, 
 		stopOffset: stopOffset,
 	}
 
-	it.Next()
+	_, err = it.Next()
+	if err != nil {
+		file.Close()
+		return nil, err
+	}
 	return it, nil
 }
 
@@ -52,7 +57,7 @@ func (it *SSTableIterator) Next() (bool, error) {
 		it.Rec = nil
 		return false, nil
 	}
-	record, err := it.sstm.parseData(it.br)
+	record, err := it.sstm.parseData(it.br, true)
 	if err != nil {
 		return false, err
 	}

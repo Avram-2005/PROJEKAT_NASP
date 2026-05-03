@@ -48,34 +48,11 @@ func (sstm *SSTableManager) validateOneFile(filename string) (bool, []Record, er
 			break
 		}
 
-		var dataHeaderBuf [DATA_HEADER_L]byte
-		_, err := dataReader.Read(dataHeaderBuf[:])
+		rec, err := sstm.parseData(dataReader, false)
 		if err != nil {
 			break
 		}
-
-		header := DeserializeRecordHeader(dataHeaderBuf[:])
-
-		keyBuf := make([]byte, header.KeySize)
-		_, err = dataReader.Read(keyBuf)
-		if err != nil {
-			break
-		}
-
-		valueBuf := make([]byte, header.ValueSize)
-		_, err = dataReader.Read(valueBuf)
-		if err != nil {
-			break
-		}
-
-		rec := Record{
-			Timestamp: header.Timestamp,
-			Tombstone: header.Tombstone,
-			Key:       string(keyBuf),
-			Value:     valueBuf,
-		}
-
-		currentRecords = append(currentRecords, rec)
+		currentRecords = append(currentRecords, *rec)
 	}
 
 	currentTree, err := merkleTree.NewMerkleTree(currentRecords)
@@ -145,34 +122,11 @@ func (sstm *SSTableManager) validateMultipleFiles(sstablePath string) (bool, []R
 			break
 		}
 
-		var dataHeaderBuf [DATA_HEADER_L]byte
-		_, err := dataReader.Read(dataHeaderBuf[:])
+		rec, err := sstm.parseData(dataReader, false)
 		if err != nil {
 			break
 		}
-
-		header := DeserializeRecordHeader(dataHeaderBuf[:])
-
-		keyBuf := make([]byte, header.KeySize)
-		_, err = dataReader.Read(keyBuf)
-		if err != nil {
-			break
-		}
-
-		valueBuf := make([]byte, header.ValueSize)
-		_, err = dataReader.Read(valueBuf)
-		if err != nil {
-			break
-		}
-
-		rec := Record{
-			Timestamp: header.Timestamp,
-			Tombstone: header.Tombstone,
-			Key:       string(keyBuf),
-			Value:     valueBuf,
-		}
-
-		currentRecords = append(currentRecords, rec)
+		currentRecords = append(currentRecords, *rec)
 	}
 
 	currentTree, err := merkleTree.NewMerkleTree(currentRecords)
