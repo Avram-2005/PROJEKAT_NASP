@@ -2,6 +2,7 @@ package utils
 
 import (
 	"encoding/binary"
+	"fmt"
 	"time"
 )
 
@@ -83,6 +84,38 @@ func (w *BufferWriter) WriteOffset(offset uint64) {
 	w.pos += OFFSET_L
 }
 
+func (w *BufferWriter) WriteUVarint(value uint64) int {
+	n := binary.PutUvarint(w.Buf[w.pos:], value)
+	w.pos += n
+	return n
+}
+
+func (w *BufferWriter) WriteVarint(value int64) int {
+	n := binary.PutVarint(w.Buf[w.pos:], value)
+	w.pos += n
+	return n
+}
+
+func (w *BufferWriter) WriteCRCVarint(crc uint32) int {
+	return w.WriteUVarint(uint64(crc))
+}
+
+func (w *BufferWriter) WriteTimestampVarint(t time.Time) int {
+	return w.WriteVarint(t.UnixNano())
+}
+
+func (w *BufferWriter) WriteKeySizeVarint(size int) int {
+	return w.WriteUVarint(uint64(size))
+}
+
+func (w *BufferWriter) WriteValueSizeVarint(size int) int {
+	return w.WriteUVarint(uint64(size))
+}
+
+func (w *BufferWriter) WriteOffsetVarint(offset uint64) int {
+	return w.WriteUVarint(offset)
+}
+
 func (w *BufferWriter) WriteBytes(data []byte) {
 	copy(w.Buf[w.pos:], data)
 	w.pos += len(data)
@@ -122,6 +155,66 @@ func (r *BufferReader) ReadOffset() uint64 {
 	offset := binary.BigEndian.Uint64(r.Buf[r.pos:])
 	r.pos += OFFSET_L
 	return offset
+}
+
+func (r *BufferReader) ReadUVarint() (uint64, error) {
+	value, n := binary.Uvarint(r.Buf[r.pos:])
+	if n == 0 {
+		return 0, fmt.Errorf("failed to read uvarint: buffer too small")
+	}
+	if n < 0 {
+		return 0, fmt.Errorf("failed to read uvarint: value overflow")
+	}
+	r.pos += n
+	return value, nil
+}
+
+func (r *BufferReader) ReadVarint() (int64, error) {
+	value, n := binary.Varint(r.Buf[r.pos:])
+	if n == 0 {
+		return 0, fmt.Errorf("failed to read varint: buffer too small")
+	}
+	if n < 0 {
+		return 0, fmt.Errorf("failed to read varint: value overflow")
+	}
+	r.pos += n
+	return value, nil
+}
+
+func (r *BufferReader) ReadCRCVarint() (uint32, error) {
+	value, err := r.ReadUVarint()
+	if err != nil {
+		return 0, err
+	}
+	return uint32(value), nil
+}
+
+func (r *BufferReader) ReadTimestampVarint() (time.Time, error) {
+	value, err := r.ReadVarint()
+	if err != nil {
+		return time.Time{}, err
+	}
+	return time.Unix(0, value), nil
+}
+
+func (r *BufferReader) ReadKeySizeVarint() (int, error) {
+	value, err := r.ReadUVarint()
+	if err != nil {
+		return 0, err
+	}
+	return int(value), nil
+}
+
+func (r *BufferReader) ReadValueSizeVarint() (int, error) {
+	value, err := r.ReadUVarint()
+	if err != nil {
+		return 0, err
+	}
+	return int(value), nil
+}
+
+func (r *BufferReader) ReadOffsetVarint() (uint64, error) {
+	return r.ReadUVarint()
 }
 
 func (r *BufferReader) ReadBytes(size int) []byte {
