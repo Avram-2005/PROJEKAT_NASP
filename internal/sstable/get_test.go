@@ -173,8 +173,8 @@ func TestGet(t *testing.T) {
 	flush3(t, false)
 
 	lsmCfg := LSMConfig{
-		NumLevels:      4,
-		NumFilesLevel0: 2,
+		NumLevels:        4,
+		CompactionFactor: 2,
 	}
 	sstCfg := SSTableConfig{
 		SummaryInterval: 10,

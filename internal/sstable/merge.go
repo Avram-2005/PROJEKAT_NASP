@@ -88,6 +88,20 @@ func reconstructFilter(sstm *SSTableManager, sst *SSTable, numRecs int) error {
 	return nil
 }
 
+func advanceIterator(h *IterHeap, iter *SSTableIterator) error {
+	if hasNext, err := iter.Next(); err != nil {
+		_ = iter.Close()
+		return fmt.Errorf("failed to advance iterator: %v", err)
+	} else if hasNext {
+		heap.Push(h, iter)
+	} else {
+		if err := iter.Close(); err != nil {
+			return fmt.Errorf("failed to close iterator: %v", err)
+		}
+	}
+	return nil
+}
+
 func (sstm *SSTableManager) multipleFilesMerge(ssts []*SSTable, level int, tableNum int) (*SSTable, error) {
 	// Cannot calculate number of records in advance, so we set it to 0 for now
 	state, err := sstm.multipleFilesFlushInit(level, tableNum, 0)
@@ -110,21 +124,26 @@ func (sstm *SSTableManager) multipleFilesMerge(ssts []*SSTable, level int, table
 	for h.Len() > 0 {
 		minIter := heap.Pop(h).(*SSTableIterator)
 		currentRec := minIter.Rec
+		currentKey := currentRec.Key
+
+		if err := advanceIterator(h, minIter); err != nil {
+			return nil, err
+		}
+
+		for h.Len() > 0 && (*h)[0].Rec.Key == currentKey {
+			dupIter := heap.Pop(h).(*SSTableIterator)
+			if err := advanceIterator(h, dupIter); err != nil {
+				return nil, err
+			}
+		}
+
+		if currentRec.Tombstone {
+			continue
+		}
 
 		shouldWriteSummary := numRecs%sstm.config.SummaryInterval == 0
 		sstm.multipleFilesFlushRecord(*currentRec, state, shouldWriteSummary)
 		numRecs++
-
-		if hasNext, err := minIter.Next(); err != nil {
-			_ = minIter.Close()
-			return nil, fmt.Errorf("failed to advance iterator: %v", err)
-		} else if hasNext {
-			heap.Push(h, minIter)
-		} else {
-			if err := minIter.Close(); err != nil {
-				return nil, fmt.Errorf("failed to close iterator: %v", err)
-			}
-		}
 	}
 	sst, err := sstm.multipleFilesFlushFinalize(level, state, tableNum)
 
@@ -157,20 +176,25 @@ func (sstm *SSTableManager) oneFileMerge(ssts []*SSTable, level int, tableNum in
 	for h.Len() > 0 {
 		minIter := heap.Pop(h).(*SSTableIterator)
 		currentRec := minIter.Rec
+		currentKey := currentRec.Key
+
+		if err := advanceIterator(h, minIter); err != nil {
+			return nil, err
+		}
+
+		for h.Len() > 0 && (*h)[0].Rec.Key == currentKey {
+			dupIter := heap.Pop(h).(*SSTableIterator)
+			if err := advanceIterator(h, dupIter); err != nil {
+				return nil, err
+			}
+		}
+
+		if currentRec.Tombstone {
+			continue
+		}
 
 		sstm.oneFileFlushRecord(level, *currentRec, state)
 		numRecs++
-
-		if hasNext, err := minIter.Next(); err != nil {
-			_ = minIter.Close()
-			return nil, fmt.Errorf("failed to advance iterator: %v", err)
-		} else if hasNext {
-			heap.Push(h, minIter)
-		} else {
-			if err := minIter.Close(); err != nil {
-				return nil, fmt.Errorf("failed to close iterator: %v", err)
-			}
-		}
 	}
 	sst, err := sstm.oneFileFlushFinalize(level, state, tableNum)
 

@@ -416,3 +416,36 @@ func TestMergeOneFile(t *testing.T) {
 
 	testMergeFiles(t, []*SSTable{sst1, sst2, sst3}, SSTableConfig{SummaryInterval: 100, MultipleFiles: false}, expectedKeys, expectedValues, unexpectedKeys)
 }
+
+func testMergeHonorsTombstones(t *testing.T, multipleFiles bool) {
+	tempDir := t.TempDir()
+	_, olderSST, err := testFlush(tempDir, tombstoneOlderMemtable{}, multipleFiles)
+	if err != nil {
+		t.Fatalf("Flush failed: %v", err)
+	}
+	_, newerSST, err := testFlush(tempDir, tombstoneNewerMemtable{}, multipleFiles)
+	if err != nil {
+		t.Fatalf("Flush failed: %v", err)
+	}
+
+	expectedKeys := []string{"fresh", "keep"}
+	expectedValues := []string{"fresh-val", "keep-new"}
+	unexpectedKeys := []string{"dead"}
+
+	testMergeFiles(
+		t,
+		[]*SSTable{olderSST, newerSST},
+		SSTableConfig{SummaryInterval: 10, MultipleFiles: multipleFiles},
+		expectedKeys,
+		expectedValues,
+		unexpectedKeys,
+	)
+}
+
+func TestMergeMultipleFilesHonorsTombstones(t *testing.T) {
+	testMergeHonorsTombstones(t, true)
+}
+
+func TestMergeOneFileHonorsTombstones(t *testing.T) {
+	testMergeHonorsTombstones(t, false)
+}
