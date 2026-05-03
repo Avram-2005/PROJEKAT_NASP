@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	wal, err := WAL.CreatNewWAL(16192, 4)
+	wal, err := WAL.CreatNewWAL(16384, 4, "./WAL/walDATA", 10)
 	if err != nil {
 		fmt.Print(err)
 	}

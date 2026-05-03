@@ -37,11 +37,11 @@ func TestCreateAndReopen(t *testing.T) {
 	setupTest(t)
 	defer cleanupTest()
 
-	w, _ := CreatNewWAL(8192, 4)
+	w, _ := CreatNewWAL(8192, 4, FILE_PATH, 10)
 	w.AddRecord("test", []byte("data"))
 	w.Close()
 
-	w2, err := CreatNewWAL(8192, 4)
+	w2, err := CreatNewWAL(8192, 4, FILE_PATH, 10)
 	if err != nil {
 		t.Fatalf("Neuspešno ponovno otvaranje: %v", err)
 	}
@@ -56,7 +56,7 @@ func TestFullRecoveryCycle(t *testing.T) {
 	setupTest(t)
 	defer cleanupTest()
 
-	w, _ := CreatNewWAL(8192, 4)
+	w, _ := CreatNewWAL(8192, 4, FILE_PATH, 10)
 
 	w.AddRecord("mali", []byte("v"))
 	bigVal := []byte("vrednost_koja_se_fragmentise")
@@ -65,7 +65,7 @@ func TestFullRecoveryCycle(t *testing.T) {
 	w.DeleteRecord("obrisan")
 	w.Close()
 
-	w2, _ := CreatNewWAL(8192, 4)
+	w2, _ := CreatNewWAL(8192, 4, FILE_PATH, 10)
 	mm, _ := getTestMemtableManager()
 
 	if err := w2.Recovery(mm); err != nil {
@@ -90,14 +90,14 @@ func TestHeaderBoundaryEdgeCase(t *testing.T) {
 	setupTest(t)
 	defer cleanupTest()
 
-	w, _ := CreatNewWAL(8192, 4)
+	w, _ := CreatNewWAL(8192, 4, FILE_PATH, 10)
 
 	w.AddRecord("k1", []byte("v1"))
 	bigKey := "kljuc_posle_skoka"
 	w.AddRecord(bigKey, []byte("podatak"))
 	w.Close()
 
-	w2, _ := CreatNewWAL(8192, 4)
+	w2, _ := CreatNewWAL(8192, 4, FILE_PATH, 10)
 	mm, _ := getTestMemtableManager()
 	if err := w2.Recovery(mm); err != nil {
 		t.Fatalf("Recovery greška na granici bloka: %v", err)
@@ -115,7 +115,7 @@ func TestRotationAndFlush(t *testing.T) {
 	setupTest(t)
 	defer cleanupTest()
 
-	w, _ := CreatNewWAL(8192, 4)
+	w, _ := CreatNewWAL(8192, 4, FILE_PATH, 10)
 
 	for i := 0; i < 200; i++ {
 		w.AddRecord(fmt.Sprintf("key%d", i), []byte("duzi_podatak_za_rotaciju"))
@@ -137,7 +137,7 @@ func TestCorruptedChunk(t *testing.T) {
 	setupTest(t)
 	defer cleanupTest()
 
-	w, _ := CreatNewWAL(8192, 4)
+	w, _ := CreatNewWAL(8192, 4, FILE_PATH, 10)
 	w.AddRecord("validan", []byte("podatak"))
 	w.Close()
 
@@ -147,7 +147,7 @@ func TestCorruptedChunk(t *testing.T) {
 	f.Close()
 
 	mm, _ := getTestMemtableManager()
-	w2, _ := CreatNewWAL(8192, 4)
+	w2, _ := CreatNewWAL(8192, 4, FILE_PATH, 10)
 
 	w2.Recovery(mm)
 
