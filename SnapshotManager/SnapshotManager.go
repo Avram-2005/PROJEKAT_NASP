@@ -184,3 +184,22 @@ func (sp *SnapshotManager) Free(key string) error {
 	delete(sp.SnapshotManagerMap, key)
 	return nil
 }
+
+func (sp *SnapshotManager) ChangeInterfaceType(key string, version int, newVersion snapshot.SnapshotInterface) error {
+	foundList, ok := sp.SnapshotManagerMap[key]
+	//error ako kljuc koji trazimo ne postoji
+	if !ok || foundList.Len() == 0 {
+		return fmt.Errorf("key not found in SnapshotManager")
+	}
+	counter := 0
+	for elem := foundList.Back(); elem != nil; elem = elem.Prev() {
+		// da bi pronasli odgovarajucu verziju koristimo brojac i petlju
+		if counter == version {
+			elem.Value = newVersion
+			return nil
+		}
+		counter += 1
+	}
+
+	return fmt.Errorf("key version not found in SnapshotManager")
+}
