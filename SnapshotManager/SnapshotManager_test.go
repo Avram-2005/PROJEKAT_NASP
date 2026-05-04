@@ -307,6 +307,16 @@ func TestConnectionWithSnapshot(t *testing.T) {
 		t.Errorf("procitani pogresni podaci")
 		t.FailNow()
 	}
+	err = sp.Free("key1")
+	if err != nil {
+		fmt.Print(err)
+		t.FailNow()
+	}
+	err = sp.Free("key2")
+	if err != nil {
+		fmt.Print(err)
+		t.FailNow()
+	}
 	file.Close()
 	err = os.Remove(filepath)
 	if err != nil {
@@ -315,4 +325,96 @@ func TestConnectionWithSnapshot(t *testing.T) {
 		t.FailNow()
 	}
 
+}
+
+func TestChangeToSSTableVersion(t *testing.T) {
+	sp, err := NewSnapshotManager()
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("greska tokom incijalizacije SnapshotManager-a")
+		t.FailNow()
+	}
+	//Dodavanje svih vrednosti za testiranje
+	filepath := "test.bin"
+	file, err := os.Create(filepath)
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("greska tokom stvaranja fajla")
+		t.FailNow()
+	}
+	bm, err := BlockManager.NewBlockManager(4, 4)
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("treba da se prijavi greska, ali nije prijavljena")
+		t.FailNow()
+	}
+	data1 := make([]byte, 100)
+	binary.BigEndian.PutUint64(data1, 78)
+	data2 := make([]byte, 100)
+	binary.BigEndian.PutUint64(data2, 56)
+	data3 := make([]byte, 100)
+	binary.BigEndian.PutUint64(data3, 90)
+
+	timestamp1 := time.Now()
+	snapshot1 := snapshot.NewSnapshotMemtable(&data1, timestamp1)
+	sp.Add("key1", snapshot1)
+	timestamp2 := time.Now()
+	snapshot2 := snapshot.NewSnapshotMemtable(&data2, timestamp2)
+	sp.Add("key1", snapshot2)
+	timestamp3 := time.Now()
+	snapshot3 := snapshot.NewSnapshotMemtable(&data3, timestamp3)
+	sp.Add("key1", snapshot3)
+
+	bm.PutSpecific(file, 0, 0, 100, &data1)
+	SSTSnapshot, err := snapshot.NewSnapshotSSTable("test.bin", 0, 0, 100, timestamp1, bm)
+	if err != nil {
+		fmt.Print(err)
+		t.FailNow()
+	}
+	err = sp.ChangeInterfaceType("key1", 0, SSTSnapshot)
+	if err != nil {
+		fmt.Print(err)
+		t.FailNow()
+	}
+	compare1, err := sp.GetValue("key1", 0, bm)
+	if err != nil {
+		fmt.Print(err)
+		t.FailNow()
+	}
+	if !reflect.DeepEqual(data1, (*compare1)) {
+		fmt.Print(data1, (*compare1))
+		t.FailNow()
+	}
+	compare2, err := sp.GetValue("key1", 1, bm)
+	if err != nil {
+		fmt.Print(err)
+		t.FailNow()
+	}
+	if !reflect.DeepEqual(data2, (*compare2)) {
+		fmt.Print(data2, (*compare2))
+		t.FailNow()
+	}
+	compare3, err := sp.GetValue("key1", 2, bm)
+	if err != nil {
+		fmt.Print(err)
+		t.FailNow()
+	}
+	if !reflect.DeepEqual(data3, (*compare3)) {
+		fmt.Print(data3, (*compare3))
+		t.FailNow()
+	}
+	//bm.PutSpecific(file, 0, 100, 100, &data2)
+	//bm.PutSpecific(file, 0, 200, 100, &data3)
+	err = sp.Free("key1")
+	if err != nil {
+		fmt.Print(err)
+		t.FailNow()
+	}
+	file.Close()
+	err = os.Remove(filepath)
+	if err != nil {
+		fmt.Print(err)
+		t.Errorf("zatvaranje fajla onemoguceno")
+		t.FailNow()
+	}
 }
