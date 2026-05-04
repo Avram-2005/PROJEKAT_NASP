@@ -48,7 +48,7 @@ func newIterHeap(ssts []*SSTable, sstm *SSTableManager) (*IterHeap, error) {
 	h := &IterHeap{}
 	heap.Init(h)
 	for _, sst := range ssts {
-		iter, err := sstm.NewSSTableIterator(sst)
+		iter, err := sstm.NewSSTableIterator(sst, false)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create iterator for SSTable: %v", err)
 		}
@@ -72,7 +72,7 @@ func reconstructFilter(sstm *SSTableManager, sst *SSTable, numRecs int) error {
 		return fmt.Errorf("failed to create Bloom filter: %v", err)
 	}
 
-	iter, err := sstm.NewSSTableIterator(sst)
+	iter, err := sstm.NewSSTableIterator(sst, false)
 	if err != nil {
 		return fmt.Errorf("failed to create iterator for new SSTable: %v", err)
 	}

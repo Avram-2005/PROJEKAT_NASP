@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	DATA_HEADER_L        = CRC_L + TIMESTAMP_L + TOMBSTONE_L + KEY_SIZE_L + VALUE_SIZE_L
-	DATA_HEADER_VARINT_L = CRC_VARINT_MAX_L + TIMESTAMP_VARINT_MAX_L + TOMBSTONE_L + KEY_SIZE_VARINT_MAX_L + VALUE_SIZE_VARINT_MAX_L
+	DATA_HEADER_L        = CRC_L + TIMESTAMP_L + TOMBSTONE_L + VALUE_SIZE_L
+	DATA_HEADER_VARINT_L = CRC_VARINT_MAX_L + TIMESTAMP_VARINT_MAX_L + TOMBSTONE_L + VALUE_SIZE_VARINT_MAX_L
 	INDEX_HEADER_L       = KEY_SIZE_VARINT_MAX_L + OFFSET_VARINT_MAX_L
 	FOOTER_L             = 5 * OFFSET_L
 )
@@ -171,7 +171,7 @@ func (sstm *SSTableManager) loadFirstLastSummaryKeys(reader *blockReader) (strin
 	return firstKey, lastKey, nil
 }
 
-func (sstm *SSTableManager) parseData(reader *blockReader, checkCRC bool) (*Record, error) {
+func (sstm *SSTableManager) parseData(key string, reader *blockReader, checkCRC bool) (*Record, error) {
 	offset := reader.CurrOffset()
 	var dataHeaderBuf [DATA_HEADER_VARINT_L]byte
 	_, err := reader.Read(dataHeaderBuf[:])
@@ -187,12 +187,6 @@ func (sstm *SSTableManager) parseData(reader *blockReader, checkCRC bool) (*Reco
 	reader.Seek(int(offset))
 
 	valueBuf := make([]byte, header.ValueSize)
-	keyBuf := make([]byte, header.KeySize)
-	_, err = reader.Read(keyBuf)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read key: %v", err)
-	}
-	readKey := string(keyBuf)
 
 	_, err = reader.Read(valueBuf)
 	if err != nil {
@@ -202,8 +196,8 @@ func (sstm *SSTableManager) parseData(reader *blockReader, checkCRC bool) (*Reco
 	if checkCRC {
 		crcHash := crc32.NewIEEE()
 		crcHash.Write(dataHeaderBuf[crcStart:headerLen])
-		crcHash.Write(keyBuf)
 		crcHash.Write(valueBuf)
+		crcHash.Write([]byte(key))
 		realCrc := crcHash.Sum32()
 		if header.CRC != realCrc {
 			return nil, fmt.Errorf("CRC mismatch: expected %d, got %d", header.CRC, realCrc)
@@ -213,7 +207,7 @@ func (sstm *SSTableManager) parseData(reader *blockReader, checkCRC bool) (*Reco
 	return &Record{
 		Timestamp: header.Timestamp,
 		Tombstone: header.Tombstone,
-		Key:       readKey,
+		Key:       key,
 		Value:     valueBuf,
 	}, nil
 }
@@ -250,7 +244,7 @@ func (sstm *SSTableManager) getMultipleFiles(key string, sst *SSTable) (*Record,
 	}
 
 	dataReader := newBlockReader(files.dataFile, sstm.bm, offset)
-	return sstm.parseData(dataReader, true)
+	return sstm.parseData(key, dataReader, true)
 }
 
 func (sstm *SSTableManager) getOneFile(key string, sst *SSTable) (*Record, error) {
@@ -290,5 +284,5 @@ func (sstm *SSTableManager) getOneFile(key string, sst *SSTable) (*Record, error
 	}
 
 	dataReader := newBlockReader(file, sstm.bm, offset)
-	return sstm.parseData(dataReader, true)
+	return sstm.parseData(key, dataReader, true)
 }
