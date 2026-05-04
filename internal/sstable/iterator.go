@@ -59,6 +59,7 @@ type SSTableIterator struct {
 	sstm          *SSTableManager
 	dataIterator  *sectionIterator
 	indexIterator *sectionIterator
+	indexReader   *indexReader
 	checkCRC      bool
 }
 
@@ -80,6 +81,7 @@ func (sstm *SSTableManager) NewSSTableIterator(sst *SSTable, checkCRC bool) (*SS
 			it.Close()
 			return nil, err
 		}
+		it.indexReader = newIndexReader(it.indexIterator.br.file, sstm.bm, 0)
 	} else {
 		if sst.footer == nil {
 			it.Close()
@@ -96,6 +98,7 @@ func (sstm *SSTableManager) NewSSTableIterator(sst *SSTable, checkCRC bool) (*SS
 			it.Close()
 			return nil, err
 		}
+		it.indexReader = newIndexReader(it.indexIterator.br.file, sstm.bm, sst.footer.IndexStart)
 	}
 
 	_, err = it.Next()
@@ -107,11 +110,12 @@ func (sstm *SSTableManager) NewSSTableIterator(sst *SSTable, checkCRC bool) (*SS
 }
 
 func (it *SSTableIterator) Next() (bool, error) {
-	if !it.indexIterator.hasNext() {
+	indexCurrOffset := it.indexReader.br.CurrOffset()
+	if indexCurrOffset >= it.indexIterator.stopOffset || it.indexIterator.stopOffset-indexCurrOffset < INDEX_HEADER_L {
 		it.Rec = nil
 		return false, nil
 	}
-	entry, n, err := readNextIndexEntry(it.indexIterator.br)
+	entry, n, err := it.indexReader.Next()
 	if err != nil {
 		return false, err
 	}
