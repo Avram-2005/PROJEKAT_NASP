@@ -87,11 +87,11 @@ func CreatNewWAL(sizeSegment int, blocksize int, filePath string, memtableRotati
 		segmentList:           segments,
 		writeFile:             writeFile,
 		currentWritePosition:  int(pos),
-		segmentSize:           sizeSegment,
+		segmentSize:           sizeSegment * 1024,
 		blockManager:          bm,
 		memtableRotationCount: memtableRotationCount,
 	}
-
+	//proveravamo da li je segmentSize promenjen od poslednjeg pokretanja, i ako jeste, refaktorisemo fajlove da se uklope u novu veličinu
 	if err := walInstance.refactor(); err != nil {
 		return nil, err
 	}
