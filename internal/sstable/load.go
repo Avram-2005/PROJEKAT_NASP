@@ -125,15 +125,15 @@ func (sstm *SSTableManager) loadSummaryOneFile(footer *OneFileFooter, file *os.F
 func (sstm *SSTableManager) loadSummary(file *os.File, start uint64, size uint64) (*Summary, error) {
 	summary := sstm.NewSummary(0)
 
-	reader := newBlockReader(file, sstm.bm, start)
-	first, last, err := sstm.loadFirstLastSummaryKeys(reader)
+	reader := newIndexReader(file, sstm.bm, start)
+	first, last, err := sstm.loadFirstLastSummaryKeys(reader.br)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read first and last keys from summary: %v", err)
 	}
 	summary.SetFirstAndLast(first, last)
 
-	for reader.CurrOffset() < start+size {
-		indexEntry, _, err := readNextIndexEntry(reader)
+	for reader.br.CurrOffset() < start+size {
+		indexEntry, _, err := reader.Next()
 		if err != nil {
 			return nil, fmt.Errorf("failed to read summary entry: %v", err)
 		}

@@ -69,22 +69,25 @@ func (lsm *LSM) Compact(levelNum int) error {
 	if err != nil {
 		return fmt.Errorf("failed to merge SSTables for compaction: %v", err)
 	}
-	lsm.levels[levelNum].delete()
-	fmt.Printf("lsm levels: %v\n", lsm.levels)
+	err = lsm.levels[levelNum].delete()
+	if err != nil {
+		return fmt.Errorf("failed to delete old SSTables after compaction: %v", err)
+	}
 	lsm.levels[levelNum+1].tables = append(lsm.levels[levelNum+1].tables, newSST)
 	lsm.levels[levelNum+1].size += newSST.size
 	lsm.levels[levelNum+1].levelNum = levelNum + 1
 	return nil
 }
 
-func (l *Level) delete() {
+func (l *Level) delete() error {
 	for _, sst := range l.tables {
 		if err := os.RemoveAll(sst.path); err != nil {
-			fmt.Printf("Warning: failed to delete SSTable %s: %v\n", sst.path, err)
+			return fmt.Errorf("failed to delete SSTable file %s: %v", sst.path, err)
 		}
 	}
 	l.tables = nil
 	l.size = 0
+	return nil
 }
 
 func (lsm *LSM) Flush(mem Memtable) error {

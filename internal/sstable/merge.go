@@ -112,7 +112,7 @@ func (sstm *SSTableManager) multipleFilesMerge(ssts []*SSTable, level int, table
 
 	minKey, maxKey := findMinMaxKeys(ssts)
 	state.summary.SetFirstAndLast(minKey, maxKey)
-	writeSummaryHeader(state.summaryWriter, minKey, maxKey)
+	writeSummaryHeader(state.summaryWriter.bw, minKey, maxKey)
 
 	h, err := newIterHeap(ssts, sstm)
 	if err != nil {

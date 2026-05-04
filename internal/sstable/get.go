@@ -6,20 +6,32 @@ import (
 	"io"
 	"os"
 
+	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
 	. "github.com/Avram-2005/PROJEKAT_NASP/Record"
 	. "github.com/Avram-2005/PROJEKAT_NASP/utils"
 )
 
 const (
-	DATA_HEADER_L        = CRC_L + TIMESTAMP_L + TOMBSTONE_L + VALUE_SIZE_L
 	DATA_HEADER_VARINT_L = CRC_VARINT_MAX_L + TIMESTAMP_VARINT_MAX_L + TOMBSTONE_L + VALUE_SIZE_VARINT_MAX_L
-	INDEX_HEADER_L       = KEY_SIZE_VARINT_MAX_L + OFFSET_VARINT_MAX_L
+	INDEX_HEADER_L       = 2*KEY_SIZE_VARINT_MAX_L + OFFSET_VARINT_MAX_L
 	FOOTER_L             = 5 * OFFSET_L
 )
 
-func readNextIndexEntry(reader *blockReader) (indexEntry, int, error) {
+type indexReader struct {
+	br      *blockReader
+	prevKey string
+}
+
+func newIndexReader(file *os.File, bm *BlockManager.BlockManager, offset uint64) *indexReader {
+	return &indexReader{
+		br:      newBlockReader(file, bm, offset),
+		prevKey: "",
+	}
+}
+
+func (ir *indexReader) Next() (indexEntry, int, error) {
 	bufferReader := NewBufferReader(INDEX_HEADER_L)
-	n, err := reader.Read(bufferReader.Buf)
+	n, err := ir.br.Read(bufferReader.Buf)
 	if err != nil {
 		if err == io.EOF && n == 0 {
 			return indexEntry{}, 0, nil
@@ -33,7 +45,11 @@ func readNextIndexEntry(reader *blockReader) (indexEntry, int, error) {
 		return indexEntry{}, 0, fmt.Errorf("failed to read index header: short read (%d/%d)", n, INDEX_HEADER_L)
 	}
 
-	keySize, err := bufferReader.ReadKeySizeVarint()
+	prefixSize, err := bufferReader.ReadKeySizeVarint()
+	if err != nil {
+		return indexEntry{}, 0, fmt.Errorf("failed to read key size: %v", err)
+	}
+	suffixSize, err := bufferReader.ReadKeySizeVarint()
 	if err != nil {
 		return indexEntry{}, 0, fmt.Errorf("failed to read key size: %v", err)
 	}
@@ -42,35 +58,38 @@ func readNextIndexEntry(reader *blockReader) (indexEntry, int, error) {
 		return indexEntry{}, 0, fmt.Errorf("failed to read offset: %v", err)
 	}
 
-	bufferReader = NewBufferReader(keySize)
-	n, err = reader.Read(bufferReader.Buf)
+	bufferReader = NewBufferReader(suffixSize)
+	n, err = ir.br.Read(bufferReader.Buf)
 	if err != nil {
 		return indexEntry{}, 0, fmt.Errorf("failed to read key: %v", err)
 	}
 	if n == 0 {
 		return indexEntry{}, 0, nil
 	}
-	if n < keySize {
-		return indexEntry{}, 0, fmt.Errorf("failed to read key: short read (%d/%d)", n, keySize)
+	if n < suffixSize {
+		return indexEntry{}, 0, fmt.Errorf("failed to read key: short read (%d/%d)", n, prefixSize)
 	}
+	suffix := string(bufferReader.Buf[:suffixSize])
+	key := ir.prevKey[:prefixSize] + suffix
+	ir.prevKey = key
 
 	return indexEntry{
-		Key:    string(bufferReader.Buf[:keySize]),
+		Key:    key,
 		Offset: offset,
 	}, n, nil
 }
 
-func findNextKeyOffset(searchKey string, reader *blockReader, sectionEnd uint64) (uint64, error) {
+func findNextKeyOffset(searchKey string, reader *indexReader, sectionEnd uint64) (uint64, error) {
 	lastOffset := uint64(0)
 	for {
 		if sectionEnd > 0 {
-			curr := reader.CurrOffset()
+			curr := reader.br.CurrOffset()
 			if curr >= sectionEnd || sectionEnd-curr < INDEX_HEADER_L {
 				return lastOffset, nil
 			}
 		}
 
-		indexEntry, n, err := readNextIndexEntry(reader)
+		indexEntry, n, err := reader.Next()
 		if err != nil {
 			return 0, err
 		}
@@ -86,17 +105,17 @@ func findNextKeyOffset(searchKey string, reader *blockReader, sectionEnd uint64)
 	}
 }
 
-func findPreviousKeyOffset(searchKey string, reader *blockReader, sectionEnd uint64) (uint64, error) {
+func findPreviousKeyOffset(searchKey string, reader *indexReader, sectionEnd uint64) (uint64, error) {
 	lastOffset := uint64(0)
 	for {
 		if sectionEnd > 0 {
-			curr := reader.CurrOffset()
+			curr := reader.br.CurrOffset()
 			if curr >= sectionEnd || sectionEnd-curr < INDEX_HEADER_L {
 				return lastOffset, nil
 			}
 		}
 
-		indexEntry, n, err := readNextIndexEntry(reader)
+		indexEntry, n, err := reader.Next()
 		if err != nil {
 			return 0, err
 		}
@@ -113,7 +132,7 @@ func findPreviousKeyOffset(searchKey string, reader *blockReader, sectionEnd uin
 }
 
 func (sstm *SSTableManager) searchIndex(file *os.File, key string, oldOffset uint64, sectionEnd uint64) (uint64, error) {
-	indexReader := newBlockReader(file, sstm.bm, oldOffset)
+	indexReader := newIndexReader(file, sstm.bm, oldOffset)
 	return findNextKeyOffset(key, indexReader, sectionEnd)
 }
 
@@ -128,9 +147,9 @@ func readKey(reader *blockReader, keySize int) (string, error) {
 
 // Because the Summary is in memory, this isn't used.
 func (sstm *SSTableManager) searchSummary(file *os.File, offset uint64, sectionEnd uint64, key string) (bool, uint64, error) {
-	summaryReader := newBlockReader(file, sstm.bm, offset)
+	summaryReader := newIndexReader(file, sstm.bm, offset)
 
-	firstKey, lastKey, err := sstm.loadFirstLastSummaryKeys(summaryReader)
+	firstKey, lastKey, err := sstm.loadFirstLastSummaryKeys(summaryReader.br)
 	if err != nil {
 		return false, 0, fmt.Errorf("failed to load first and last summary keys: %v", err)
 	}

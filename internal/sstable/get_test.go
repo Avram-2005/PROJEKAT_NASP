@@ -169,8 +169,8 @@ func TestSSTableIteratorMultipleFiles(t *testing.T) {
 
 func TestGet(t *testing.T) {
 	flush1(t, true)
-	flush2(t, false)
-	flush3(t, false)
+	flush2(t, true)
+	flush3(t, true)
 
 	lsmCfg := LSMConfig{
 		NumLevels:        4,
