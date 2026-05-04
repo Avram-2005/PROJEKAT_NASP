@@ -3,7 +3,6 @@ package sstable
 import (
 	"encoding/binary"
 	"os"
-	"runtime"
 	"testing"
 
 	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
@@ -25,8 +24,6 @@ func TestMetadataValidationOneFile(t *testing.T) {
 	if !isValid {
 		t.Fatalf("Merkle validation failed, corruption data count: %d", len(corruptedData))
 	}
-
-	runtime.GC()
 }
 
 func TestMetadataCorruptionOneFile(t *testing.T) {
@@ -42,11 +39,6 @@ func TestMetadataCorruptionOneFile(t *testing.T) {
 	}
 	defer file.Close()
 
-	footer, err := m.loadOneFileFooter(file)
-	if err != nil {
-		t.Fatalf("Failed to read footer: %v", err)
-	}
-
 	dataReader := newBlockReader(file, m.bm, 0)
 	var dataHeaderBuf [DATA_HEADER_L]byte
 	_, err = dataReader.Read(dataHeaderBuf[:])
@@ -58,7 +50,7 @@ func TestMetadataCorruptionOneFile(t *testing.T) {
 	keySize := binary.BigEndian.Uint32(dataHeaderBuf[currByte:])
 	currByte += KEY_SIZE_L
 
-	valueOffset := footer.IndexStart - 100 + DATA_HEADER_L + uint64(keySize)
+	valueOffset := DATA_HEADER_L + uint64(keySize)
 
 	f2, err := os.OpenFile(sst.path, os.O_RDWR, 0644)
 	if err != nil {
@@ -98,8 +90,6 @@ func TestMetadataCorruptionOneFile(t *testing.T) {
 	if corruptedKeys[0].Key == "a" {
 		t.Logf("Corrupted data under key: %s, with data: %s, with timestamp: %s, with tombstone: %t", string(corruptedKeys[0].Key), string(corruptedKeys[0].Value), corruptedKeys[0].Timestamp.String(), corruptedKeys[0].Tombstone)
 	}
-
-	runtime.GC()
 }
 
 func TestMetadataValidationMultipleFiles(t *testing.T) {
@@ -116,8 +106,6 @@ func TestMetadataValidationMultipleFiles(t *testing.T) {
 	if !isValid {
 		t.Fatalf("Merkle validation failed, corruption data count: %d", len(corruptedData))
 	}
-
-	runtime.GC()
 }
 
 func TestMetadataCorruptionMultipleFiles(t *testing.T) {
@@ -205,6 +193,4 @@ func TestMetadataCorruptionMultipleFiles(t *testing.T) {
 	if corruptedKeys[0].Key == "a" {
 		t.Logf("Corrupted data under key: %s, with data: %s, with timestamp: %s, with tombstone: %t", string(corruptedKeys[0].Key), string(corruptedKeys[0].Value), corruptedKeys[0].Timestamp.String(), corruptedKeys[0].Tombstone)
 	}
-
-	runtime.GC()
 }
