@@ -55,27 +55,25 @@ func (r *Record) Serialize() []byte {
 	return writer.Buf
 }
 
-func (r *Record) SerializeVarInt() []byte {
-	key := []byte(r.Key)
+func (r *Record) SerializeSSTable() []byte {
 	value := r.Value
 
-	payloadWriter := NewBufferWriter(3*binary.MaxVarintLen64 + TOMBSTONE_L + len(key) + len(value))
+	payloadWriter := NewBufferWriter(3*binary.MaxVarintLen64 + TOMBSTONE_L + len(value))
 	payloadLen := 0
 	payloadLen += payloadWriter.WriteTimestampVarint(r.Timestamp)
 	payloadWriter.WriteTombstone(r.Tombstone)
 	payloadLen += TOMBSTONE_L
-	payloadLen += payloadWriter.WriteKeySizeVarint(len(key))
 	payloadLen += payloadWriter.WriteValueSizeVarint(len(value))
-	payloadWriter.WriteBytes(key)
-	payloadLen += len(key)
 	payloadWriter.WriteBytes(value)
 	payloadLen += len(value)
 
 	payload := payloadWriter.Buf[:payloadLen]
-	crc := crc32.ChecksumIEEE(payload)
+	crcHash := crc32.NewIEEE()
+	crcHash.Write(payload)
+	crcHash.Write([]byte(r.Key))
 
 	writer := NewBufferWriter(binary.MaxVarintLen32 + payloadLen)
-	totalLen := writer.WriteCRCVarint(crc)
+	totalLen := writer.WriteCRCVarint(crcHash.Sum32())
 	writer.WriteBytes(payload)
 	totalLen += payloadLen
 
@@ -86,7 +84,6 @@ type RecordHeader struct {
 	CRC       uint32
 	Timestamp time.Time
 	Tombstone bool
-	KeySize   int
 	ValueSize int
 }
 
@@ -105,10 +102,6 @@ func DeserializeRecordHeaderVarInt(data []byte) (*RecordHeader, int, int, error)
 		return nil, 0, 0, fmt.Errorf("failed to read timestamp: %v", err)
 	}
 	tombstone := reader.ReadTombstone()
-	keySize, err := reader.ReadKeySizeVarint()
-	if err != nil {
-		return nil, 0, 0, fmt.Errorf("failed to read key size: %v", err)
-	}
 	valueSize, err := reader.ReadValueSizeVarint()
 	if err != nil {
 		return nil, 0, 0, fmt.Errorf("failed to read value size: %v", err)
@@ -118,7 +111,6 @@ func DeserializeRecordHeaderVarInt(data []byte) (*RecordHeader, int, int, error)
 		CRC:       crc,
 		Timestamp: timestamp,
 		Tombstone: tombstone,
-		KeySize:   keySize,
 		ValueSize: valueSize,
 	}, reader.CurrOffset(), crcStart, nil
 }

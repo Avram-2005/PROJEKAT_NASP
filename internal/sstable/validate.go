@@ -39,20 +39,22 @@ func (sstm *SSTableManager) validateOneFile(filename string) (bool, []Record, er
 		return false, nil, fmt.Errorf("failed to deserialize merkle tree")
 	}
 
-	dataReader := newBlockReader(f, sstm.bm, 0)
-
 	var currentRecords []Record
-	for {
-		currentOffset := dataReader.CurrOffset()
-		if currentOffset >= footer.IndexStart {
-			break
-		}
-
-		rec, err := sstm.parseData(dataReader, false)
+	iter, err := sstm.NewSSTableIterator(&SSTable{
+		path:        filename,
+		isMultFiles: false,
+		footer:      footer,
+	}, false)
+	if err != nil {
+		return false, nil, fmt.Errorf("failed to create iterator: %v", err)
+	}
+	defer iter.Close()
+	for iter.Rec != nil {
+		currentRecords = append(currentRecords, *iter.Rec)
+		_, err := iter.Next()
 		if err != nil {
 			break
 		}
-		currentRecords = append(currentRecords, *rec)
 	}
 
 	currentTree, err := merkleTree.NewMerkleTree(currentRecords)
@@ -101,32 +103,21 @@ func (sstm *SSTableManager) validateMultipleFiles(sstablePath string) (bool, []R
 		return false, nil, fmt.Errorf("failed to deserialize merkle tree")
 	}
 
-	dataFilename := sstableFilenameMultFile(sstablePath, "Data")
-	dataFile, err := os.Open(dataFilename)
-	if err != nil {
-		return false, nil, fmt.Errorf("failed to open data file: %v", err)
-	}
-	defer dataFile.Close()
-
-	stat, err := dataFile.Stat()
-	if err != nil {
-		return false, nil, err
-	}
-	fileSize := stat.Size()
-
-	dataReader := newBlockReader(dataFile, sstm.bm, 0)
-
 	var currentRecords []Record
-	for {
-		if int64(dataReader.CurrOffset()) >= fileSize {
-			break
-		}
-
-		rec, err := sstm.parseData(dataReader, false)
+	iter, err := sstm.NewSSTableIterator(&SSTable{
+		path:        sstablePath,
+		isMultFiles: true,
+	}, false)
+	if err != nil {
+		return false, nil, fmt.Errorf("failed to create iterator: %v", err)
+	}
+	defer iter.Close()
+	for iter.Rec != nil {
+		currentRecords = append(currentRecords, *iter.Rec)
+		_, err := iter.Next()
 		if err != nil {
 			break
 		}
-		currentRecords = append(currentRecords, *rec)
 	}
 
 	currentTree, err := merkleTree.NewMerkleTree(currentRecords)

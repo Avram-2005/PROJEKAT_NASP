@@ -130,7 +130,7 @@ func TestGetSpecificNonExistentKeyOneFile(t *testing.T) {
 func testSSTableIterator(t *testing.T, multFiles bool) {
 	m, sst := flush1(t, multFiles)
 
-	iter, err := m.NewSSTableIterator(sst)
+	iter, err := m.NewSSTableIterator(sst, false)
 	if err != nil {
 		t.Fatalf("Failed to create iterator: %v", err)
 	}

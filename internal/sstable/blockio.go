@@ -143,3 +143,13 @@ func (br *blockReader) Seek(offset int) {
 		br.readBlock()
 	}
 }
+
+func (br *blockReader) Close() error {
+	if br.file == nil {
+		return nil
+	}
+	err := br.file.Close()
+	br.file = nil
+	br.block = nil
+	return err
+}

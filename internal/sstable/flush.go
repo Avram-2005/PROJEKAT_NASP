@@ -13,7 +13,7 @@ import (
 
 func writeData(writer *blockWriter, record Record) uint64 {
 	oldOffset := writer.CurrOffset()
-	writer.Write(record.SerializeVarInt())
+	writer.Write(record.SerializeSSTable())
 	return oldOffset
 }
 

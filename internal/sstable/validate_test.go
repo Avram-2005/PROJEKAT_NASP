@@ -47,11 +47,11 @@ func TestMetadataCorruptionOneFile(t *testing.T) {
 		t.Fatalf("Failed to read data header: %v", err)
 	}
 
-	header, headerLen, _, err := record.DeserializeRecordHeaderVarInt(dataHeaderBuf[:])
+	_, headerLen, _, err := record.DeserializeRecordHeaderVarInt(dataHeaderBuf[:])
 	if err != nil {
 		t.Fatalf("Failed to deserialize varint header: %v", err)
 	}
-	valueOffset := uint64(headerLen + header.KeySize)
+	valueOffset := uint64(headerLen)
 
 	f2, err := os.OpenFile(sst.path, os.O_RDWR, 0644)
 	if err != nil {
@@ -136,11 +136,11 @@ func TestMetadataCorruptionMultipleFiles(t *testing.T) {
 		t.Fatalf("Failed to read data header: %v", err)
 	}
 
-	header, headerLen, _, err := record.DeserializeRecordHeaderVarInt(dataHeaderBuf[:])
+	_, headerLen, _, err := record.DeserializeRecordHeaderVarInt(dataHeaderBuf[:])
 	if err != nil {
 		t.Fatalf("Failed to deserialize varint header: %v", err)
 	}
-	valueOffset := uint64(headerLen + header.KeySize)
+	valueOffset := uint64(headerLen)
 
 	f2, err := os.OpenFile(dataFile, os.O_RDWR, 0644)
 	if err != nil {
