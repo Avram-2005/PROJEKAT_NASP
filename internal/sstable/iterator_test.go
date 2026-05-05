@@ -12,7 +12,7 @@ type memtable struct {
 
 func (m memtable) GetSortedEntries() []Record {
 	ts := time.Now()
-	r1, _ := NewRecord("aa", []byte("value3"), false, ts)
+	r1, _ := NewRecord("a", []byte("value3"), false, ts)
 	r2, _ := NewRecord("bar", []byte("value3"), false, ts)
 	r3, _ := NewRecord("v", []byte("value3"), false, ts)
 	r4, _ := NewRecord("value1", []byte("value1"), false, ts)
@@ -142,5 +142,78 @@ func TestPrefixIterator(t *testing.T) {
 		if keys3[i] != expected[i] {
 			t.Errorf("Expected key %s, got %s", expected[i], keys3[i])
 		}
+	}
+}
+
+func TestRangeIterator(t *testing.T) {
+	mem := memtable{}
+
+	m, sst, err := testFlush(t.TempDir(), mem, false)
+	if err != nil {
+		t.Fatalf("Flush failed: %v", err)
+	}
+
+	m2, sst2, err := testFlush(t.TempDir(), mem, true)
+	if err != nil {
+		t.Fatalf("Flush failed: %v", err)
+	}
+
+	// range od a do c, treba da vrati kljuceve a i bar
+	iter, err := m.NewRangeIterator(sst, "a", "c")
+	if err != nil {
+		t.Fatalf("Failed to create prefix iterator: %v", err)
+	}
+	defer iter.Close()
+
+	var keys []string
+	for {
+		ok, err := iter.Next()
+		if err != nil {
+			t.Fatalf("Next failed: %v", err)
+		}
+		if !ok {
+			break
+		}
+		keys = append(keys, iter.iterator.Rec.Key)
+	}
+
+	expected := []string{"a", "bar"}
+	if len(keys) != len(expected) {
+		t.Fatalf("Expected %d keys, got %d: %v", len(expected), len(keys), keys)
+	}
+	for i := range expected {
+		if keys[i] != expected[i] {
+			t.Errorf("Expected key %s, got %s", expected[i], keys[i])
+		}
+	}
+
+	// range od w do z, nema kljuceva
+	iter2, err := m2.NewRangeIterator(sst2, "w", "z")
+	if err != nil {
+		t.Fatalf("Failed to create prefix iterator: %v", err)
+	}
+	defer iter2.Close()
+
+	ok, err := iter2.Next()
+	if err != nil {
+		t.Fatalf("Next failed: %v", err)
+	}
+	if ok {
+		t.Fatal("Expected no results, but got one")
+	}
+
+	// range od b do a, b je vece od a, nema kljuceva
+	iter3, err := m2.NewRangeIterator(sst2, "b", "a")
+	if err != nil {
+		t.Fatalf("Failed to create prefix iterator: %v", err)
+	}
+	defer iter3.Close()
+
+	ok, err = iter3.Next()
+	if err != nil {
+		t.Fatalf("Next failed: %v", err)
+	}
+	if ok {
+		t.Fatal("Expected no results, but got one")
 	}
 }

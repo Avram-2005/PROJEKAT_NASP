@@ -109,7 +109,7 @@ type PrefixIterator struct {
 
 func (sstm *SSTableManager) NewPrefixIterator(sst *SSTable, prefix string) (*PrefixIterator, error) {
 	// ukoliko je prefix veci od poslednjeg kljuca ili manji od prvog, znaci da kljuc nije tu
-	if sst.summary != nil && prefix != "" {
+	if prefix != "" {
 		if sst.summary.lastKey < prefix {
 			return &PrefixIterator{
 				iterator: nil,
@@ -181,6 +181,89 @@ func (it *PrefixIterator) Close() error {
 }
 
 func (it *PrefixIterator) Stop() {
+	it.Close()
+	it.iterator = nil
+}
+
+type RangeIterator struct {
+	iterator *SSTableIterator
+	startKey string
+	endKey   string
+	started  bool
+}
+
+func (sstm *SSTableManager) NewRangeIterator(sst *SSTable, startKey, endKey string) (*RangeIterator, error) {
+
+	if sst.summary.lastKey < startKey || endKey < sst.summary.firstKey {
+		return &RangeIterator{
+			iterator: nil,
+			startKey: startKey,
+			endKey:   endKey,
+			started:  true,
+		}, nil
+	}
+
+	if endKey < startKey {
+		return &RangeIterator{
+			iterator: nil,
+			startKey: startKey,
+			endKey:   endKey,
+			started:  true,
+		}, nil
+	}
+
+	iter, err := sstm.NewSSTableIterator(sst)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := iter.Seek(startKey); err != nil {
+		iter.Close()
+		return nil, err
+	}
+
+	return &RangeIterator{
+		iterator: iter,
+		startKey: startKey,
+		endKey:   endKey,
+		started:  false,
+	}, nil
+}
+func (it *RangeIterator) Next() (bool, error) {
+	if it.iterator == nil || it.iterator.Rec == nil {
+		return false, nil
+	}
+
+	if it.started {
+		ok, err := it.iterator.Next()
+		if err != nil {
+			return false, err
+		}
+		if !ok {
+			return false, nil
+		}
+	}
+	it.started = true
+
+	if it.iterator.Rec.Key < it.startKey {
+		return false, nil
+	}
+
+	if it.iterator.Rec.Key > it.endKey {
+		return false, nil
+	}
+
+	return true, nil
+}
+
+func (it *RangeIterator) Close() error {
+	if it.iterator != nil {
+		return it.iterator.Close()
+	}
+	return nil
+}
+
+func (it *RangeIterator) Stop() {
 	it.Close()
 	it.iterator = nil
 }
