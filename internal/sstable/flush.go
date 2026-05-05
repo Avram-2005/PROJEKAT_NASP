@@ -3,6 +3,7 @@ package sstable
 import (
 	"encoding/binary"
 	"fmt"
+	"hash/crc32"
 	"os"
 
 	"github.com/Avram-2005/PROJEKAT_NASP/BloomFilter"
@@ -11,9 +12,33 @@ import (
 	. "github.com/Avram-2005/PROJEKAT_NASP/utils"
 )
 
+func serializeRecord(r Record) []byte {
+	value := r.Value
+
+	payloadWriter := NewBufferWriter(3*binary.MaxVarintLen64 + TOMBSTONE_L + len(value))
+	payloadLen := 0
+	payloadLen += payloadWriter.WriteTimestampVarint(r.Timestamp)
+	payloadWriter.WriteTombstone(r.Tombstone)
+	payloadLen += TOMBSTONE_L
+	payloadLen += payloadWriter.WriteValueSizeVarint(len(value))
+	payloadWriter.WriteBytes(value)
+	payloadLen += len(value)
+
+	payload := payloadWriter.Buf[:payloadLen]
+	crcHash := crc32.NewIEEE()
+	crcHash.Write(payload)
+	crcHash.Write([]byte(r.Key))
+
+	writer := NewBufferWriter(binary.MaxVarintLen32 + payloadLen)
+	totalLen := writer.WriteCRCVarint(crcHash.Sum32())
+	writer.WriteBytes(payload)
+	totalLen += payloadLen
+	return writer.Buf[:totalLen]
+}
+
 func writeData(writer *blockWriter, record Record) uint64 {
 	oldOffset := writer.CurrOffset()
-	writer.Write(record.SerializeSSTable())
+	writer.Write(serializeRecord(record))
 	return oldOffset
 }
 

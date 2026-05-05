@@ -1,7 +1,6 @@
 package record
 
 import (
-	"encoding/binary"
 	"fmt"
 	. "github.com/Avram-2005/PROJEKAT_NASP/utils"
 	"hash/crc32"
@@ -53,66 +52,6 @@ func (r *Record) Serialize() []byte {
 	writer.WriteCRC(CRC)
 
 	return writer.Buf
-}
-
-func (r *Record) SerializeSSTable() []byte {
-	value := r.Value
-
-	payloadWriter := NewBufferWriter(3*binary.MaxVarintLen64 + TOMBSTONE_L + len(value))
-	payloadLen := 0
-	payloadLen += payloadWriter.WriteTimestampVarint(r.Timestamp)
-	payloadWriter.WriteTombstone(r.Tombstone)
-	payloadLen += TOMBSTONE_L
-	payloadLen += payloadWriter.WriteValueSizeVarint(len(value))
-	payloadWriter.WriteBytes(value)
-	payloadLen += len(value)
-
-	payload := payloadWriter.Buf[:payloadLen]
-	crcHash := crc32.NewIEEE()
-	crcHash.Write(payload)
-	crcHash.Write([]byte(r.Key))
-
-	writer := NewBufferWriter(binary.MaxVarintLen32 + payloadLen)
-	totalLen := writer.WriteCRCVarint(crcHash.Sum32())
-	writer.WriteBytes(payload)
-	totalLen += payloadLen
-
-	return writer.Buf[:totalLen]
-}
-
-type RecordHeader struct {
-	CRC       uint32
-	Timestamp time.Time
-	Tombstone bool
-	ValueSize int
-}
-
-func DeserializeRecordHeaderVarInt(data []byte) (*RecordHeader, int, int, error) {
-	reader := NewBufferReaderReuse(data)
-
-	crc, err := reader.ReadCRCVarint()
-	if err != nil {
-		return nil, 0, 0, fmt.Errorf("failed to read CRC: %v", err)
-	}
-
-	crcStart := reader.CurrOffset()
-
-	timestamp, err := reader.ReadTimestampVarint()
-	if err != nil {
-		return nil, 0, 0, fmt.Errorf("failed to read timestamp: %v", err)
-	}
-	tombstone := reader.ReadTombstone()
-	valueSize, err := reader.ReadValueSizeVarint()
-	if err != nil {
-		return nil, 0, 0, fmt.Errorf("failed to read value size: %v", err)
-	}
-
-	return &RecordHeader{
-		CRC:       crc,
-		Timestamp: timestamp,
-		Tombstone: tombstone,
-		ValueSize: valueSize,
-	}, reader.CurrOffset(), crcStart, nil
 }
 
 func DeserializeRecord(data []byte) (*Record, error) {
