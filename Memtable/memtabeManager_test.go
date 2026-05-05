@@ -3,6 +3,8 @@ package memtable
 import (
 	"fmt"
 	"testing"
+
+	record "github.com/Avram-2005/PROJEKAT_NASP/Record"
 )
 
 // helper funckija
@@ -110,7 +112,7 @@ func TestMaxInstancesNotExceeded(t *testing.T) {
 				SkipListMaxHeight: 8,
 				BPlusTreeDegree:   2,
 			}
-			m, _ := NewMemtableManager(2, conf, func(entries []KeyValue) error {
+			m, _ := NewMemtableManager(2, conf, func(entries []*record.Record) error {
 				flushed++
 				return nil
 			})

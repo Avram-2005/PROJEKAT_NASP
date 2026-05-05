@@ -3,6 +3,9 @@ package memtable
 import (
 	"fmt"
 	"testing"
+	"time"
+
+	record "github.com/Avram-2005/PROJEKAT_NASP/Record"
 )
 
 // helper funkcija za ostale testove
@@ -64,6 +67,31 @@ func TestPutGet(t *testing.T) {
 	}
 }
 
+func TestPutRecord(t *testing.T) {
+	for _, typ := range allStructTypes {
+		t.Run(typ, func(t *testing.T) {
+			adapt := makeAdapter(t, typ)
+			ts := time.Now().Add(-24 * time.Hour)
+			rec := &record.Record{
+				Key:       "test_key",
+				Value:     []byte("test_value"),
+				Tombstone: false,
+				Timestamp: ts,
+			}
+			err := adapt.PutRecord(rec)
+			if err != nil {
+				t.Fatalf("PutRecord failed: %v", err)
+			}
+			val, found, err := adapt.Get("test_key")
+			if !found {
+				t.Fatal("Key not found after PutRecord")
+			}
+			if string(val) != "test_value" {
+				t.Fatalf("Value corrupted: expected test_value, got %s", val)
+			}
+		})
+	}
+}
 func TestGetNonExistentKey(t *testing.T) {
 	for _, typ := range allStructTypes {
 		t.Run(typ, func(t *testing.T) {
@@ -389,18 +417,50 @@ func TestShouldFlushByBytes(t *testing.T) {
 
 // tombstone
 func TestTombstone(t *testing.T) {
-	entries := []struct {
-		Key   string
-		Value []byte
-	}{
-		{"k1", []byte("v1")},
-		{"k2", nil},
+	for _, typ := range allStructTypes {
+		t.Run(typ, func(t *testing.T) {
+			adapt := makeAdapter(t, typ)
+			adapt.Put("k1", []byte("v1"))
+			deleted, err := adapt.Delete("k1")
+			if err != nil || !deleted {
+				t.Fatalf("Delete failed: %v", err)
+			}
+			_, found, _ := adapt.Get("k1")
+			if found {
+				t.Fatal("Key still exists after logical delete")
+			}
+			entries := adapt.GetSortedEntries()
+			for _, e := range entries {
+				if e.Key == "k1" && !e.Tombstone {
+					t.Fatal("Tombstone not persisted in GetSortedEntries")
+				}
+			}
+		})
 	}
-	result := convertToKeyValue(entries)
-	if result[0].Tombstone {
-		t.Fatal("K1 must not be a tombstone")
-	}
-	if !result[1].Tombstone {
-		t.Fatal("k2 with nil value must be a tombstone")
+}
+
+func TestPutRecordInManager(t *testing.T) {
+	for _, typ := range allStructTypes {
+		t.Run(typ, func(t *testing.T) {
+			m := makeManager(t, typ, 3, 10)
+			ts := time.Now().Add(-24 * time.Hour)
+			rec := &record.Record{
+				Key:       "recovery_key",
+				Value:     []byte("recovery_val"),
+				Tombstone: false,
+				Timestamp: ts,
+			}
+			err := m.PutRecord(rec)
+			if err != nil {
+				t.Fatalf("PutRecord failed: %v", err)
+			}
+			val, found, err := m.Get("recovery_key")
+			if err != nil || !found {
+				t.Fatalf("Get failed: found=%v, err=%v", found, err)
+			}
+			if string(val) != "recovery_val" {
+				t.Fatalf("Wrong value: %s", val)
+			}
+		})
 	}
 }
