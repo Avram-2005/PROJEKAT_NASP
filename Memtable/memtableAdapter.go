@@ -281,6 +281,46 @@ func (adapt *MemtableAdapter) PutRecord(rec *record.Record) error {
 	adapt.total++
 	return nil
 }
+
+func (adapt *MemtableAdapter) GetRecord(key string) (*record.Record, bool, error) {
+	switch adapt.structureType {
+	case "hashmap":
+		hm := adapt.dataStructure.(*HashMap.HashMap)
+		data, err := hm.Get(key)
+		if err != nil {
+			return nil, false, nil
+		}
+		rec, _, err := record.DeserializeRecord(data)
+		if err != nil {
+			return nil, false, err
+		}
+		return rec, true, nil
+	case "skip_list":
+		sl := adapt.dataStructure.(*SkipList.SkipList)
+		data, found, err := sl.Get(key)
+		if err != nil || !found {
+			return nil, false, err
+		}
+		rec, _, err := record.DeserializeRecord(data)
+		if err != nil {
+			return nil, false, err
+		}
+		return rec, true, nil
+	case "b_plus_tree":
+		bpt := adapt.dataStructure.(*BPlusTree.BPlusTree)
+		data, found := bpt.Search(key)
+		if !found {
+			return nil, false, nil
+		}
+		rec, _, err := record.DeserializeRecord(data)
+		if err != nil {
+			return nil, false, err
+		}
+		return rec, true, nil
+	}
+	return nil, false, nil
+
+}
 func (adapt *MemtableAdapter) Get(key string) ([]byte, bool, error) {
 	return adapt.getFunc(key)
 }

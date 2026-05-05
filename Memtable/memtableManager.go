@@ -2,6 +2,7 @@ package memtable
 
 import (
 	"fmt"
+	"time"
 
 	record "github.com/Avram-2005/PROJEKAT_NASP/Record"
 )
@@ -86,15 +87,29 @@ func (mm *MemtableManager) PutRecord(rec *record.Record) error {
 
 // Upisuje tombstone u aktivnu tabelu
 func (mm *MemtableManager) Delete(key string) error {
-	active := mm.activeTable()
-	if err := active.Put(key, nil); err != nil {
-		if err2 := active.Put(key, []byte{}); err2 != nil {
-			return err2
-		}
-	}
-	if active.IsFull() {
-		if err := mm.rotateAndFlushIfNecessary(); err != nil {
+	for i := len(mm.instances) - 1; i >= 0; i-- {
+		rec, found, err := mm.instances[i].GetRecord(key)
+		if err != nil {
 			return err
+		}
+		if found {
+			if rec.Tombstone {
+				return nil
+			}
+			tombstoneRec := &record.Record{
+				Key:       rec.Key,
+				Value:     rec.Value,
+				Tombstone: true,
+				Timestamp: time.Now(),
+			}
+			active := mm.activeTable()
+			if err := active.PutRecord(tombstoneRec); err != nil {
+				return err
+			}
+			if active.IsFull() {
+				return mm.rotateAndFlushIfNecessary()
+			}
+			return nil
 		}
 	}
 	return nil
