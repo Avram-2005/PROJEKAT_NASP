@@ -13,25 +13,57 @@ import (
 
 func writeData(writer *blockWriter, record Record) uint64 {
 	oldOffset := writer.CurrOffset()
-	writer.Write(record.Serialize())
+	writer.Write(record.SerializeSSTable())
 	return oldOffset
 }
 
-func writeIndex(writer *blockWriter, key string, offset uint64) uint64 {
-	bufferWriter := NewBufferWriter(INDEX_HEADER_L)
-	bufferWriter.WriteKeySize(len(key))
-	bufferWriter.WriteOffset(offset)
+type indexWriter struct {
+	bw      *blockWriter
+	prevKey string
+}
 
-	oldOffset := writer.CurrOffset()
-	writer.Write(bufferWriter.Buf)
-	writer.Write([]byte(key))
+func newIndexWriter(bw *blockWriter) *indexWriter {
+	return &indexWriter{
+		bw:      bw,
+		prevKey: "",
+	}
+}
+
+func commonPrefixLength(a, b string) int {
+	minLen := len(a)
+	if len(b) < minLen {
+		minLen = len(b)
+	}
+	for i := 0; i < minLen; i++ {
+		if a[i] != b[i] {
+			return i
+		}
+	}
+	return minLen
+}
+
+func (iw *indexWriter) Write(key string, offset uint64) uint64 {
+	prefixSize := 0
+	if iw.prevKey != "" {
+		prefixSize = commonPrefixLength(iw.prevKey, key)
+	}
+	suffixSize := len(key) - prefixSize
+	bufferWriter := NewBufferWriter(INDEX_HEADER_L)
+	bufferWriter.WriteKeySizeVarint(prefixSize)
+	bufferWriter.WriteKeySizeVarint(suffixSize)
+	bufferWriter.WriteOffsetVarint(offset)
+
+	oldOffset := iw.bw.CurrOffset()
+	iw.bw.Write(bufferWriter.Buf)
+	iw.bw.Write([]byte(key[prefixSize:]))
+	iw.prevKey = key
 	return oldOffset
 }
 
 func writeSummaryHeader(writer *blockWriter, firstKey string, lastKey string) {
 	bufferWriter := NewBufferWriter(2 * KEY_SIZE_L)
-	bufferWriter.WriteKeySize(len(firstKey))
-	bufferWriter.WriteKeySize(len(lastKey))
+	bufferWriter.WriteKeySizeVarint(len(firstKey))
+	bufferWriter.WriteKeySizeVarint(len(lastKey))
 
 	writer.Write(bufferWriter.Buf)
 	writer.Write([]byte(firstKey))
@@ -50,8 +82,8 @@ func (off *OneFileFooter) Write(writer *blockWriter) {
 
 type multipleFilesFlushState struct {
 	dataWriter     *blockWriter
-	indexWriter    *blockWriter
-	summaryWriter  *blockWriter
+	indexWriter    *indexWriter
+	summaryWriter  *indexWriter
 	filterWriter   *blockWriter
 	metadataWriter *blockWriter
 	bf             *BloomFilter.BloomFilter
@@ -68,8 +100,8 @@ func (sstm *SSTableManager) multipleFilesFlushInit(level int, tableNum int, numR
 	}
 	state := &multipleFilesFlushState{
 		dataWriter:     newBlockWriter(files.dataFile, sstm.bm),
-		indexWriter:    newBlockWriter(files.indexFile, sstm.bm),
-		summaryWriter:  newBlockWriter(files.summaryFile, sstm.bm),
+		indexWriter:    newIndexWriter(newBlockWriter(files.indexFile, sstm.bm)),
+		summaryWriter:  newIndexWriter(newBlockWriter(files.summaryFile, sstm.bm)),
 		filterWriter:   newBlockWriter(files.filterFile, sstm.bm),
 		metadataWriter: newBlockWriter(files.metadataFile, sstm.bm),
 		merkleData:     make([]Record, 0, numRecs),
@@ -87,9 +119,12 @@ func (sstm *SSTableManager) multipleFilesFlushRecord(record Record, state *multi
 	state.bf.Set([]byte(record.Key)) // dodaj kljuc u filter
 	state.merkleData = append(state.merkleData, record)
 	offset := writeData(state.dataWriter, record)
-	offset = writeIndex(state.indexWriter, record.Key, offset)
 	if shouldWriteSummary {
-		writeIndex(state.summaryWriter, record.Key, offset)
+		state.indexWriter.prevKey = ""
+	}
+	offset = state.indexWriter.Write(record.Key, offset)
+	if shouldWriteSummary {
+		state.summaryWriter.Write(record.Key, offset)
 		state.summary.AddEntry(record.Key, offset)
 	}
 }
@@ -111,14 +146,14 @@ func (sstm *SSTableManager) multipleFilesFlushFinalize(level int, state *multipl
 	state.metadataWriter.Write(serializedTree)
 
 	state.dataWriter.Finalize()
-	state.indexWriter.Finalize()
-	state.summaryWriter.Finalize()
+	state.indexWriter.bw.Finalize()
+	state.summaryWriter.bw.Finalize()
 	state.filterWriter.Finalize()
 	state.metadataWriter.Finalize()
 
 	return &SSTable{
 		path:        sstm.sstableFilepath(level, tableNum),
-		size:        state.dataWriter.CurrOffset() + state.indexWriter.CurrOffset() + state.summaryWriter.CurrOffset() + state.filterWriter.CurrOffset(),
+		size:        state.dataWriter.CurrOffset() + state.indexWriter.bw.CurrOffset() + state.summaryWriter.bw.CurrOffset() + state.filterWriter.CurrOffset(),
 		isMultFiles: true,
 		footer:      nil,
 		filter:      state.bf,
@@ -136,7 +171,7 @@ func (sstm *SSTableManager) multipleFilesFlush(mem Memtable, tableNum int) (*SST
 	defer state.files.Close()
 
 	firstEntry, lastEntry := entries[0], entries[len(entries)-1]
-	writeSummaryHeader(state.summaryWriter, firstEntry.Key, lastEntry.Key)
+	writeSummaryHeader(state.summaryWriter.bw, firstEntry.Key, lastEntry.Key)
 	state.summary.SetFirstAndLast(firstEntry.Key, lastEntry.Key)
 
 	for i, entry := range entries {
@@ -148,12 +183,14 @@ func (sstm *SSTableManager) multipleFilesFlush(mem Memtable, tableNum int) (*SST
 }
 
 type oneFileFlushState struct {
-	writer     *blockWriter
-	bf         *BloomFilter.BloomFilter
-	merkleData []Record
-	index      []indexEntry
-	summary    *Summary
-	file       *os.File
+	writer        *blockWriter
+	bf            *BloomFilter.BloomFilter
+	merkleData    []Record
+	index         []indexEntry
+	summary       *Summary
+	indexWriter   *indexWriter
+	summaryWriter *indexWriter
+	file          *os.File
 }
 
 func (sstm *SSTableManager) oneFileFlushInit(level int, tableNum int, numRecs uint) (*oneFileFlushState, error) {
@@ -168,12 +205,14 @@ func (sstm *SSTableManager) oneFileFlushInit(level int, tableNum int, numRecs ui
 		return nil, err
 	}
 	return &oneFileFlushState{
-		writer:     writer,
-		bf:         bf,
-		index:      make([]indexEntry, 0, numRecs),
-		merkleData: make([]Record, 0, numRecs),
-		summary:    sstm.NewSummary(numRecs),
-		file:       file,
+		writer:        writer,
+		bf:            bf,
+		index:         make([]indexEntry, 0, numRecs),
+		merkleData:    make([]Record, 0, numRecs),
+		summary:       sstm.NewSummary(numRecs),
+		file:          file,
+		indexWriter:   newIndexWriter(writer),
+		summaryWriter: newIndexWriter(writer),
 	}, nil
 }
 
@@ -192,7 +231,10 @@ func (sstm *SSTableManager) oneFileFlushFinalize(level int, state *oneFileFlushS
 
 	footer.IndexStart = state.writer.CurrOffset()
 	for i, entry := range state.index {
-		indexOffset := writeIndex(state.writer, entry.Key, entry.Offset)
+		if i%sstm.config.SummaryInterval == 0 {
+			state.indexWriter.prevKey = ""
+		}
+		indexOffset := state.indexWriter.Write(entry.Key, entry.Offset)
 		if i%sstm.config.SummaryInterval == 0 {
 			state.summary.AddEntry(entry.Key, indexOffset)
 		}
@@ -203,7 +245,7 @@ func (sstm *SSTableManager) oneFileFlushFinalize(level int, state *oneFileFlushS
 	writeSummaryHeader(state.writer, firstEntry.Key, lastEntry.Key)
 	state.summary.SetFirstAndLast(firstEntry.Key, lastEntry.Key)
 	for _, entry := range state.summary.entries {
-		writeIndex(state.writer, entry.Key, entry.Offset)
+		state.summaryWriter.Write(entry.Key, entry.Offset)
 	}
 
 	footer.MetadataStart = state.writer.CurrOffset()

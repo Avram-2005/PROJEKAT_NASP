@@ -130,7 +130,7 @@ func TestGetSpecificNonExistentKeyOneFile(t *testing.T) {
 func testSSTableIterator(t *testing.T, multFiles bool) {
 	m, sst := flush1(t, multFiles)
 
-	iter, err := m.NewSSTableIterator(sst)
+	iter, err := m.NewSSTableIterator(sst, "", false)
 	if err != nil {
 		t.Fatalf("Failed to create iterator: %v", err)
 	}
@@ -169,12 +169,12 @@ func TestSSTableIteratorMultipleFiles(t *testing.T) {
 
 func TestGet(t *testing.T) {
 	flush1(t, true)
-	flush2(t, false)
-	flush3(t, false)
+	flush2(t, true)
+	flush3(t, true)
 
 	lsmCfg := LSMConfig{
-		NumLevels:      4,
-		NumFilesLevel0: 2,
+		NumLevels:        4,
+		CompactionFactor: 2,
 	}
 	sstCfg := SSTableConfig{
 		SummaryInterval: 10,

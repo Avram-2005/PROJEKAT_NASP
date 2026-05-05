@@ -39,43 +39,22 @@ func (sstm *SSTableManager) validateOneFile(filename string) (bool, []Record, er
 		return false, nil, fmt.Errorf("failed to deserialize merkle tree")
 	}
 
-	dataReader := newBlockReader(f, sstm.bm, 0)
-
 	var currentRecords []Record
-	for {
-		currentOffset := dataReader.CurrOffset()
-		if currentOffset >= footer.IndexStart {
-			break
-		}
-
-		var dataHeaderBuf [DATA_HEADER_L]byte
-		_, err := dataReader.Read(dataHeaderBuf[:])
+	iter, err := sstm.NewSSTableIterator(&SSTable{
+		path:        filename,
+		isMultFiles: false,
+		footer:      footer,
+	}, "", false)
+	if err != nil {
+		return false, nil, fmt.Errorf("failed to create iterator: %v", err)
+	}
+	defer iter.Close()
+	for iter.Rec != nil {
+		currentRecords = append(currentRecords, *iter.Rec)
+		_, err := iter.Next()
 		if err != nil {
 			break
 		}
-
-		header := DeserializeRecordHeader(dataHeaderBuf[:])
-
-		keyBuf := make([]byte, header.KeySize)
-		_, err = dataReader.Read(keyBuf)
-		if err != nil {
-			break
-		}
-
-		valueBuf := make([]byte, header.ValueSize)
-		_, err = dataReader.Read(valueBuf)
-		if err != nil {
-			break
-		}
-
-		rec := Record{
-			Timestamp: header.Timestamp,
-			Tombstone: header.Tombstone,
-			Key:       string(keyBuf),
-			Value:     valueBuf,
-		}
-
-		currentRecords = append(currentRecords, rec)
 	}
 
 	currentTree, err := merkleTree.NewMerkleTree(currentRecords)
@@ -124,55 +103,21 @@ func (sstm *SSTableManager) validateMultipleFiles(sstablePath string) (bool, []R
 		return false, nil, fmt.Errorf("failed to deserialize merkle tree")
 	}
 
-	dataFilename := sstableFilenameMultFile(sstablePath, "Data")
-	dataFile, err := os.Open(dataFilename)
-	if err != nil {
-		return false, nil, fmt.Errorf("failed to open data file: %v", err)
-	}
-	defer dataFile.Close()
-
-	stat, err := dataFile.Stat()
-	if err != nil {
-		return false, nil, err
-	}
-	fileSize := stat.Size()
-
-	dataReader := newBlockReader(dataFile, sstm.bm, 0)
-
 	var currentRecords []Record
-	for {
-		if int64(dataReader.CurrOffset()) >= fileSize {
-			break
-		}
-
-		var dataHeaderBuf [DATA_HEADER_L]byte
-		_, err := dataReader.Read(dataHeaderBuf[:])
+	iter, err := sstm.NewSSTableIterator(&SSTable{
+		path:        sstablePath,
+		isMultFiles: true,
+	}, "", false)
+	if err != nil {
+		return false, nil, fmt.Errorf("failed to create iterator: %v", err)
+	}
+	defer iter.Close()
+	for iter.Rec != nil {
+		currentRecords = append(currentRecords, *iter.Rec)
+		_, err := iter.Next()
 		if err != nil {
 			break
 		}
-
-		header := DeserializeRecordHeader(dataHeaderBuf[:])
-
-		keyBuf := make([]byte, header.KeySize)
-		_, err = dataReader.Read(keyBuf)
-		if err != nil {
-			break
-		}
-
-		valueBuf := make([]byte, header.ValueSize)
-		_, err = dataReader.Read(valueBuf)
-		if err != nil {
-			break
-		}
-
-		rec := Record{
-			Timestamp: header.Timestamp,
-			Tombstone: header.Tombstone,
-			Key:       string(keyBuf),
-			Value:     valueBuf,
-		}
-
-		currentRecords = append(currentRecords, rec)
 	}
 
 	currentTree, err := merkleTree.NewMerkleTree(currentRecords)
