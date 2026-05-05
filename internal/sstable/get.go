@@ -5,6 +5,7 @@ import (
 	"hash/crc32"
 	"io"
 	"os"
+	"time"
 
 	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
 	. "github.com/Avram-2005/PROJEKAT_NASP/Record"
@@ -188,6 +189,41 @@ func (sstm *SSTableManager) loadFirstLastSummaryKeys(reader *blockReader) (strin
 	}
 
 	return firstKey, lastKey, nil
+}
+
+type RecordHeader struct {
+	CRC       uint32
+	Timestamp time.Time
+	Tombstone bool
+	ValueSize int
+}
+
+func DeserializeRecordHeaderVarInt(data []byte) (*RecordHeader, int, int, error) {
+	reader := NewBufferReaderReuse(data)
+
+	crc, err := reader.ReadCRCVarint()
+	if err != nil {
+		return nil, 0, 0, fmt.Errorf("failed to read CRC: %v", err)
+	}
+
+	crcStart := reader.CurrOffset()
+
+	timestamp, err := reader.ReadTimestampVarint()
+	if err != nil {
+		return nil, 0, 0, fmt.Errorf("failed to read timestamp: %v", err)
+	}
+	tombstone := reader.ReadTombstone()
+	valueSize, err := reader.ReadValueSizeVarint()
+	if err != nil {
+		return nil, 0, 0, fmt.Errorf("failed to read value size: %v", err)
+	}
+
+	return &RecordHeader{
+		CRC:       crc,
+		Timestamp: timestamp,
+		Tombstone: tombstone,
+		ValueSize: valueSize,
+	}, reader.CurrOffset(), crcStart, nil
 }
 
 func (sstm *SSTableManager) parseData(key string, reader *blockReader, checkCRC bool) (*Record, error) {

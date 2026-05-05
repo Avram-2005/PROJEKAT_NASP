@@ -6,7 +6,6 @@ import (
 
 	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
 	merkleTree "github.com/Avram-2005/PROJEKAT_NASP/MerkleTree"
-	record "github.com/Avram-2005/PROJEKAT_NASP/Record"
 )
 
 func TestMetadataValidationOneFile(t *testing.T) {
@@ -44,7 +43,7 @@ func TestMetadataCorruptionOneFile(t *testing.T) {
 		t.Fatalf("Failed to read data header: %v", err)
 	}
 
-	_, headerLen, _, err := record.DeserializeRecordHeaderVarInt(dataHeaderBuf[:])
+	_, headerLen, _, err := DeserializeRecordHeaderVarInt(dataHeaderBuf[:])
 	if err != nil {
 		t.Fatalf("Failed to deserialize varint header: %v", err)
 	}
@@ -129,7 +128,7 @@ func TestMetadataCorruptionMultipleFiles(t *testing.T) {
 		t.Fatalf("Failed to read data header: %v", err)
 	}
 
-	_, headerLen, _, err := record.DeserializeRecordHeaderVarInt(dataHeaderBuf[:])
+	_, headerLen, _, err := DeserializeRecordHeaderVarInt(dataHeaderBuf[:])
 	if err != nil {
 		t.Fatalf("Failed to deserialize varint header: %v", err)
 	}
