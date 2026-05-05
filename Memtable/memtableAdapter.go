@@ -67,7 +67,7 @@ func (adapt *MemtableAdapter) initHashMap(hm *HashMap.HashMap) {
 		if err != nil {
 			return nil, false, nil
 		}
-		rec, err := record.DeserializeRecord(data)
+		rec, _, err := record.DeserializeRecord(data)
 		if err != nil || rec.Tombstone {
 			return nil, false, nil
 		}
@@ -111,7 +111,7 @@ func (adapt *MemtableAdapter) initSkipList(sl *SkipList.SkipList) {
 		if err != nil || !found {
 			return nil, false, err
 		}
-		rec, err := record.DeserializeRecord(data)
+		rec, _, err := record.DeserializeRecord(data)
 		if err != nil || rec.Tombstone {
 			return nil, false, nil
 		}
@@ -154,7 +154,7 @@ func (adapt *MemtableAdapter) initBPlusTree(bpt *BPlusTree.BPlusTree) {
 		if !found {
 			return nil, false, nil
 		}
-		rec, err := record.DeserializeRecord(data)
+		rec, _, err := record.DeserializeRecord(data)
 		if err != nil || rec.Tombstone {
 			return nil, false, nil
 		}
@@ -306,7 +306,7 @@ func (adapt *MemtableAdapter) keyValueToRecords(keyValEntries []struct {
 }) []*record.Record {
 	result := make([]*record.Record, 0, len(keyValEntries))
 	for _, e := range keyValEntries {
-		rec, err := record.DeserializeRecord(e.Value)
+		rec, _, err := record.DeserializeRecord(e.Value)
 		if err != nil {
 			continue
 		}
@@ -324,7 +324,7 @@ func (adapt *MemtableAdapter) keyValueToRecWithoutTombstone(keyValEntries []stru
 }) []*record.Record {
 	result := make([]*record.Record, 0, len(keyValEntries))
 	for _, e := range keyValEntries {
-		rec, err := record.DeserializeRecord(e.Value)
+		rec, _, err := record.DeserializeRecord(e.Value)
 		if err != nil || rec.Tombstone {
 			continue
 		}
