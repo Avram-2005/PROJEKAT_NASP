@@ -5,31 +5,6 @@ import (
 	"fmt"
 )
 
-// Fejk sstable dok se ne mergeuje
-type SSTable struct {
-	ssmap map[string][]byte
-}
-
-// Konstruktor fejk sstable-a
-func NewSSTable() *SSTable {
-	return &SSTable{
-		ssmap: make(map[string][]byte),
-	}
-}
-
-func (sst *SSTable) Put(key string, value []byte) error {
-	sst.ssmap[key] = value
-	return nil
-}
-
-func (sst *SSTable) Get(key string) (*[]byte, error) {
-	value, err := sst.ssmap[key]
-	if !err {
-		return nil, fmt.Errorf("value not found in sstable")
-	}
-	return &value, nil
-}
-
 type Cache struct {
 	maxSize     int               //maksimalna velicina cache-a
 	currentSize int               //trenutna velicina cache-a
@@ -80,26 +55,19 @@ func (ch *Cache) Put(key string, value *[]byte) error {
 	return nil
 }
 
-func (ch *Cache) Get(key string, sst *SSTable) (*[]byte, error) {
+func (ch *Cache) Get(key string) (*[]byte, error, bool) {
 	//trazimo kljuc
 	value, ok := ch.cacheMap[key]
 	if !ok {
-		//trazimo ga u sstable ako ga nismo nasli u cache-u
-		returnValue, err := sst.Get(key)
-		if err != nil {
-			return nil, err
-		}
-		ch.Put(key, returnValue)
-
-		return returnValue, nil
+		return nil, nil, false
 	}
 	//pomeramo element napred
 	elem, err := ch.findElement(key)
 	if err != nil {
-		return nil, err
+		return nil, err, false
 	}
 	ch.lruList.MoveToFront(elem)
-	return &value, nil
+	return &value, nil, true
 }
 
 func (ch *Cache) findElement(key string) (*list.Element, error) {
