@@ -22,6 +22,7 @@ type Iterator interface {
 type Memtable interface {
 	PutRecord(rec *record.Record) error
 	Get(key string) ([]byte, bool, error) //povratna vred-vrednost, uspesnost dodavanja, error
+	GetRecord(key string) (*record.Record, bool, error)
 	Put(key string, value []byte) error
 	Delete(key string) (bool, error)
 	Size() int         //broj postojecih elem (bez tombstone elem)

@@ -129,3 +129,64 @@ func TestMaxInstancesNotExceeded(t *testing.T) {
 		})
 	}
 }
+
+func TestManagerDelete(t *testing.T) {
+	for _, typ := range allStructTypes {
+		t.Run(typ, func(t *testing.T) {
+			m := makeManager(t, typ, 3, 10)
+			m.Put("delete_key", []byte("delete_value"))
+			val, found, _ := m.Get("delete_key")
+			if !found || string(val) != "delete_value" {
+				t.Fatal("Key should exist before delete")
+			}
+			err := m.Delete("delete_key")
+			if err != nil {
+				t.Fatalf("Delete failed: %v", err)
+			}
+			_, found, _ = m.Get("delete_key")
+			if found {
+				t.Fatal("Key still exists after logical delete")
+			}
+		})
+	}
+}
+
+func TestManagerDeleteNonExistent(t *testing.T) {
+	for _, typ := range allStructTypes {
+		t.Run(typ, func(t *testing.T) {
+			m := makeManager(t, typ, 3, 10)
+			err := m.Delete("nonexistent_key_12345")
+			if err != nil {
+				t.Fatalf("Delete of non-existent key should not return error, got %v", err)
+			}
+		})
+	}
+}
+
+func TestManagerGetAfterDeleteAndRotation(t *testing.T) {
+	for _, typ := range allStructTypes {
+		t.Run(typ, func(t *testing.T) {
+			m := makeManager(t, typ, 2, 2)
+			m.Put("key1", []byte("value1"))
+			m.Put("key2", []byte("value2"))
+			m.Delete("key1")
+			val, found, _ := m.Get("key2")
+			if !found || string(val) != "value2" {
+				t.Fatal("key2 should exist before rotation")
+			}
+			m.Put("key3", []byte("value3"))
+			_, found, _ = m.Get("key2")
+			if found {
+				t.Fatal("key2 still in memory,should have been flushed(no SSTable integration)")
+			}
+			_, found, _ = m.Get("key1")
+			if found {
+				t.Fatal("key1 should still be deleted after rotation")
+			}
+			val, found, _ = m.Get("key3")
+			if !found || string(val) != "value3" {
+				t.Fatal("key3 should exist and have correct value")
+			}
+		})
+	}
+}
