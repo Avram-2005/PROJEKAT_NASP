@@ -2,7 +2,6 @@ package sstable
 
 import (
 	"fmt"
-	"math"
 	"os"
 	"path/filepath"
 
@@ -11,8 +10,8 @@ import (
 
 // FIXME: Delete this after config is done
 type LSMConfig struct {
-	NumLevels      int
-	NumFilesLevel0 int
+	NumLevels        int
+	CompactionFactor int
 }
 
 type Level struct {
@@ -22,7 +21,7 @@ type Level struct {
 }
 
 type LSM struct {
-	levels []*Level
+	levels []Level
 	config LSMConfig
 	sstm   *SSTableManager
 }
@@ -33,14 +32,9 @@ func NewLSM(lsmConfig LSMConfig, tablesRoot string, sstConfig SSTableConfig, bm 
 		return nil, fmt.Errorf("failed to setup SSTableManager: %v", err)
 	}
 	lsm := LSM{
-		levels: make([]*Level, lsmConfig.NumLevels),
+		levels: make([]Level, lsmConfig.NumLevels),
 		config: lsmConfig,
 		sstm:   sstm,
-	}
-	lsm.levels[0] = &Level{
-		levelNum: 0,
-		size:     0,
-		tables:   []*SSTable{},
 	}
 
 	files, err := os.ReadDir(sstm.TablesRoot)
@@ -58,13 +52,6 @@ func NewLSM(lsmConfig LSMConfig, tablesRoot string, sstConfig SSTableConfig, bm 
 		if err != nil {
 			return nil, fmt.Errorf("failed to startup LSM: %v", err)
 		}
-		if lsm.levels[levelNum] == nil {
-			lsm.levels[levelNum] = &Level{
-				levelNum: levelNum,
-				size:     0,
-				tables:   []*SSTable{},
-			}
-		}
 		lsm.levels[levelNum].tables = append(lsm.levels[levelNum].tables, sstable)
 		lsm.levels[levelNum].size += sstable.size
 		lsm.levels[levelNum].levelNum = levelNum
@@ -73,18 +60,33 @@ func NewLSM(lsmConfig LSMConfig, tablesRoot string, sstConfig SSTableConfig, bm 
 	return &lsm, nil
 }
 
-func (l *Level) ShouldCompact() bool {
-	return l.size > uint64(math.Pow(10, float64(l.levelNum))*1024*1024)
+func (l *Level) ShouldCompact(compFactor int) bool {
+	return len(l.tables) >= compFactor
 }
 
-func (l *Level) ShouldCompactL0(numFilesLevel0 int) bool {
-	if l.levelNum != 0 {
-		return false
+func (lsm *LSM) Compact(levelNum int) error {
+	newSST, err := lsm.sstm.Merge(lsm.levels[levelNum].tables, levelNum+1)
+	if err != nil {
+		return fmt.Errorf("failed to merge SSTables for compaction: %v", err)
 	}
-	return len(l.tables) > numFilesLevel0
+	err = lsm.levels[levelNum].delete()
+	if err != nil {
+		return fmt.Errorf("failed to delete old SSTables after compaction: %v", err)
+	}
+	lsm.levels[levelNum+1].tables = append(lsm.levels[levelNum+1].tables, newSST)
+	lsm.levels[levelNum+1].size += newSST.size
+	lsm.levels[levelNum+1].levelNum = levelNum + 1
+	return nil
 }
 
-func (lsm *LSM) Compact() error {
+func (l *Level) delete() error {
+	for _, sst := range l.tables {
+		if err := os.RemoveAll(sst.path); err != nil {
+			return fmt.Errorf("failed to delete SSTable file %s: %v", sst.path, err)
+		}
+	}
+	l.tables = nil
+	l.size = 0
 	return nil
 }
 
@@ -95,9 +97,12 @@ func (lsm *LSM) Flush(mem Memtable) error {
 	}
 	lsm.levels[0].tables = append(lsm.levels[0].tables, sst)
 	lsm.levels[0].size += sst.size
-	if lsm.levels[0].ShouldCompactL0(lsm.config.NumFilesLevel0) {
-		if err := lsm.Compact(); err != nil {
-			return fmt.Errorf("failed to perform compaction: %v", err)
+	for levelNum, level := range lsm.levels[:len(lsm.levels)-1] {
+		if !level.ShouldCompact(lsm.config.CompactionFactor) {
+			break
+		}
+		if err := lsm.Compact(levelNum); err != nil {
+			return fmt.Errorf("failed to compact level %d: %v", level.levelNum, err)
 		}
 	}
 	return nil
@@ -105,7 +110,8 @@ func (lsm *LSM) Flush(mem Memtable) error {
 
 func (lsm *LSM) Get(key string) ([]byte, error) {
 	for _, level := range lsm.levels {
-		for _, sstable := range level.tables {
+		for i := len(level.tables) - 1; i >= 0; i-- {
+			sstable := level.tables[i]
 			rec, err := lsm.sstm.Get(key, sstable)
 			if err != nil {
 				return nil, fmt.Errorf("error getting key from SSTable %s: %v", sstable.path, err)

@@ -1,61 +1,188 @@
 package sstable
 
 import (
+	"fmt"
 	"os"
 	"strings"
 
+	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
 	. "github.com/Avram-2005/PROJEKAT_NASP/Record"
 )
 
-type SSTableIterator struct {
-	Rec        *Record
+type sectionIterator struct {
 	br         *blockReader
-	sstm       *SSTableManager
-	sst        *SSTable
+	start      uint64
 	stopOffset uint64
 }
 
-func (sstm *SSTableManager) NewSSTableIterator(sst *SSTable) (*SSTableIterator, error) {
-	var file *os.File
-	var err error
-	var stopOffset uint64
-
-	if sst.isMultFiles {
-		path := sstableFilenameMultFile(sst.path, "Data")
-		file, err = os.Open(path)
-		if err != nil {
-			return nil, err
-		}
-		info, err := file.Stat()
-		if err != nil {
-			return nil, err
-		}
-		stopOffset = uint64(info.Size())
-	} else {
-		file, err = os.Open(sst.path)
-		if err != nil {
-			return nil, err
-		}
-		stopOffset = sst.footer.IndexStart
-	}
-
-	it := &SSTableIterator{
-		br:         newBlockReader(file, sstm.bm, 0),
-		sstm:       sstm,
-		sst:        sst,
+func newSectionIterator(file *os.File, bm *BlockManager.BlockManager, start uint64, stopOffset uint64) *sectionIterator {
+	return &sectionIterator{
+		br:         newBlockReader(file, bm, start),
+		start:      start,
 		stopOffset: stopOffset,
 	}
+}
 
-	it.Next()
+func openSizedSectionIterator(file *os.File, bm *BlockManager.BlockManager, start uint64) (*sectionIterator, error) {
+	info, err := file.Stat()
+	if err != nil {
+		file.Close()
+		return nil, err
+	}
+	return newSectionIterator(file, bm, start, uint64(info.Size())), nil
+}
+
+func openRangedSectionIterator(path string, bm *BlockManager.BlockManager, start uint64, stopOffset uint64) (*sectionIterator, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	return newSectionIterator(file, bm, start, stopOffset), nil
+}
+
+func (it *sectionIterator) hasNext() bool {
+	return it.br.CurrOffset() < it.stopOffset
+}
+
+func (it *sectionIterator) Close() error {
+	if it == nil || it.br == nil {
+		return nil
+	}
+	return it.br.Close()
+}
+
+type SSTableIterator struct {
+	Rec           *Record
+	sstm          *SSTableManager
+	dataIterator  *sectionIterator
+	indexIterator *sectionIterator
+	indexReader   *indexReader
+	checkCRC      bool
+}
+
+func (sstm *SSTableManager) NewSSTableIterator(sst *SSTable, startKey string, checkCRC bool) (*SSTableIterator, error) {
+	it := &SSTableIterator{
+		sstm:     sstm,
+		checkCRC: checkCRC,
+	}
+
+	var err error
+
+	if sst.isMultFiles {
+		indexFile, err := os.Open(sstableFilenameMultFile(sst.path, "Index"))
+		if err != nil {
+			return nil, fmt.Errorf("failed to open index file: %v", err)
+		}
+		indexOffset, dataOffset := uint64(0), uint64(0)
+		if startKey != "" {
+			_, indexOffset, err := sst.summary.IsFound(startKey)
+			if err != nil {
+				indexFile.Close()
+				return nil, fmt.Errorf("failed to search for start key in summary and index: %v", err)
+			}
+			restartReader := newIndexReader(indexFile, sstm.bm, indexOffset)
+			restartEntry, n, err := restartReader.Next()
+			if err != nil {
+				indexFile.Close()
+				return nil, fmt.Errorf("failed to read restart index entry: %v", err)
+			}
+			if n > 0 {
+				dataOffset = restartEntry.Offset
+			}
+		}
+
+		it.indexIterator, err = openSizedSectionIterator(indexFile, sstm.bm, indexOffset)
+		if err != nil {
+			it.Close()
+			return nil, err
+		}
+		it.indexReader = newIndexReader(it.indexIterator.br.file, sstm.bm, indexOffset)
+
+		dataFile, err := os.Open(sstableFilenameMultFile(sst.path, "Data"))
+		if err != nil {
+			it.Close()
+			return nil, fmt.Errorf("failed to open data file: %v", err)
+		}
+		it.dataIterator, err = openSizedSectionIterator(dataFile, sstm.bm, dataOffset)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		file, err := os.Open(sst.path)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open SSTable file: %v", err)
+		}
+		indexOffset, dataOffset := sst.footer.IndexStart, uint64(0)
+		if startKey != "" {
+			_, indexOffset, err := sst.summary.IsFound(startKey)
+			if err != nil {
+				file.Close()
+				return nil, fmt.Errorf("failed to search for start key in summary and index: %v", err)
+			}
+			restartReader := newIndexReader(file, sstm.bm, indexOffset)
+			restartEntry, n, err := restartReader.Next()
+			if err != nil {
+				file.Close()
+				return nil, fmt.Errorf("failed to read restart index entry: %v", err)
+			}
+			if n > 0 {
+				dataOffset = restartEntry.Offset
+			}
+		}
+
+		// one-file summary stores absolute offsets into the same file
+		it.indexIterator, err = openRangedSectionIterator(sst.path, sstm.bm, indexOffset, sst.footer.SummaryStart)
+		if err != nil {
+			it.Close()
+			return nil, err
+		}
+		it.indexReader = newIndexReader(it.indexIterator.br.file, sstm.bm, indexOffset)
+
+		it.dataIterator, err = openRangedSectionIterator(sst.path, sstm.bm, dataOffset, sst.footer.IndexStart)
+		if err != nil {
+			it.Close()
+			return nil, err
+		}
+	}
+
+	_, err = it.Next()
+	if err != nil {
+		it.Close()
+		return nil, err
+	}
+
+	for startKey != "" && it.Rec != nil && it.Rec.Key < startKey {
+		hasNext, err := it.Next()
+		if err != nil {
+			it.Close()
+			return nil, err
+		}
+		if !hasNext {
+			break
+		}
+	}
 	return it, nil
 }
 
 func (it *SSTableIterator) Next() (bool, error) {
-	if it.br.CurrOffset() >= it.stopOffset {
+	indexCurrOffset := it.indexReader.br.CurrOffset()
+	if indexCurrOffset >= it.indexIterator.stopOffset || it.indexIterator.stopOffset-indexCurrOffset < INDEX_HEADER_L {
 		it.Rec = nil
 		return false, nil
 	}
-	record, err := it.sstm.parseData(it.br)
+	entry, n, err := it.indexReader.Next()
+	if err != nil {
+		return false, err
+	}
+	if n == 0 {
+		it.Rec = nil
+		return false, nil
+	}
+
+	if !it.dataIterator.hasNext() {
+		return false, fmt.Errorf("data section ended before index section")
+	}
+	record, err := it.sstm.parseData(entry.Key, it.dataIterator.br, it.checkCRC)
 	if err != nil {
 		return false, err
 	}
@@ -64,41 +191,14 @@ func (it *SSTableIterator) Next() (bool, error) {
 }
 
 func (it *SSTableIterator) Close() error {
-	return it.br.file.Close()
-}
-
-func (it *SSTableIterator) Seek(key string) error {
-	var offset uint64
-	var err error
-
-	if it.sst.isMultFiles {
-		indexPath := sstableFilenameMultFile(it.sst.path, "Index")
-		indexFile, err := os.Open(indexPath)
-		if err != nil {
-			return err
-		}
-		defer indexFile.Close()
-
-		offset, err = it.sstm.searchIndex(indexFile, key, 0, 0)
-		if err != nil {
-			return err
-		}
-	} else {
-		footer := it.sst.footer
-		offset, err = it.sstm.searchIndex(it.br.file, key, footer.IndexStart, footer.SummaryStart)
-		if err != nil {
-			return err
-		}
+	var closeErr error
+	if err := it.dataIterator.Close(); err != nil {
+		closeErr = fmt.Errorf("failed to close data iterator: %v", err)
 	}
-
-	if offset >= it.stopOffset {
-		it.Rec = nil
-		return nil
+	if err := it.indexIterator.Close(); err != nil && closeErr == nil {
+		closeErr = fmt.Errorf("failed to close index iterator: %v", err)
 	}
-
-	it.br = newBlockReader(it.br.file, it.sstm.bm, offset)
-	_, err = it.Next()
-	return err
+	return closeErr
 }
 
 type PrefixIterator struct {
@@ -127,13 +227,8 @@ func (sstm *SSTableManager) NewPrefixIterator(sst *SSTable, prefix string) (*Pre
 		}
 	}
 
-	iter, err := sstm.NewSSTableIterator(sst)
+	iter, err := sstm.NewSSTableIterator(sst, prefix, false)
 	if err != nil {
-		return nil, err
-	}
-
-	if err := iter.Seek(prefix); err != nil {
-		iter.Close()
 		return nil, err
 	}
 
@@ -212,13 +307,8 @@ func (sstm *SSTableManager) NewRangeIterator(sst *SSTable, startKey, endKey stri
 		}, nil
 	}
 
-	iter, err := sstm.NewSSTableIterator(sst)
+	iter, err := sstm.NewSSTableIterator(sst, startKey, false)
 	if err != nil {
-		return nil, err
-	}
-
-	if err := iter.Seek(startKey); err != nil {
-		iter.Close()
 		return nil, err
 	}
 

@@ -1,6 +1,7 @@
 package record
 
 import (
+	"encoding/binary"
 	"fmt"
 	. "github.com/Avram-2005/PROJEKAT_NASP/utils"
 	"hash/crc32"
@@ -54,48 +55,86 @@ func (r *Record) Serialize() []byte {
 	return writer.Buf
 }
 
+func (r *Record) SerializeSSTable() []byte {
+	value := r.Value
+
+	payloadWriter := NewBufferWriter(3*binary.MaxVarintLen64 + TOMBSTONE_L + len(value))
+	payloadLen := 0
+	payloadLen += payloadWriter.WriteTimestampVarint(r.Timestamp)
+	payloadWriter.WriteTombstone(r.Tombstone)
+	payloadLen += TOMBSTONE_L
+	payloadLen += payloadWriter.WriteValueSizeVarint(len(value))
+	payloadWriter.WriteBytes(value)
+	payloadLen += len(value)
+
+	payload := payloadWriter.Buf[:payloadLen]
+	crcHash := crc32.NewIEEE()
+	crcHash.Write(payload)
+	crcHash.Write([]byte(r.Key))
+
+	writer := NewBufferWriter(binary.MaxVarintLen32 + payloadLen)
+	totalLen := writer.WriteCRCVarint(crcHash.Sum32())
+	writer.WriteBytes(payload)
+	totalLen += payloadLen
+
+	return writer.Buf[:totalLen]
+}
+
 type RecordHeader struct {
 	CRC       uint32
 	Timestamp time.Time
 	Tombstone bool
-	KeySize   int
 	ValueSize int
 }
 
-func DeserializeRecordHeader(data []byte) *RecordHeader {
+func DeserializeRecordHeaderVarInt(data []byte) (*RecordHeader, int, int, error) {
 	reader := NewBufferReaderReuse(data)
 
-	crc := reader.ReadCRC()
-	timestamp := reader.ReadTimestamp()
+	crc, err := reader.ReadCRCVarint()
+	if err != nil {
+		return nil, 0, 0, fmt.Errorf("failed to read CRC: %v", err)
+	}
+
+	crcStart := reader.CurrOffset()
+
+	timestamp, err := reader.ReadTimestampVarint()
+	if err != nil {
+		return nil, 0, 0, fmt.Errorf("failed to read timestamp: %v", err)
+	}
 	tombstone := reader.ReadTombstone()
-	keySize := reader.ReadKeySize()
-	valueSize := reader.ReadValueSize()
+	valueSize, err := reader.ReadValueSizeVarint()
+	if err != nil {
+		return nil, 0, 0, fmt.Errorf("failed to read value size: %v", err)
+	}
 
 	return &RecordHeader{
 		CRC:       crc,
 		Timestamp: timestamp,
 		Tombstone: tombstone,
-		KeySize:   keySize,
 		ValueSize: valueSize,
-	}
+	}, reader.CurrOffset(), crcStart, nil
 }
 
 func DeserializeRecord(data []byte) (*Record, error) {
-	header := DeserializeRecordHeader(data)
+	reader := NewBufferReaderReuse(data)
 
+	crc := reader.ReadCRC()
 	realCrc := crc32.ChecksumIEEE(data[CRC_L:])
-	if realCrc != header.CRC {
-		return nil, fmt.Errorf("CRC mismatch: expected %d, got %d", header.CRC, realCrc)
+	if crc != realCrc {
+		return nil, fmt.Errorf("CRC mismatch: expected %d, got %d", crc, realCrc)
 	}
 
-	reader := NewBufferReaderReuse(data[HEADER_SIZE:])
+	timestamp := reader.ReadTimestamp()
+	tombstone := reader.ReadTombstone()
+	keySize := reader.ReadKeySize()
+	valueSize := reader.ReadValueSize()
 
-	key := string(reader.ReadBytes(header.KeySize))
-	value := reader.ReadBytes(header.ValueSize)
+	key := string(reader.ReadBytes(keySize))
+	value := reader.ReadBytes(valueSize)
 
 	return &Record{
-		Timestamp: header.Timestamp,
-		Tombstone: header.Tombstone,
+		Timestamp: timestamp,
+		Tombstone: tombstone,
 		Key:       key,
 		Value:     value,
 	}, nil

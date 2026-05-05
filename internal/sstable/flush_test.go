@@ -2,13 +2,9 @@ package sstable
 
 import (
 	"fmt"
-	"math"
-	"os"
 	"testing"
 
 	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
-	"github.com/Avram-2005/PROJEKAT_NASP/BloomFilter"
-	. "github.com/Avram-2005/PROJEKAT_NASP/utils"
 )
 
 var bm *BlockManager.BlockManager
@@ -39,72 +35,12 @@ func testFlush(tempDir string, mem Memtable, multFiles bool) (*SSTableManager, *
 	}
 	m.config.MultipleFiles = multFiles
 
-	// f, _ := os.Create(filepath.Join(tempDir, "cpu_profile_flush.prof"))
-	// pprof.StartCPUProfile(f)
-	// defer pprof.StopCPUProfile()
-
 	sst, err := m.Flush(mem)
 	if err != nil {
 		return nil, nil, fmt.Errorf("Flush failed: %v", err)
 	}
 
 	return m, sst, nil
-}
-
-func testFileSize(t *testing.T, filename string, expectedSize int64) {
-	info, err := os.Stat(filename)
-	if err != nil {
-		t.Fatalf("Failed to stat file %s: %v", filename, err)
-	}
-	if info.Size() != expectedSize {
-		t.Fatalf("Expected file size %d for file %s, but got %d", expectedSize, filename, info.Size())
-	}
-}
-
-func calcDataSectionSize(count int, keyLen int, valueLen int) int64 {
-	return int64(count * (DATA_HEADER_L + keyLen + valueLen))
-}
-
-func calcIndexSectionSize(count int, keyLen int) int64 {
-	return int64(count * (INDEX_HEADER_L + keyLen))
-}
-
-func calcSummarySectionSize(count int, keyLen int, summaryInterval int) int64 {
-	numSummaryEntries := math.Ceil(float64(count) / float64(summaryInterval))
-	return int64(int(numSummaryEntries)*(INDEX_HEADER_L+keyLen)) + 2*int64(KEY_SIZE_L+keyLen)
-}
-
-func calcFilterSectionSize(count int) int64 {
-	return int64(BloomFilter.CalculateBloomFilterSize(uint(count), 0.01))
-}
-
-/*
-	func calcMetadataSectionSize(count int, valueLen int) int64 {
-		maxLeaves := 1
-		for maxLeaves < count {
-			maxLeaves *= 2
-		}
-
-		realLeafSize := int64(1 + 32 + 4 + valueLen)
-		emptyNodeSize := int64(1 + 32)
-
-		realLeaves := int64(count)
-		emptyLeaves := int64(maxLeaves - count)
-		totalInternalNodes := int64(maxLeaves - 1)
-
-		return realLeaves*realLeafSize + emptyLeaves*emptyNodeSize + totalInternalNodes*emptyNodeSize + 4
-	}
-*/
-
-func oneFileSize(keyCount int, keyLen int, valueLen int, metadataSize int64, summaryInterval int) int64 {
-	size := calcFilterSectionSize(keyCount)
-	size += calcDataSectionSize(keyCount, keyLen, valueLen)
-	size += calcIndexSectionSize(keyCount, keyLen)
-	size += calcSummarySectionSize(keyCount, keyLen, summaryInterval)
-	//size += calcMetadataSectionSize(keyCount, valueLen)
-	size += 4 * OFFSET_L // 4 offsets for the sections
-	size += metadataSize
-	return size
 }
 
 func TestFlushFewSmallKVMultipleFiles(t *testing.T) {
@@ -128,26 +64,6 @@ func TestFlushFewSmallKVMultipleFiles(t *testing.T) {
 		}
 	}
 
-	sstablePath := m.sstableFilepath(0, 0)
-	dataFilename := sstableFilenameMultFile(sstablePath, "Data")
-	expectedSize := calcDataSectionSize(3, 1, 6) // 3 entries, each with 1 byte key and 6 byte value
-	testFileSize(t, dataFilename, expectedSize)
-
-	indexFilename := sstableFilenameMultFile(sstablePath, "Index")
-	expectedSize = calcIndexSectionSize(3, 1) // 3 entries, each with 1 byte key and 8 byte offset
-	testFileSize(t, indexFilename, expectedSize)
-
-	summaryFilename := sstableFilenameMultFile(sstablePath, "Summary")
-	expectedSize = calcSummarySectionSize(3, 1, m.config.SummaryInterval) // 1 entry in summary, with 1 byte key and 8 byte offset
-	testFileSize(t, summaryFilename, expectedSize)
-
-	filterFilename := sstableFilenameMultFile(sstablePath, "Filter")
-	expectedSize = calcFilterSectionSize(3)
-	testFileSize(t, filterFilename, expectedSize)
-
-	//metadataFilename := sstableFilename(1, "Metadata")
-	//expectedSize = calcMetadataSectionSize(3, 6)
-	//testFileSize(t, metadataFilename, expectedSize)
 }
 
 func TestFlushFewSmallKVOneFile(t *testing.T) {
@@ -171,161 +87,100 @@ func TestFlushFewSmallKVOneFile(t *testing.T) {
 		}
 	}
 
-	sstablePath := m.sstableFilepath(0, 0)
-	info, err := os.Stat(sstablePath)
-	if err != nil {
-		t.Fatalf("Failed to stat file: %v", err)
-	}
-
-	calculatedSize := calcFilterSectionSize(3) + calcDataSectionSize(3, 1, 6) + calcIndexSectionSize(3, 1) + calcSummarySectionSize(3, 1, m.config.SummaryInterval) + 4*OFFSET_L
-	metadataSize := info.Size() - calculatedSize
-
-	expectedSize := oneFileSize(3, 1, 6, metadataSize, m.config.SummaryInterval) // 3 entries, each with 1 byte key and 6 byte value
-	testFileSize(t, sstablePath, expectedSize)
 }
 
 func TestFlushFewLargeKVMultipleFiles(t *testing.T) {
 	mem := fewLargeKeyKVMemtable{}
-	m, _, err := testFlush(t.TempDir(), mem, true)
+	m, sst, err := testFlush(t.TempDir(), mem, true)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
-
-	sstablePath := m.sstableFilepath(0, 0)
-	dataFilename := sstableFilenameMultFile(sstablePath, "Data")
-	expectedSize := calcDataSectionSize(3, 5, 10000) // 3 entries, each with 5 byte key and 10000 byte value
-	testFileSize(t, dataFilename, expectedSize)
-
-	indexFilename := sstableFilenameMultFile(sstablePath, "Index")
-	expectedSize = calcIndexSectionSize(3, 5) // 3 entries, each with 5 byte key and 8 byte offset
-	testFileSize(t, indexFilename, expectedSize)
-
-	summaryFilename := sstableFilenameMultFile(sstablePath, "Summary")
-	expectedSize = calcSummarySectionSize(3, 5, m.config.SummaryInterval) // 1 entry in summary, with 5 byte key and 8 byte offset
-	testFileSize(t, summaryFilename, expectedSize)
-
-	filterFilename := sstableFilenameMultFile(sstablePath, "Filter")
-	expectedSize = calcFilterSectionSize(3)
-	testFileSize(t, filterFilename, expectedSize)
-
-	/*metadataFilename := sstableFilename(2, "Metadata")
-	expectedSize = calcMetadataSectionSize(3, 10000)
-	testFileSize(t, metadataFilename, expectedSize)*/
+	val, err := m.Get("long2", sst)
+	if err != nil {
+		t.Fatalf("Failed to get key 'long2' after flush: %v", err)
+	}
+	if val == nil || len(val.Value) != 10000 {
+		t.Fatalf("Expected 10000-byte value for key 'long2'")
+	}
 }
 
 func TestFlushFewLargeKVOneFile(t *testing.T) {
 	mem := fewLargeKeyKVMemtable{}
-	m, _, err := testFlush(t.TempDir(), mem, false)
+	m, sst, err := testFlush(t.TempDir(), mem, false)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
-
-	sstablePath := m.sstableFilepath(0, 0)
-	info, err := os.Stat(sstablePath)
+	val, err := m.Get("long1", sst)
 	if err != nil {
-		t.Fatalf("Failed to stat file: %v", err)
+		t.Fatalf("Failed to get key 'long1' after flush: %v", err)
 	}
-
-	calculatedSize := calcFilterSectionSize(3) + calcDataSectionSize(3, 5, 10000) + calcIndexSectionSize(3, 5) + calcSummarySectionSize(3, 5, m.config.SummaryInterval) + 4*OFFSET_L
-	metadataSize := info.Size() - calculatedSize
-	expectedSize := oneFileSize(3, 5, 10000, metadataSize, m.config.SummaryInterval) // 3 entries, each with 5 byte key and 10000 byte value
-	testFileSize(t, sstablePath, expectedSize)
+	if val == nil || len(val.Value) != 10000 {
+		t.Fatalf("Expected 10000-byte value for key 'long1'")
+	}
 }
 
 func TestFlushManySmallKVMultipleFiles(t *testing.T) {
 	mem := manySmallKeyKVMemtable{}
-	m, _, err := testFlush(t.TempDir(), mem, true)
+	m, sst, err := testFlush(t.TempDir(), mem, true)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
-
-	sstablePath := m.sstableFilepath(0, 0)
-	dataFilename := sstableFilenameMultFile(sstablePath, "Data")
-	expectedSize := calcDataSectionSize(1000, 6, 8) // 1000 entries, each with 6 byte key and 8 byte value
-	testFileSize(t, dataFilename, expectedSize)
-
-	indexFilename := sstableFilenameMultFile(sstablePath, "Index")
-	expectedSize = calcIndexSectionSize(1000, 6) // 1000 entries, each with 6 byte key and 8 byte offset
-	testFileSize(t, indexFilename, expectedSize)
-
-	summaryFilename := sstableFilenameMultFile(sstablePath, "Summary")
-	expectedSize = calcSummarySectionSize(1000, 6, m.config.SummaryInterval) // 1 entry in summary, with 6 byte key and 8 byte offset
-	testFileSize(t, summaryFilename, expectedSize)
-
-	filterFilename := sstableFilenameMultFile(sstablePath, "Filter")
-	expectedSize = calcFilterSectionSize(1000)
-	testFileSize(t, filterFilename, expectedSize)
-
-	/*metadataFilename := sstableFilename(3, "Metadata")
-	expectedSize = calcMetadataSectionSize(1000, 8)
-	testFileSize(t, metadataFilename, expectedSize)*/
+	for _, key := range []string{"key000", "key500", "key999"} {
+		val, err := m.Get(key, sst)
+		if err != nil {
+			t.Fatalf("Failed to get key '%s' after flush: %v", key, err)
+		}
+		if val == nil {
+			t.Fatalf("Key '%s' not found in SSTable", key)
+		}
+	}
 }
 
 func TestFlushManySmallKVOneFile(t *testing.T) {
 	mem := manySmallKeyKVMemtable{}
-	m, _, err := testFlush(t.TempDir(), mem, false)
+	m, sst, err := testFlush(t.TempDir(), mem, false)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
-
-	sstablePath := m.sstableFilepath(0, 0)
-	info, err := os.Stat(sstablePath)
-	if err != nil {
-		t.Fatalf("Failed to stat file: %v", err)
+	for _, key := range []string{"key000", "key500", "key999"} {
+		val, err := m.Get(key, sst)
+		if err != nil {
+			t.Fatalf("Failed to get key '%s' after flush: %v", key, err)
+		}
+		if val == nil {
+			t.Fatalf("Key '%s' not found in SSTable", key)
+		}
 	}
-
-	calculatedSize := calcFilterSectionSize(1000) + calcDataSectionSize(1000, 6, 8) + calcIndexSectionSize(1000, 6) + calcSummarySectionSize(1000, 6, m.config.SummaryInterval) + 4*OFFSET_L
-	metadataSize := info.Size() - calculatedSize
-	expectedSize := oneFileSize(1000, 6, 8, metadataSize, m.config.SummaryInterval) // 1000 entries, each with 6 byte key and 8 byte value
-	testFileSize(t, sstablePath, expectedSize)
 }
 
 func TestFlushManyLargeKVMultipleFIles(t *testing.T) {
 	mem := manyLargeKeyKVMemtable{}
-	m, _, err := testFlush(t.TempDir(), mem, true)
+	m, sst, err := testFlush(t.TempDir(), mem, true)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
-
-	sstablePath := m.sstableFilepath(0, 0)
-	dataFilename := sstableFilenameMultFile(sstablePath, "Data")
-	expectedSize := calcDataSectionSize(10000, 11, 10000) // 10000 entries, each with 11 byte key and 10000 byte value
-	testFileSize(t, dataFilename, expectedSize)
-
-	indexFilename := sstableFilenameMultFile(sstablePath, "Index")
-	expectedSize = calcIndexSectionSize(10000, 11) // 10000 entries, each with 11 byte key and 8 byte offset
-	testFileSize(t, indexFilename, expectedSize)
-
-	summaryFilename := sstableFilenameMultFile(sstablePath, "Summary")
-	expectedSize = calcSummarySectionSize(10000, 11, m.config.SummaryInterval) // 1 entry in summary, with 11 byte key and 8 byte offset
-	testFileSize(t, summaryFilename, expectedSize)
-
-	filterFilename := sstableFilenameMultFile(sstablePath, "Filter")
-	expectedSize = calcFilterSectionSize(10000)
-	testFileSize(t, filterFilename, expectedSize)
-
-	/*metadataFilename := sstableFilename(4, "Metadata")
-	expectedSize = calcMetadataSectionSize(10000, 10000)
-	testFileSize(t, metadataFilename, expectedSize)*/
+	val, err := m.Get("longkey9999", sst)
+	if err != nil {
+		t.Fatalf("Failed to get key 'longkey9999' after flush: %v", err)
+	}
+	if val == nil || len(val.Value) != 10000 {
+		t.Fatalf("Expected 10000-byte value for key 'longkey9999'")
+	}
 }
 
 func TestFlushManyLargeKVOneFile(t *testing.T) {
 	mem := manyLargeKeyKVMemtable{}
-	m, _, err := testFlush(t.TempDir(), mem, false)
+	m, sst, err := testFlush(t.TempDir(), mem, false)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
-
-	sstablePath := m.sstableFilepath(0, 0)
-	info, err := os.Stat(sstablePath)
+	val, err := m.Get("longkey0000", sst)
 	if err != nil {
-		t.Fatalf("Failed to stat file: %v", err)
+		t.Fatalf("Failed to get key 'longkey0000' after flush: %v", err)
 	}
-
-	calculatedSize := calcFilterSectionSize(10000) + calcDataSectionSize(10000, 11, 10000) + calcIndexSectionSize(10000, 11) + calcSummarySectionSize(10000, 11, m.config.SummaryInterval) + 4*OFFSET_L
-	metadataSize := info.Size() - calculatedSize
-	expectedSize := oneFileSize(10000, 11, 10000, metadataSize, m.config.SummaryInterval) // 10000 entries, each with 11 byte key and 10000 byte value
-	testFileSize(t, sstablePath, expectedSize)
+	if val == nil || len(val.Value) != 10000 {
+		t.Fatalf("Expected 10000-byte value for key 'longkey0000'")
+	}
 }
 
 func testMergeFiles(t *testing.T, ssts []*SSTable, config SSTableConfig, expectedKeys []string, expectedValues []string, unexpectedKeys []string) {
@@ -415,4 +270,37 @@ func TestMergeOneFile(t *testing.T) {
 	unexpectedKeys := []string{"asdf", "test"}
 
 	testMergeFiles(t, []*SSTable{sst1, sst2, sst3}, SSTableConfig{SummaryInterval: 100, MultipleFiles: false}, expectedKeys, expectedValues, unexpectedKeys)
+}
+
+func testMergeHonorsTombstones(t *testing.T, multipleFiles bool) {
+	tempDir := t.TempDir()
+	_, olderSST, err := testFlush(tempDir, tombstoneOlderMemtable{}, multipleFiles)
+	if err != nil {
+		t.Fatalf("Flush failed: %v", err)
+	}
+	_, newerSST, err := testFlush(tempDir, tombstoneNewerMemtable{}, multipleFiles)
+	if err != nil {
+		t.Fatalf("Flush failed: %v", err)
+	}
+
+	expectedKeys := []string{"fresh", "keep"}
+	expectedValues := []string{"fresh-val", "keep-new"}
+	unexpectedKeys := []string{"dead"}
+
+	testMergeFiles(
+		t,
+		[]*SSTable{olderSST, newerSST},
+		SSTableConfig{SummaryInterval: 10, MultipleFiles: multipleFiles},
+		expectedKeys,
+		expectedValues,
+		unexpectedKeys,
+	)
+}
+
+func TestMergeMultipleFilesHonorsTombstones(t *testing.T) {
+	testMergeHonorsTombstones(t, true)
+}
+
+func TestMergeOneFileHonorsTombstones(t *testing.T) {
+	testMergeHonorsTombstones(t, false)
 }
