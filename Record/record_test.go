@@ -12,7 +12,7 @@ func TestRecordSerialization(t *testing.T) {
 	}
 
 	serialized := original.Serialize()
-	deserialized, err := DeserializeRecord(serialized)
+	deserialized, _, err := DeserializeRecord(serialized)
 	if err != nil {
 		t.Fatalf("Deserialization failed: %v", err)
 	}
@@ -41,7 +41,7 @@ func TestRecordDeserializationWithCorruptedData(t *testing.T) {
 	// Corrupt the data by changing a byte
 	serialized[10] = 0xFF
 
-	_, err = DeserializeRecord(serialized)
+	_, _, err = DeserializeRecord(serialized)
 	if err == nil {
 		t.Fatal("Expected deserialization to fail due to CRC mismatch, but it succeeded")
 	}
