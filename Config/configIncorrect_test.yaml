@@ -1,8 +1,9 @@
 BufferPoolConfig:
   #Amount of blocks stored 
   MaxSize: 8
-  #Size of stored blocks 
-  BlockSize: 4
+  #Size of stored blocks
+  #incorrect block size used to force init to fail 
+  BlockSize: 4567
 CacheConfig:
   #Amount of key value pairs stored
   MaxSize: 20
@@ -30,3 +31,4 @@ SSTableConfig:
   MultipleFiles: false
 WriteAheadLogConfig:
   SegmentSize: 40
+
