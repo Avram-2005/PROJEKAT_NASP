@@ -114,7 +114,53 @@ func NewConfig() *Config {
 	return &Config{}
 }
 
+func (config *Config) InitializeDefault() error {
+	defaultValue := `BufferPoolConfig:
+  #Amount of blocks stored 
+  MaxSize: 8
+  #Size of stored blocks 
+  BlockSize: 4
+CacheConfig:
+  #Amount of key value pairs stored
+  MaxSize: 20
+MemtableConfig:
+  #Amount of memtable instances active at one point
+  MaxCount: 2
+  #Whether memtable uses hashmap, skiplist or btree
+  Type: hashmap
+  #How large the memtable can be in bytes
+  MaxSizeBytes: 100
+  #How many entries memtable can contain
+  MaxSizeEntries: 100
+  #Bplus tree configuration
+  BPlusTreeDegree: 0
+  #SkipList configuration
+  SkipListMaxHeight: 0
+TokenBucketConfig:
+  #How many tokens every user has
+  MaxNumTokens: 3
+  #Number of seconds between refills
+  RefillTime: 60
+SSTableConfig:
+  TablesRoot: sstables
+  SummaryInterval: 40
+  MultipleFiles: false
+WriteAheadLogConfig:
+  SegmentSize: 40`
+	bytesDefault := []byte(defaultValue)
+	err := yaml.Unmarshal(bytesDefault, config)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func (config *Config) Initialize(bm *BlockManager.BlockManager, configFile *os.File) error {
+	defaultConfig := NewConfig()
+	err := defaultConfig.InitializeDefault()
+	if err != nil {
+		return err
+	}
 	data, err := bm.Get(configFile, 0)
 	if err != nil {
 		return err
@@ -128,31 +174,37 @@ func (config *Config) Initialize(bm *BlockManager.BlockManager, configFile *os.F
 	_, err = config.InitializeBlockManager()
 	if err != nil {
 		fmt.Print("Blockmanager configuration is incorrect, default configuration will be used.")
+		config.BufferPoolConfig = defaultConfig.BufferPoolConfig
 		isConfigValid = false
 	}
 	_, err = config.InitializeCache()
 	if err != nil {
 		fmt.Print("Cache configuration is incorrect, default configuration will be used.")
+		config.CacheConfig = defaultConfig.CacheConfig
 		isConfigValid = false
 	}
 	_, err = config.InitializeMemtable()
 	if err != nil {
 		fmt.Print("Memtable configuration is incorrect, default configuration will be used.")
+		config.MemtableConfig = defaultConfig.MemtableConfig
 		isConfigValid = false
 	}
 	_, err = config.InitializeTokenBucket()
 	if err != nil {
 		fmt.Print("Token bucket configuration is incorrect, default configuration will be used.")
+		config.TokenBucketConfig = defaultConfig.TokenBucketConfig
 		isConfigValid = false
 	}
 	_, err = config.InitializeSSTable()
 	if err != nil {
 		fmt.Print("SSTable configuration is incorrect, default configuration will be used.")
+		config.SSTableConfig = defaultConfig.SSTableConfig
 		isConfigValid = false
 	}
 	_, err = config.InitializeWAL()
 	if err != nil {
 		fmt.Print("WAL configuration is incorrect, default configuration will be used.")
+		config.WriteAheadLogConfig = defaultConfig.WriteAheadLogConfig
 		isConfigValid = false
 	}
 	if !isConfigValid {
