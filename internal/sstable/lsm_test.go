@@ -5,10 +5,11 @@ import (
 	"testing"
 	"time"
 
+	mt "github.com/Avram-2005/PROJEKAT_NASP/Memtable"
 	. "github.com/Avram-2005/PROJEKAT_NASP/Record"
 )
 
-func testLSM(t *testing.T, memtables []Memtable) (lsm *LSM) {
+func testLSM(t *testing.T, memtables []mt.Memtable) (lsm *LSM) {
 	sstCfg := SSTableConfig{
 		SummaryInterval: 1,
 		MultipleFiles:   true,
@@ -32,7 +33,7 @@ func testLSM(t *testing.T, memtables []Memtable) (lsm *LSM) {
 }
 
 func TestLSMFlushNoCompaction(t *testing.T) {
-	lsm := testLSM(t, []Memtable{
+	lsm := testLSM(t, []mt.Memtable{
 		smallSmallKeyKVMemtable{},
 	})
 	if len(lsm.levels[0].tables) != 1 {
@@ -41,7 +42,7 @@ func TestLSMFlushNoCompaction(t *testing.T) {
 }
 
 func TestLSMFlushL0Compaction(t *testing.T) {
-	lsm := testLSM(t, []Memtable{
+	lsm := testLSM(t, []mt.Memtable{
 		smallSmallKeyKVMemtable{},
 		manyLargeKeyKVMemtable{},
 		smallSmallKeyKVMemtable{},
@@ -55,7 +56,7 @@ func TestLSMFlushL0Compaction(t *testing.T) {
 }
 
 func TestLSMFlushL1Compaction(t *testing.T) {
-	lsm := testLSM(t, []Memtable{
+	lsm := testLSM(t, []mt.Memtable{
 		smallSmallKeyKVMemtable{},
 		manyLargeKeyKVMemtable{},
 		smallSmallKeyKVMemtable{},
@@ -73,7 +74,7 @@ func TestLSMFlushL1Compaction(t *testing.T) {
 }
 
 func TestLSMGetWithUpdatedAndDeletedKeysAfterCompaction(t *testing.T) {
-	lsm := testLSM(t, []Memtable{
+	lsm := testLSM(t, []mt.Memtable{
 		tombstoneOlderMemtable{},
 		tombstoneNewerMemtable{},
 	})
@@ -100,13 +101,14 @@ func TestLSMGetWithUpdatedAndDeletedKeysAfterCompaction(t *testing.T) {
 }
 
 type largeOverlapMemtable struct {
+	mockMemtableBase
 	version int
 	count   int
 }
 
-func (m largeOverlapMemtable) GetSortedEntries() []Record {
+func (m largeOverlapMemtable) GetSortedEntries() []*Record {
 	ts := time.Unix(int64(1000+m.version), 0)
-	entries := make([]Record, m.count)
+	entries := make([]*Record, m.count)
 	for i := range m.count {
 		rec, _ := NewRecord(
 			fmt.Sprintf("bulk-%05d", i),
@@ -114,7 +116,7 @@ func (m largeOverlapMemtable) GetSortedEntries() []Record {
 			false,
 			ts,
 		)
-		entries[i] = *rec
+		entries[i] = rec
 	}
 	return entries
 }

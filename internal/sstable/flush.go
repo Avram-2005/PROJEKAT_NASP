@@ -7,12 +7,13 @@ import (
 	"os"
 
 	"github.com/Avram-2005/PROJEKAT_NASP/BloomFilter"
+	mt "github.com/Avram-2005/PROJEKAT_NASP/Memtable"
 	merkleTree "github.com/Avram-2005/PROJEKAT_NASP/MerkleTree"
 	. "github.com/Avram-2005/PROJEKAT_NASP/Record"
 	. "github.com/Avram-2005/PROJEKAT_NASP/utils"
 )
 
-func serializeRecord(r Record) []byte {
+func serializeRecord(r *Record) []byte {
 	value := r.Value
 
 	payloadWriter := NewBufferWriter(3*binary.MaxVarintLen64 + TOMBSTONE_L + len(value))
@@ -36,7 +37,7 @@ func serializeRecord(r Record) []byte {
 	return writer.Buf[:totalLen]
 }
 
-func writeData(writer *blockWriter, record Record) uint64 {
+func writeData(writer *blockWriter, record *Record) uint64 {
 	oldOffset := writer.CurrOffset()
 	writer.Write(serializeRecord(record))
 	return oldOffset
@@ -112,7 +113,7 @@ type multipleFilesFlushState struct {
 	filterWriter   *blockWriter
 	metadataWriter *blockWriter
 	bf             *BloomFilter.BloomFilter
-	merkleData     []Record
+	merkleData     []*Record
 	summary        *Summary
 	files          *sstableFiles
 }
@@ -129,7 +130,7 @@ func (sstm *SSTableManager) multipleFilesFlushInit(level int, tableNum int, numR
 		summaryWriter:  newIndexWriter(newBlockWriter(files.summaryFile, sstm.bm)),
 		filterWriter:   newBlockWriter(files.filterFile, sstm.bm),
 		metadataWriter: newBlockWriter(files.metadataFile, sstm.bm),
-		merkleData:     make([]Record, 0, numRecs),
+		merkleData:     make([]*Record, 0, numRecs),
 		summary:        sstm.NewSummary(numRecs),
 		files:          files,
 	}
@@ -140,7 +141,7 @@ func (sstm *SSTableManager) multipleFilesFlushInit(level int, tableNum int, numR
 	return state, nil
 }
 
-func (sstm *SSTableManager) multipleFilesFlushRecord(record Record, state *multipleFilesFlushState, shouldWriteSummary bool) {
+func (sstm *SSTableManager) multipleFilesFlushRecord(record *Record, state *multipleFilesFlushState, shouldWriteSummary bool) {
 	state.bf.Set([]byte(record.Key)) // dodaj kljuc u filter
 	state.merkleData = append(state.merkleData, record)
 	offset := writeData(state.dataWriter, record)
@@ -186,7 +187,7 @@ func (sstm *SSTableManager) multipleFilesFlushFinalize(level int, state *multipl
 	}, nil
 }
 
-func (sstm *SSTableManager) multipleFilesFlush(mem Memtable, tableNum int) (*SSTable, error) {
+func (sstm *SSTableManager) multipleFilesFlush(mem mt.Memtable, tableNum int) (*SSTable, error) {
 	entries := mem.GetSortedEntries()
 
 	state, err := sstm.multipleFilesFlushInit(0, tableNum, uint(len(entries)))
@@ -210,7 +211,7 @@ func (sstm *SSTableManager) multipleFilesFlush(mem Memtable, tableNum int) (*SST
 type oneFileFlushState struct {
 	writer        *blockWriter
 	bf            *BloomFilter.BloomFilter
-	merkleData    []Record
+	merkleData    []*Record
 	index         []indexEntry
 	summary       *Summary
 	indexWriter   *indexWriter
@@ -233,7 +234,7 @@ func (sstm *SSTableManager) oneFileFlushInit(level int, tableNum int, numRecs ui
 		writer:        writer,
 		bf:            bf,
 		index:         make([]indexEntry, 0, numRecs),
-		merkleData:    make([]Record, 0, numRecs),
+		merkleData:    make([]*Record, 0, numRecs),
 		summary:       sstm.NewSummary(numRecs),
 		file:          file,
 		indexWriter:   newIndexWriter(writer),
@@ -241,7 +242,7 @@ func (sstm *SSTableManager) oneFileFlushInit(level int, tableNum int, numRecs ui
 	}, nil
 }
 
-func (sstm *SSTableManager) oneFileFlushRecord(i int, entry Record, state *oneFileFlushState) {
+func (sstm *SSTableManager) oneFileFlushRecord(i int, entry *Record, state *oneFileFlushState) {
 	state.bf.Set([]byte(entry.Key)) // dodaj kljuc u filter
 	state.merkleData = append(state.merkleData, entry)
 	offset := writeData(state.writer, entry)
@@ -303,7 +304,7 @@ func (sstm *SSTableManager) oneFileFlushFinalize(level int, state *oneFileFlushS
 	}, nil
 }
 
-func (sstm *SSTableManager) oneFileFlush(mem Memtable, tableNum int) (*SSTable, error) {
+func (sstm *SSTableManager) oneFileFlush(mem mt.Memtable, tableNum int) (*SSTable, error) {
 	state, err := sstm.oneFileFlushInit(0, tableNum, uint(len(mem.GetSortedEntries())))
 	if err != nil {
 		return nil, err
