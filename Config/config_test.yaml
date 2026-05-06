@@ -25,11 +25,12 @@ TokenBucketConfig:
   #Number of seconds between refills
   RefillTime: 60
 SSTableConfig:
-  TablesRoot: sstables
+  TablesRoot: ./TestDataBase/sstable
   SummaryInterval: 40
   MultipleFiles: false
 WriteAheadLogConfig:
   SegmentSize: 40
+  FilePath: ./TestDataBase/walDATA
 LSMConfig:
   NumLevels: 4
   CompactionFactor: 4

@@ -171,11 +171,12 @@ TokenBucketConfig:
   #Number of seconds between refills
   RefillTime: 60
 SSTableConfig:
-  TablesRoot: sstables
+  TablesRoot: ../DataBase/sstable
   SummaryInterval: 40
   MultipleFiles: false
 WriteAheadLogConfig:
-  SegmentSize: 40
+  SegmentSize: 64
+  FilePath: ../DataBase/walDATA
 LSMConfig:
   NumLevels: 4
   CompactionFactor: 4`
@@ -205,40 +206,41 @@ func (config *Config) Initialize(bm *BlockManager.BlockManager, configFile *os.F
 	isConfigValid := true
 	bm, err = config.InitializeBlockManager()
 	if err != nil {
-		fmt.Print("Blockmanager configuration is incorrect, default configuration will be used.")
+		fmt.Print("Blockmanager configuration is incorrect, default configuration will be used.\n")
 		config.BufferPoolConfig = defaultConfig.BufferPoolConfig
 		isConfigValid = false
 	}
 	_, err = config.InitializeCache()
 	if err != nil {
-		fmt.Print("Cache configuration is incorrect, default configuration will be used.")
+		fmt.Print("Cache configuration is incorrect, default configuration will be used.\n")
 		config.CacheConfig = defaultConfig.CacheConfig
 		isConfigValid = false
 	}
 	_, err = config.InitializeMemtable()
 	if err != nil {
-		fmt.Print("Memtable configuration is incorrect, default configuration will be used.")
+		fmt.Print("Memtable configuration is incorrect, default configuration will be used.\n")
 		config.MemtableConfig = defaultConfig.MemtableConfig
 		isConfigValid = false
 	}
 	_, err = config.InitializeTokenBucket()
 	if err != nil {
-		fmt.Print("Token bucket configuration is incorrect, default configuration will be used.")
+		fmt.Print("Token bucket configuration is incorrect, default configuration will be used.\n")
 		config.TokenBucketConfig = defaultConfig.TokenBucketConfig
 		isConfigValid = false
 	}
 	_, err = config.InitializeSSTable(bm)
 	if err != nil {
-		fmt.Print("SSTable configuration is incorrect, default configuration will be used.")
+		fmt.Print("SSTable configuration is incorrect, default configuration will be used.\n")
 		config.SSTableConfig = defaultConfig.SSTableConfig
 		isConfigValid = false
 	}
-	_, err = config.InitializeWAL()
+	wal, err := config.InitializeWAL()
 	if err != nil {
-		fmt.Print("WAL configuration is incorrect, default configuration will be used.")
+		fmt.Print("WAL configuration is incorrect, default configuration will be used.\n")
 		config.WriteAheadLogConfig = defaultConfig.WriteAheadLogConfig
 		isConfigValid = false
 	}
+	wal.Close()
 	if !isConfigValid {
 		return fmt.Errorf("configuration file has improper values")
 	}
