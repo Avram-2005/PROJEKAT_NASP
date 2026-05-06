@@ -86,7 +86,7 @@ func (mm *MemtableManager) PutRecord(rec *record.Record) error {
 }
 
 // Upisuje tombstone u aktivnu tabelu
-func (mm *MemtableManager) Delete(key string) error {
+func (mm *MemtableManager) Delete(key string, recTimestamp time.Time) error {
 	for i := len(mm.instances) - 1; i >= 0; i-- {
 		rec, found, err := mm.instances[i].GetRecord(key)
 		if err != nil {
@@ -100,7 +100,7 @@ func (mm *MemtableManager) Delete(key string) error {
 				Key:       rec.Key,
 				Value:     rec.Value,
 				Tombstone: true,
-				Timestamp: time.Now(),
+				Timestamp: recTimestamp,
 			}
 			active := mm.activeTable()
 			if err := active.PutRecord(tombstoneRec); err != nil {
