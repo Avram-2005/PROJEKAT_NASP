@@ -53,7 +53,7 @@ func TestInitialize(t *testing.T) {
 		fmt.Print(config.SSTableConfig)
 		t.FailNow()
 	}
-	if config.WriteAheadLogConfig.SegmentSize != 40 || config.WriteAheadLogConfig.FilePath != "./TestDataBase/walDATA" {
+	if config.WriteAheadLogConfig.SegmentSize != 64 || config.WriteAheadLogConfig.FilePath != "./TestDataBase/walDATA" {
 		fmt.Print("Wrong WAL configuration")
 		fmt.Print(config.WriteAheadLogConfig)
 		t.FailNow()
@@ -168,7 +168,7 @@ func TestIncorrectConfiguration(t *testing.T) {
 		fmt.Print(config.SSTableConfig)
 		t.FailNow()
 	}
-	if config.WriteAheadLogConfig.SegmentSize != 40 || config.WriteAheadLogConfig.FilePath != "./TestDataBase/walData" {
+	if config.WriteAheadLogConfig.SegmentSize != 64 || config.WriteAheadLogConfig.FilePath != "./TestDataBase/walData" {
 		fmt.Print("Wrong WAL configuration")
 		fmt.Print(config.WriteAheadLogConfig)
 		t.FailNow()
