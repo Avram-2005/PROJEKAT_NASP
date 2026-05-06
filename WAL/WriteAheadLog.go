@@ -100,29 +100,29 @@ func CreatNewWAL(sizeSegment int, blocksize int, filePath string, memtableRotati
 }
 
 // AddRecord pakuje ključ i vrednost u novi Record i šalje ga na upis
-func (wal *WAL) AddRecord(key string, value []byte) error {
+func (wal *WAL) AddRecord(key string, value []byte) (*Record.Record, error) {
 	if len(key) == 0 {
-		return fmt.Errorf("kljuc je prazan")
+		return nil, fmt.Errorf("kljuc je prazan")
 	}
 
 	rec, err := Record.NewRecord(key, value, false, time.Now())
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return wal.appendRecord(rec)
+	return rec, wal.appendRecord(rec)
 }
 
 // DeleteRecord kreira Record sa Tombstone markerom koji označava da je ključ obrisan, i šalje ga na upis
-func (wal *WAL) DeleteRecord(key string) error {
+func (wal *WAL) DeleteRecord(key string) (*Record.Record, error) {
 	if len(key) == 0 {
-		return fmt.Errorf("kljuc je prazan")
+		return nil, fmt.Errorf("kljuc je prazan")
 	}
 
 	rec, err := Record.NewRecord(key, nil, true, time.Now())
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return wal.appendRecord(rec)
+	return rec, wal.appendRecord(rec)
 }
 
 // appendRecord pakuje Record u jedan ili više chunkova i upisuje ih u fajl
