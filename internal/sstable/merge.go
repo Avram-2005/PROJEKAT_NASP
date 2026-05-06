@@ -142,7 +142,7 @@ func (sstm *SSTableManager) multipleFilesMerge(ssts []*SSTable, level int, table
 		}
 
 		shouldWriteSummary := numRecs%sstm.config.SummaryInterval == 0
-		sstm.multipleFilesFlushRecord(*currentRec, state, shouldWriteSummary)
+		sstm.multipleFilesFlushRecord(currentRec, state, shouldWriteSummary)
 		numRecs++
 	}
 	sst, err := sstm.multipleFilesFlushFinalize(level, state, tableNum)
@@ -193,7 +193,7 @@ func (sstm *SSTableManager) oneFileMerge(ssts []*SSTable, level int, tableNum in
 			continue
 		}
 
-		sstm.oneFileFlushRecord(level, *currentRec, state)
+		sstm.oneFileFlushRecord(level, currentRec, state)
 		numRecs++
 	}
 	sst, err := sstm.oneFileFlushFinalize(level, state, tableNum)

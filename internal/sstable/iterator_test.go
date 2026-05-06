@@ -8,9 +8,10 @@ import (
 )
 
 type memtable struct {
+	mockMemtableBase
 }
 
-func (m memtable) GetSortedEntries() []Record {
+func (m memtable) GetSortedEntries() []*Record {
 	ts := time.Now()
 	r1, _ := NewRecord("a", []byte("value3"), false, ts)
 	r2, _ := NewRecord("bar", []byte("value3"), false, ts)
@@ -18,7 +19,7 @@ func (m memtable) GetSortedEntries() []Record {
 	r4, _ := NewRecord("value1", []byte("value1"), false, ts)
 	r5, _ := NewRecord("value2", []byte("value2"), false, ts)
 	r6, _ := NewRecord("value3", []byte("value3"), false, ts)
-	return []Record{*r1, *r2, *r3, *r4, *r5, *r6}
+	return []*Record{r1, r2, r3, r4, r5, r6}
 }
 
 func TestPrefixIterator(t *testing.T) {

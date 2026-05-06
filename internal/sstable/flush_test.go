@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
+	mt "github.com/Avram-2005/PROJEKAT_NASP/Memtable"
 )
 
 var bm *BlockManager.BlockManager
@@ -20,7 +21,7 @@ func TestMain(m *testing.M) {
 	m.Run()
 }
 
-func testFlush(tempDir string, mem Memtable, multFiles bool) (*SSTableManager, *SSTable, error) {
+func testFlush(tempDir string, mem mt.Memtable, multFiles bool) (*SSTableManager, *SSTable, error) {
 	m, exists := testSSTManagers[tempDir]
 	if !exists {
 		var err error

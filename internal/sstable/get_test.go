@@ -5,6 +5,8 @@ import (
 	"math/rand"
 	"runtime"
 	"testing"
+
+	mt "github.com/Avram-2005/PROJEKAT_NASP/Memtable"
 )
 
 var testTempDirs = make(map[testHelper]string)
@@ -16,7 +18,7 @@ type testHelper interface {
 	TempDir() string
 }
 
-func flush(t testHelper, multFiles bool, mem Memtable) (*SSTableManager, *SSTable) {
+func flush(t testHelper, multFiles bool, mem mt.Memtable) (*SSTableManager, *SSTable) {
 	// Get or create temp directory for this test
 	tempDir, exists := testTempDirs[t]
 	if !exists {

@@ -73,7 +73,7 @@ func NewMerkleTree(records []Record) (*MerkleTree, error) {
 	}, nil
 }
 
-func NewMerkleTreeHashes(records []Record) (*MerkleTree, error) {
+func NewMerkleTreeHashes(records []*Record) (*MerkleTree, error) {
 	if len(records) == 0 {
 		return nil, fmt.Errorf("Empty data set")
 	}

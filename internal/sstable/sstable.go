@@ -7,17 +7,9 @@ import (
 
 	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
 	"github.com/Avram-2005/PROJEKAT_NASP/BloomFilter"
+	mt "github.com/Avram-2005/PROJEKAT_NASP/Memtable"
 	. "github.com/Avram-2005/PROJEKAT_NASP/Record"
 )
-
-// FIXME: DELETE AFTER Memtable MERGE /
-// ////////////////////////////////////
-
-type Memtable interface {
-	GetSortedEntries() []Record //povratna vred/ parovi kljuc-vred neophodni za sstable
-}
-
-//////////////////////////////////////
 
 // FIXME: Delete this after config is done
 type SSTableConfig struct {
@@ -116,7 +108,7 @@ func (s *Summary) IsFound(key string) (bool, uint64, error) {
 }
 
 // TODO: Compression (1.3[DZ3])
-func (sstm *SSTableManager) Flush(mem Memtable) (*SSTable, error) {
+func (sstm *SSTableManager) Flush(mem mt.Memtable) (*SSTable, error) {
 	var sst *SSTable
 	var err error
 	if sstm.config.MultipleFiles {
