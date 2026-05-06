@@ -11,11 +11,11 @@ const INTERNAL_KEY = "__tb__state"
 type TokenBucket struct {
 	maxNumTokens   int64
 	currentTokens  int64
-	refillTime     time.Duration
+	refillTime     int64
 	lastTimeRefill time.Time
 }
 
-func NewTokenBucket(maxNumTokens int64, refillInterval time.Duration) (*TokenBucket, error) {
+func NewTokenBucket(maxNumTokens int64, refillInterval int64) (*TokenBucket, error) {
 	if maxNumTokens <= 0 {
 		return nil, fmt.Errorf("Maximum number of tokens must be greater than 0")
 	}
@@ -34,7 +34,8 @@ func NewTokenBucket(maxNumTokens int64, refillInterval time.Duration) (*TokenBuc
 func (tb *TokenBucket) refill() {
 	now := time.Now()
 	deltat := now.Sub(tb.lastTimeRefill)
-	intervals := int64(deltat / tb.refillTime) //br intrevala koji je prosao
+	deltatSeconds := deltat.Seconds()
+	intervals := int64(deltatSeconds / float64(tb.refillTime)) //br intrevala koji je prosao
 	if intervals <= 0 {
 		return
 	}
@@ -42,7 +43,7 @@ func (tb *TokenBucket) refill() {
 	if tb.currentTokens > tb.maxNumTokens {
 		tb.currentTokens = tb.maxNumTokens
 	}
-	tb.lastTimeRefill = tb.lastTimeRefill.Add(time.Duration(intervals) * tb.refillTime)
+	tb.lastTimeRefill = tb.lastTimeRefill.Add(time.Duration(intervals*tb.refillTime) * time.Second)
 }
 
 // provera da li je zahtev odobren, trosi jedan token
@@ -72,7 +73,7 @@ func Deserialize(data []byte) (*TokenBucket, error) {
 	}
 	maxNumTokens := int64(binary.BigEndian.Uint64(data[0:8]))
 	currentTokens := int64(binary.BigEndian.Uint64(data[8:16]))
-	refillInterval := time.Duration(binary.BigEndian.Uint64(data[16:24]))
+	refillInterval := int64(binary.BigEndian.Uint64(data[16:24]))
 	lastTimeRefill := time.Unix(0, int64(binary.BigEndian.Uint64(data[24:32])))
 	return &TokenBucket{
 		maxNumTokens:   maxNumTokens,

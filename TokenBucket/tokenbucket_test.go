@@ -7,7 +7,7 @@ import (
 
 // konstruktor
 func TestNewTokenBucket(t *testing.T) {
-	tb, err := NewTokenBucket(10, time.Second)
+	tb, err := NewTokenBucket(10, 1)
 	if err != nil {
 		t.Fatalf("Expected succsessful creation of token bucket, but got: %v", err)
 	}
@@ -17,11 +17,11 @@ func TestNewTokenBucket(t *testing.T) {
 }
 
 func TestNewTokenBucketInvalidMaxNumTokens(t *testing.T) {
-	_, err := NewTokenBucket(0, time.Second)
+	_, err := NewTokenBucket(0, 1)
 	if err == nil {
 		t.Fatal("Expected an error for invalid number of maximum tokens")
 	}
-	_, err = NewTokenBucket(-5, time.Second)
+	_, err = NewTokenBucket(-5, 1)
 	if err == nil {
 		t.Fatal("Expected error for negative number of max tokens")
 	}
@@ -36,7 +36,7 @@ func TestNewTokenBucketInvalidInterval(t *testing.T) {
 
 // Allow
 func TestAllow(t *testing.T) {
-	tb, _ := NewTokenBucket(5, time.Second)
+	tb, _ := NewTokenBucket(5, 1)
 	if !tb.Allow() {
 		t.Fatal("First request must be allowed")
 	}
@@ -46,7 +46,7 @@ func TestAllow(t *testing.T) {
 }
 
 func TestAllowZeroOutput(t *testing.T) {
-	tb, _ := NewTokenBucket(3, time.Hour) //veliki interval kako za vreme testa ne bi refill uradio
+	tb, _ := NewTokenBucket(3, 3600) //veliki interval kako za vreme testa ne bi refill uradio
 	tb.Allow()
 	tb.Allow()
 	tb.Allow()
@@ -56,7 +56,7 @@ func TestAllowZeroOutput(t *testing.T) {
 }
 
 func TestAllowEmpty(t *testing.T) {
-	tb, _ := NewTokenBucket(2, time.Hour)
+	tb, _ := NewTokenBucket(2, 3600)
 	tb.Allow()
 	tb.Allow()
 	if tb.Allow() {
@@ -65,13 +65,13 @@ func TestAllowEmpty(t *testing.T) {
 }
 
 func TestAllowAfterRefill(t *testing.T) {
-	tb, _ := NewTokenBucket(2, 50*time.Millisecond)
+	tb, _ := NewTokenBucket(2, 1)
 	tb.Allow()
 	tb.Allow()
 	if tb.Allow() {
 		t.Fatal("Request must be rejected when there are no tokens")
 	}
-	time.Sleep(60 * time.Millisecond) //pauza jedan interval
+	time.Sleep(1100 * time.Millisecond) //pauza jedan interval
 	if !tb.Allow() {
 		t.Fatal("Request must be allowed after refill")
 	}
@@ -79,7 +79,7 @@ func TestAllowAfterRefill(t *testing.T) {
 
 // refill
 func TestRefillLessThanMax(t *testing.T) {
-	tb, _ := NewTokenBucket(5, 50*time.Millisecond)
+	tb, _ := NewTokenBucket(5, 1)
 	time.Sleep(200 * time.Millisecond) //pauza vise intervala
 	tb.Allow()                         //pokrece refill
 	if tb.CurrentTokens() > tb.MaxNumTokens() {
@@ -89,11 +89,11 @@ func TestRefillLessThanMax(t *testing.T) {
 }
 
 func TestRefillMultipleIntervals(t *testing.T) {
-	tb, _ := NewTokenBucket(3, 30*time.Millisecond)
+	tb, _ := NewTokenBucket(3, 1)
 	tb.Allow()
 	tb.Allow()
 	tb.Allow()
-	time.Sleep(70 * time.Millisecond) //pauza dva intervala
+	time.Sleep(2500 * time.Millisecond) //pauza dva intervala
 	tb.refill()
 	if tb.CurrentTokens() != 3 {
 		t.Fatalf("Expected 3 tokens after refill, got %d", tb.CurrentTokens())
@@ -102,7 +102,7 @@ func TestRefillMultipleIntervals(t *testing.T) {
 
 // serijalizacija
 func TestSerializeDeserialize(t *testing.T) {
-	tb, _ := NewTokenBucket(10, time.Second)
+	tb, _ := NewTokenBucket(10, 2)
 	tb.Allow()
 	tb.Allow()
 	data := tb.Serialize()
@@ -132,7 +132,7 @@ func TestDeserializeInvalidData(t *testing.T) {
 }
 
 func TestDeserializePreserveState(t *testing.T) {
-	tb, _ := NewTokenBucket(5, time.Minute)
+	tb, _ := NewTokenBucket(5, 60)
 	tb.Allow()
 	tb.Allow()
 	tb.Allow()
@@ -149,5 +149,15 @@ func TestDeserializePreserveState(t *testing.T) {
 func TestInternalKey(t *testing.T) {
 	if len(INTERNAL_KEY) < 4 || INTERNAL_KEY[:4] != "__tb" {
 		t.Fatal("Internal key must start with '__tb'")
+	}
+}
+
+func TestRefillExactTiming(t *testing.T) {
+	tb, _ := NewTokenBucket(10, 1)
+	tb.currentTokens = 0
+	tb.lastTimeRefill = time.Now().Add(-1500 * time.Millisecond) // pre 1.5 sekundi
+	tb.refill()
+	if tb.CurrentTokens() != 10 {
+		t.Fatalf("Expected 10 tokens, got %d", tb.CurrentTokens())
 	}
 }
