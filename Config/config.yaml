@@ -1,0 +1,36 @@
+BufferPoolConfig:
+  #Amount of blocks stored 
+  MaxSize: 8
+  #Size of stored blocks 
+  BlockSize: 4
+CacheConfig:
+  #Amount of key value pairs stored
+  MaxSize: 20
+MemtableConfig:
+  #Amount of memtable instances active at one point
+  MaxCount: 2
+  #Whether memtable uses hashmap, skiplist or btree
+  Type: hashmap
+  #How large the memtable can be in bytes
+  MaxSizeBytes: 100
+  #How many entries memtable can contain
+  MaxSizeEntries: 100
+  #Bplus tree configuration
+  BPlusTreeDegree: 0
+  #SkipList configuration
+  SkipListMaxHeight: 0
+TokenBucketConfig:
+  #How many tokens every user has
+  MaxNumTokens: 3
+  #Number of seconds between refills
+  RefillTime: 60
+SSTableConfig:
+  TablesRoot: ../DataBase/sstable
+  SummaryInterval: 40
+  MultipleFiles: false
+WriteAheadLogConfig:
+  SegmentSize: 64
+  FilePath: ../DataBase/walDATA
+LSMConfig:
+  NumLevels: 4
+  CompactionFactor: 10
