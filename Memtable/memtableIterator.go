@@ -1,12 +1,14 @@
 package memtable
 
+import record "github.com/Avram-2005/PROJEKAT_NASP/Record"
+
 type BaseIterator struct { //osnovna struktura/implementacija iteratora
-	entries []KeyValue
+	entries []*record.Record
 	current int
 	err     error
 }
 
-func NewBaseIterator(entries []KeyValue) *BaseIterator {
+func NewBaseIterator(entries []*record.Record) *BaseIterator {
 	return &BaseIterator{
 		entries: entries,
 		current: -1,

@@ -2,9 +2,12 @@ package memtable
 
 import (
 	"fmt"
+	"sort"
+	"time"
 
 	"github.com/Avram-2005/PROJEKAT_NASP/BPlusTree"
 	"github.com/Avram-2005/PROJEKAT_NASP/HashMap"
+	record "github.com/Avram-2005/PROJEKAT_NASP/Record"
 	"github.com/Avram-2005/PROJEKAT_NASP/SkipList"
 )
 
@@ -60,31 +63,32 @@ func NewMemtableAdapter(config MemtableConfig) (*MemtableAdapter, error) {
 // Implementacija HashMape
 func (adapt *MemtableAdapter) initHashMap(hm *HashMap.HashMap) {
 	adapt.getFunc = func(key string) ([]byte, bool, error) {
-		value, err := hm.Get(key)
+		data, err := hm.Get(key)
 		if err != nil {
 			return nil, false, nil
 		}
-		return value, true, nil
+		rec, _, err := record.DeserializeRecord(data)
+		if err != nil || rec.Tombstone {
+			return nil, false, nil
+		}
+		return rec.Value, true, nil
 	}
 	adapt.putFunc = func(key string, value []byte) error {
-		_, err := hm.Get(key) //provera da li kljuc postoji
-		exists := err == nil
-		err = hm.Put(key, value)
-		if err != nil {
-			return err
-		}
-		if !exists {
-			adapt.size++
-		}
-		adapt.total++
-		return nil
+		return hm.Put(key, value)
 	}
 	adapt.deleteFunc = func(key string) (bool, error) {
-		_, err := hm.Get(key)
-		if err != nil {
+		_, found, _ := adapt.getFunc(key)
+		if !found {
 			return false, nil
 		}
-		err = hm.Delete(key)
+		rec := &record.Record{
+			Key:       key,
+			Value:     nil,
+			Tombstone: true,
+			Timestamp: time.Now(),
+		}
+		data := rec.Serialize()
+		err := hm.Put(key, data)
 		if err != nil {
 			return false, err
 		}
@@ -92,7 +96,8 @@ func (adapt *MemtableAdapter) initHashMap(hm *HashMap.HashMap) {
 		return true, nil
 	}
 	adapt.clearFunc = func() {
-		hm = HashMap.NewHashMap()
+		newHm := HashMap.NewHashMap()
+		adapt.dataStructure = newHm
 		adapt.size = 0
 		adapt.total = 0
 	}
@@ -102,32 +107,39 @@ func (adapt *MemtableAdapter) initHashMap(hm *HashMap.HashMap) {
 // implementacija skipliste
 func (adapt *MemtableAdapter) initSkipList(sl *SkipList.SkipList) {
 	adapt.getFunc = func(key string) ([]byte, bool, error) {
-		return sl.Get(key)
+		data, found, err := sl.Get(key)
+		if err != nil || !found {
+			return nil, false, err
+		}
+		rec, _, err := record.DeserializeRecord(data)
+		if err != nil || rec.Tombstone {
+			return nil, false, nil
+		}
+		return rec.Value, true, nil
 	}
 	adapt.putFunc = func(key string, value []byte) error {
-		_, found, _ := sl.Get(key)
-		err := sl.Put(key, value)
-		if err != nil {
-			return err
-		}
-		if !found {
-			adapt.size++
-		}
-		adapt.total++
-		return nil
+		return sl.Put(key, value)
 	}
 	adapt.deleteFunc = func(key string) (bool, error) {
-		_, found, _ := sl.Get(key)
+		_, found, _ := adapt.getFunc(key)
 		if !found {
 			return false, nil
 		}
-		err := sl.Delete(key)
+		rec := &record.Record{
+			Key:       key,
+			Value:     nil,
+			Tombstone: true,
+			Timestamp: time.Now(),
+		}
+		data := rec.Serialize()
+		err := sl.Put(key, data)
 		if err != nil {
 			return false, err
 		}
 		adapt.size--
 		return true, nil
 	}
+
 	adapt.clearFunc = func() {
 		sl.Clear()
 		adapt.size = 0
@@ -138,30 +150,44 @@ func (adapt *MemtableAdapter) initSkipList(sl *SkipList.SkipList) {
 // implementacija b+ stabla
 func (adapt *MemtableAdapter) initBPlusTree(bpt *BPlusTree.BPlusTree) {
 	adapt.getFunc = func(key string) ([]byte, bool, error) {
-		value, found := bpt.Search(key)
-		return value, found, nil
-	}
-	adapt.putFunc = func(key string, value []byte) error {
-		_, found := bpt.Search(key)
-		err := bpt.Insert(key, value)
-		if err != nil {
-			return err
-		}
+		data, found := bpt.Search(key)
 		if !found {
-			adapt.size++
+			return nil, false, nil
 		}
-		adapt.total++
-		return nil
+		rec, _, err := record.DeserializeRecord(data)
+		if err != nil || rec.Tombstone {
+			return nil, false, nil
+		}
+		return rec.Value, true, nil
 	}
+
+	adapt.putFunc = func(key string, value []byte) error {
+		return bpt.Insert(key, value)
+	}
+
 	adapt.deleteFunc = func(key string) (bool, error) {
-		deleted := bpt.Delete(key)
-		if deleted {
-			adapt.size--
+		_, found := bpt.Search(key)
+		if !found {
+			return false, nil
 		}
-		return deleted, nil
+		rec := &record.Record{
+			Key:       key,
+			Value:     nil,
+			Tombstone: true,
+			Timestamp: time.Now(),
+		}
+		data := rec.Serialize()
+		err := bpt.Insert(key, data)
+		if err != nil {
+			return false, err
+		}
+		adapt.size--
+		return true, nil
 	}
+
 	adapt.clearFunc = func() {
-		bpt, _ = BPlusTree.NewBPlusTree(adapt.config.BPlusTreeDegree)
+		newBpt, _ := BPlusTree.NewBPlusTree(adapt.config.BPlusTreeDegree)
+		adapt.dataStructure = newBpt
 		adapt.size = 0
 		adapt.total = 0
 
@@ -169,82 +195,131 @@ func (adapt *MemtableAdapter) initBPlusTree(bpt *BPlusTree.BPlusTree) {
 }
 
 // Implementacija rangeScan
-func (adapt *MemtableAdapter) RangeScan(startKey, endKey string) []KeyValue {
+func (adapt *MemtableAdapter) RangeScan(startKey, endKey string) []*record.Record {
 	switch adapt.structureType {
 	case "hashmap":
 		hm := adapt.dataStructure.(*HashMap.HashMap)
-		hmEntries := hm.RangeScan(startKey, endKey)
-		return convertToKeyValue(hmEntries)
+		return adapt.keyValueToRecWithoutTombstone(hm.RangeScan(startKey, endKey))
 	case "skip_list":
 		sl := adapt.dataStructure.(*SkipList.SkipList)
-		slEntries := sl.RangeScan(startKey, endKey)
-		return convertToKeyValue(slEntries)
+		return adapt.keyValueToRecWithoutTombstone(sl.RangeScan(startKey, endKey))
 	case "b_plus_tree":
 		bpt := adapt.dataStructure.(*BPlusTree.BPlusTree)
-		bptEntries := bpt.RangeScan(startKey, endKey)
-		return convertToKeyValue(bptEntries)
+		return adapt.keyValueToRecWithoutTombstone(bpt.RangeScan(startKey, endKey))
 	default:
-		return []KeyValue{}
+		return []*record.Record{}
 	}
 }
 
 // Implementacija PrefixScan
-func (adapt *MemtableAdapter) PrefixScan(prefix string) []KeyValue {
+func (adapt *MemtableAdapter) PrefixScan(prefix string) []*record.Record {
 	switch adapt.structureType {
 	case "hashmap":
 		hm := adapt.dataStructure.(*HashMap.HashMap)
-		hmEntries := hm.PrefixScan(prefix)
-		return convertToKeyValue(hmEntries)
+		return adapt.keyValueToRecWithoutTombstone(hm.PrefixScan(prefix))
 	case "skip_list":
 		sl := adapt.dataStructure.(*SkipList.SkipList)
-		slEntries := sl.PrefixScan(prefix)
-		return convertToKeyValue(slEntries)
+		return adapt.keyValueToRecWithoutTombstone(sl.PrefixScan(prefix))
 	case "b_plus_tree":
 		bpt := adapt.dataStructure.(*BPlusTree.BPlusTree)
-		bptEntries := bpt.PrefixScan(prefix)
-		return convertToKeyValue(bptEntries)
+		return adapt.keyValueToRecWithoutTombstone(bpt.PrefixScan(prefix))
 	default:
-		return []KeyValue{}
+		return []*record.Record{}
 	}
 }
 
 // Implementacija dobavljanja sortiranih podataka
-func (adapt *MemtableAdapter) GetSortedEntries() []KeyValue {
+func (adapt *MemtableAdapter) GetSortedEntries() []*record.Record {
 	switch adapt.structureType {
 	case "hashmap":
 		hm := adapt.dataStructure.(*HashMap.HashMap)
-		hmEntries := hm.GetSortedEntries()
-		return convertToKeyValue(hmEntries)
+		return adapt.keyValueToRecords(hm.GetSortedEntries())
 	case "skip_list": //vec je sortirana
 		sl := adapt.dataStructure.(*SkipList.SkipList)
-		slEntries := sl.RangeScan("", "\U0010FFFF")
-		return convertToKeyValue(slEntries)
+		return adapt.keyValueToRecords(sl.RangeScan("", "\U0010FFFF"))
 	case "b_plus_tree": //vec je sortirano
 		bpt := adapt.dataStructure.(*BPlusTree.BPlusTree)
-		bptEntries := bpt.RangeScan("", "\U0010FFFF")
-		return convertToKeyValue(bptEntries)
+		return adapt.keyValueToRecords(bpt.RangeScan("", "\U0010FFFF"))
 	default:
-		return []KeyValue{}
+		return []*record.Record{}
 	}
-}
-
-func convertToKeyValue(entries []struct {
-	Key   string
-	Value []byte
-}) []KeyValue {
-	result := make([]KeyValue, len(entries))
-	for i, e := range entries {
-		result[i] = KeyValue{
-			Key:       e.Key,
-			Value:     e.Value,
-			Tombstone: e.Value == nil,
-		}
-	}
-	return result
 }
 
 func (adapt *MemtableAdapter) Put(key string, value []byte) error {
-	return adapt.putFunc(key, value)
+	_, exists, _ := adapt.Get(key)
+	rec := &record.Record{
+		Key:       key,
+		Value:     value,
+		Tombstone: false,
+		Timestamp: time.Now(),
+	}
+	data := rec.Serialize()
+	err := adapt.putFunc(key, data)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		adapt.size++
+	}
+	adapt.total++
+	return nil
+}
+
+func (adapt *MemtableAdapter) PutRecord(rec *record.Record) error {
+	if rec == nil {
+		return fmt.Errorf("record ne moze biti nil")
+	}
+	_, exists, _ := adapt.Get(rec.Key)
+	data := rec.Serialize()
+	err := adapt.putFunc(rec.Key, data)
+	if err != nil {
+		return err
+	}
+	if !exists && !rec.Tombstone {
+		adapt.size++
+	}
+	adapt.total++
+	return nil
+}
+
+func (adapt *MemtableAdapter) GetRecord(key string) (*record.Record, bool, error) {
+	switch adapt.structureType {
+	case "hashmap":
+		hm := adapt.dataStructure.(*HashMap.HashMap)
+		data, err := hm.Get(key)
+		if err != nil {
+			return nil, false, nil
+		}
+		rec, _, err := record.DeserializeRecord(data)
+		if err != nil {
+			return nil, false, err
+		}
+		return rec, true, nil
+	case "skip_list":
+		sl := adapt.dataStructure.(*SkipList.SkipList)
+		data, found, err := sl.Get(key)
+		if err != nil || !found {
+			return nil, false, err
+		}
+		rec, _, err := record.DeserializeRecord(data)
+		if err != nil {
+			return nil, false, err
+		}
+		return rec, true, nil
+	case "b_plus_tree":
+		bpt := adapt.dataStructure.(*BPlusTree.BPlusTree)
+		data, found := bpt.Search(key)
+		if !found {
+			return nil, false, nil
+		}
+		rec, _, err := record.DeserializeRecord(data)
+		if err != nil {
+			return nil, false, err
+		}
+		return rec, true, nil
+	}
+	return nil, false, nil
+
 }
 func (adapt *MemtableAdapter) Get(key string) ([]byte, bool, error) {
 	return adapt.getFunc(key)
@@ -264,9 +339,52 @@ func (adapt *MemtableAdapter) IsEmpty() bool {
 func (adapt *MemtableAdapter) Clear() {
 	adapt.clearFunc()
 }
+
+func (adapt *MemtableAdapter) keyValueToRecords(keyValEntries []struct {
+	Key   string
+	Value []byte
+}) []*record.Record {
+	result := make([]*record.Record, 0, len(keyValEntries))
+	for _, e := range keyValEntries {
+		rec, _, err := record.DeserializeRecord(e.Value)
+		if err != nil {
+			continue
+		}
+		result = append(result, rec)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Key < result[j].Key
+	})
+	return result
+}
+
+func (adapt *MemtableAdapter) keyValueToRecWithoutTombstone(keyValEntries []struct {
+	Key   string
+	Value []byte
+}) []*record.Record {
+	result := make([]*record.Record, 0, len(keyValEntries))
+	for _, e := range keyValEntries {
+		rec, _, err := record.DeserializeRecord(e.Value)
+		if err != nil || rec.Tombstone {
+			continue
+		}
+		result = append(result, rec)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Key < result[j].Key
+	})
+	return result
+}
+
 func (adapt *MemtableAdapter) Iterator() Iterator {
 	entries := adapt.GetSortedEntries()
-	return NewBaseIterator(entries)
+	active := make([]*record.Record, 0, len(entries))
+	for _, e := range entries {
+		if !e.Tombstone {
+			active = append(active, e)
+		}
+	}
+	return NewBaseIterator(active)
 }
 func (adapt *MemtableAdapter) ShouldFlush() bool {
 	if adapt.config.MaxSizeBytes > 0 {

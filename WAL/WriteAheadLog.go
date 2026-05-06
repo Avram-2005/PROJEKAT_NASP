@@ -309,7 +309,7 @@ func (wal *WAL) recoverSingleSegment(path string, mm *memtable.MemtableManager, 
 				}
 				rec, totalSize, err := Record.DeserializeRecord(data[offset+1:])
 				if err == nil {
-					wal.applyToMemtable(rec, mm)
+					mm.PutRecord(rec)
 					offset += 1 + totalSize
 				} else {
 					offset = len(data)
@@ -352,7 +352,7 @@ func (wal *WAL) recoverSingleSegment(path string, mm *memtable.MemtableManager, 
 				*buffer = append(*buffer, data[offset+1:offset+1+missingBytes]...)
 				rec, _, err := Record.DeserializeRecord(*buffer)
 				if err == nil {
-					wal.applyToMemtable(rec, mm)
+					mm.PutRecord(rec)
 				}
 
 				*buffer = (*buffer)[:0]
@@ -364,15 +364,6 @@ func (wal *WAL) recoverSingleSegment(path string, mm *memtable.MemtableManager, 
 		}
 	}
 	return nil
-}
-
-// applyToMemtable odlučuje da li podatak treba uneti ili obrisati na osnovu Tombstona
-func (wal *WAL) applyToMemtable(rec *Record.Record, mm *memtable.MemtableManager) {
-	if rec.Tombstone {
-		mm.Delete(rec.Key)
-	} else {
-		mm.Put(rec.Key, rec.Value)
-	}
 }
 
 // refactor reorganizuje .wal fajlove ako se promeni velicina segmenta
