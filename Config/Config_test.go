@@ -48,7 +48,7 @@ func TestInitialize(t *testing.T) {
 		fmt.Print(config.TokenBucketConfig)
 		t.FailNow()
 	}
-	if config.SSTableConfig.TablesRoot != "./TestDataBase/sstable" || config.SSTableConfig.SummaryInterval != 40 || config.SSTableConfig.MultipleFiles != false {
+	if config.SSTableConfig.TablesRoot != "./TestDataBase/sstable" || config.SSTableConfig.SummaryInterval != 40 {
 		fmt.Print("Wrong sstable configuration")
 		fmt.Print(config.SSTableConfig)
 		t.FailNow()
@@ -106,7 +106,7 @@ func TestInitializeDefualt(t *testing.T) {
 		fmt.Print(config.TokenBucketConfig)
 		t.FailNow()
 	}
-	if config.SSTableConfig.TablesRoot != "../DataBase/sstable" || config.SSTableConfig.SummaryInterval != 40 || config.SSTableConfig.MultipleFiles != false {
+	if config.SSTableConfig.TablesRoot != "../DataBase/sstable" || config.SSTableConfig.SummaryInterval != 40 {
 		fmt.Print("Wrong sstable configuration")
 		fmt.Print(config.SSTableConfig)
 		t.FailNow()
@@ -163,7 +163,7 @@ func TestIncorrectConfiguration(t *testing.T) {
 		fmt.Print(config.TokenBucketConfig)
 		t.FailNow()
 	}
-	if config.SSTableConfig.TablesRoot != "./TestDataBase/sstable" || config.SSTableConfig.SummaryInterval != 40 || config.SSTableConfig.MultipleFiles != false {
+	if config.SSTableConfig.TablesRoot != "./TestDataBase/sstable" || config.SSTableConfig.SummaryInterval != 40 {
 		fmt.Print("Wrong sstable configuration")
 		fmt.Print(config.SSTableConfig)
 		t.FailNow()

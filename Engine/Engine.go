@@ -49,15 +49,18 @@ func NewEngine(configPath string, walPath string, sstablePath string) (*Engine, 
 		return nil, err
 	}
 
-	engineMemtable, err := configuration.InitializeMemtable()
-	if err != nil {
-		return nil, err
-	}
-
 	configuration.SetSSTableRoot(sstablePath)
 	configuration.SetWALRoot(walPath)
 
 	engineLSMTree, err := configuration.InitializeLSM(engineBlockManager)
+	if err != nil {
+		return nil, err
+	}
+
+	engineMemtable, err := configuration.InitializeMemtable(
+		func(entries []*record.Record) error {
+			return engineLSMTree.Flush(entries)
+		})
 	if err != nil {
 		return nil, err
 	}
@@ -99,6 +102,10 @@ func (engine *Engine) WritePath(key string, value []byte) error {
 		return err
 	}
 	err = engine.memtable.PutRecord(rec)
+	if err != nil {
+		return err
+	}
+	err = engine.cache.Put(key, &value)
 	if err != nil {
 		return err
 	}
