@@ -105,30 +105,27 @@ func (engine *Engine) ReadPath(key string) ([]byte, error) {
 		return *value, nil
 	}
 	//ako nije pronadjeno u cache-u trazimo u memtableu
-	memValue, ok, err := engine.memtable.Get(key)
+	foundRecord, ok, err := engine.memtable.GetRecord(key)
 	if err != nil {
 		return nil, err
 	}
 	if ok {
-		//serijalizujemo u record
-		rec, _, err := record.DeserializeRecord(memValue)
-		//vracamo vrednost record-a
-		retVal := rec.Value
-		if err != nil {
-			return nil, err
-		}
+		retVal := foundRecord.Value
 		//dodajemo pronadjenu vrednost u cache
 		engine.cache.Put(key, &retVal)
 		return retVal, nil
 	}
+	//trazimo u lsm stablu vrednost ako nije pronadjena
 	sstValue, err := engine.lsmTree.Get(key)
 	if err != nil {
 		return nil, err
 	}
+	//deserijalizujemo pronadjen niz bajtova
 	rec, _, err := record.DeserializeRecord(sstValue)
 	if err != nil {
 		return nil, err
 	}
+	//vracamo vrednost iz record-a
 	retVal := rec.Value
 	return retVal, nil
 }
