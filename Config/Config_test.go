@@ -48,12 +48,12 @@ func TestInitialize(t *testing.T) {
 		fmt.Print(config.TokenBucketConfig)
 		t.FailNow()
 	}
-	if config.SSTableConfig.TablesRoot != "sstables" || config.SSTableConfig.SummaryInterval != 40 || config.SSTableConfig.MultipleFiles != false {
+	if config.SSTableConfig.TablesRoot != "./TestDataBase/sstable" || config.SSTableConfig.SummaryInterval != 40 || config.SSTableConfig.MultipleFiles != false {
 		fmt.Print("Wrong sstable configuration")
 		fmt.Print(config.SSTableConfig)
 		t.FailNow()
 	}
-	if config.WriteAheadLogConfig.SegmentSize != 40 {
+	if config.WriteAheadLogConfig.SegmentSize != 40 || config.WriteAheadLogConfig.FilePath != "./TestDataBase/walDATA" {
 		fmt.Print("Wrong WAL configuration")
 		fmt.Print(config.WriteAheadLogConfig)
 		t.FailNow()
@@ -64,6 +64,16 @@ func TestInitialize(t *testing.T) {
 		t.FailNow()
 	}
 	file.Close()
+	err = os.RemoveAll("./TestDataBase/sstable")
+	if err != nil {
+		fmt.Print(err)
+		t.FailNow()
+	}
+	err = os.RemoveAll("./TestDataBase/walDATA")
+	if err != nil {
+		fmt.Print(err)
+		t.FailNow()
+	}
 }
 
 func TestInitializeDefualt(t *testing.T) {
@@ -96,12 +106,12 @@ func TestInitializeDefualt(t *testing.T) {
 		fmt.Print(config.TokenBucketConfig)
 		t.FailNow()
 	}
-	if config.SSTableConfig.TablesRoot != "sstables" || config.SSTableConfig.SummaryInterval != 40 || config.SSTableConfig.MultipleFiles != false {
+	if config.SSTableConfig.TablesRoot != "../DataBase/sstable" || config.SSTableConfig.SummaryInterval != 40 || config.SSTableConfig.MultipleFiles != false {
 		fmt.Print("Wrong sstable configuration")
 		fmt.Print(config.SSTableConfig)
 		t.FailNow()
 	}
-	if config.WriteAheadLogConfig.SegmentSize != 40 {
+	if config.WriteAheadLogConfig.SegmentSize != 64 || config.WriteAheadLogConfig.FilePath != "../DataBase/walDATA" {
 		fmt.Print("Wrong WAL configuration")
 		fmt.Print(config.WriteAheadLogConfig)
 		t.FailNow()
@@ -153,12 +163,12 @@ func TestIncorrectConfiguration(t *testing.T) {
 		fmt.Print(config.TokenBucketConfig)
 		t.FailNow()
 	}
-	if config.SSTableConfig.TablesRoot != "sstables" || config.SSTableConfig.SummaryInterval != 40 || config.SSTableConfig.MultipleFiles != false {
+	if config.SSTableConfig.TablesRoot != "./TestDataBase/sstable" || config.SSTableConfig.SummaryInterval != 40 || config.SSTableConfig.MultipleFiles != false {
 		fmt.Print("Wrong sstable configuration")
 		fmt.Print(config.SSTableConfig)
 		t.FailNow()
 	}
-	if config.WriteAheadLogConfig.SegmentSize != 40 {
+	if config.WriteAheadLogConfig.SegmentSize != 40 || config.WriteAheadLogConfig.FilePath != "./TestDataBase/walData" {
 		fmt.Print("Wrong WAL configuration")
 		fmt.Print(config.WriteAheadLogConfig)
 		t.FailNow()
@@ -170,4 +180,14 @@ func TestIncorrectConfiguration(t *testing.T) {
 	}
 
 	file.Close()
+	err = os.RemoveAll("./TestDataBase/sstable")
+	if err != nil {
+		fmt.Print(err)
+		t.FailNow()
+	}
+	err = os.RemoveAll("./TestDataBase/walDATA")
+	if err != nil {
+		fmt.Print(err)
+		t.FailNow()
+	}
 }
