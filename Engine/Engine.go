@@ -13,12 +13,12 @@ import (
 )
 
 type Engine struct {
-	configuration configuration.Config
-	cache         cache.Cache
-	memtable      memtable.MemtableManager
-	lsmTree       lsm.LSM
-	writeAheadLog wal.WAL
-	blockManager  blockmanager.BlockManager
+	configuration *configuration.Config
+	cache         *cache.Cache
+	memtable      *memtable.MemtableManager
+	lsmTree       *lsm.LSM
+	writeAheadLog *wal.WAL
+	blockManager  *blockmanager.BlockManager
 	//TODO: add token bucket after tokenbucket merge
 }
 
@@ -73,13 +73,23 @@ func NewEngine(configPath string, walPath string, sstablePath string) (*Engine, 
 	}
 
 	return &Engine{
-		configuration: *configuration,
-		cache:         *engineCache,
-		memtable:      *engineMemtable,
-		lsmTree:       *engineLSMTree,
-		writeAheadLog: *engineWriteAheadLog,
-		blockManager:  *engineBlockManager,
+		configuration: configuration,
+		cache:         engineCache,
+		memtable:      engineMemtable,
+		lsmTree:       engineLSMTree,
+		writeAheadLog: engineWriteAheadLog,
+		blockManager:  engineBlockManager,
 	}, nil
+}
+
+func (engine *Engine) ShutDown() {
+	engine.writeAheadLog.Close()
+	engine.configuration = nil
+	engine.blockManager = nil
+	engine.memtable = nil
+	engine.lsmTree = nil
+	engine.writeAheadLog = nil
+	engine.blockManager = nil
 }
 
 func (engine *Engine) WritePath(key string, value []byte) error {
