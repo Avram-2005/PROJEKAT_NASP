@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
-	mt "github.com/Avram-2005/PROJEKAT_NASP/Memtable"
+	. "github.com/Avram-2005/PROJEKAT_NASP/Record"
 )
 
 var bm *BlockManager.BlockManager
@@ -21,7 +21,7 @@ func TestMain(m *testing.M) {
 	m.Run()
 }
 
-func testFlush(tempDir string, mem mt.Memtable, multFiles bool) (*SSTableManager, *SSTable, error) {
+func testFlush(tempDir string, entries []*Record, multFiles bool) (*SSTableManager, *SSTable, error) {
 	m, exists := testSSTManagers[tempDir]
 	if !exists {
 		var err error
@@ -36,7 +36,7 @@ func testFlush(tempDir string, mem mt.Memtable, multFiles bool) (*SSTableManager
 	}
 	m.config.MultipleFiles = multFiles
 
-	sst, err := m.Flush(mem)
+	sst, err := m.Flush(entries)
 	if err != nil {
 		return nil, nil, fmt.Errorf("Flush failed: %v", err)
 	}
@@ -45,8 +45,8 @@ func testFlush(tempDir string, mem mt.Memtable, multFiles bool) (*SSTableManager
 }
 
 func TestFlushFewSmallKVMultipleFiles(t *testing.T) {
-	mem := smallSmallKeyKVMemtable{}
-	m, sst, err := testFlush(t.TempDir(), mem, true)
+	entries := smallSmallKeyKVMemtableEntries()
+	m, sst, err := testFlush(t.TempDir(), entries, true)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
@@ -68,8 +68,8 @@ func TestFlushFewSmallKVMultipleFiles(t *testing.T) {
 }
 
 func TestFlushFewSmallKVOneFile(t *testing.T) {
-	mem := smallSmallKeyKVMemtable{}
-	m, sst, err := testFlush(t.TempDir(), mem, false)
+	entries := smallSmallKeyKVMemtableEntries()
+	m, sst, err := testFlush(t.TempDir(), entries, false)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
@@ -91,8 +91,8 @@ func TestFlushFewSmallKVOneFile(t *testing.T) {
 }
 
 func TestFlushFewLargeKVMultipleFiles(t *testing.T) {
-	mem := fewLargeKeyKVMemtable{}
-	m, sst, err := testFlush(t.TempDir(), mem, true)
+	entries := fewLargeKeyKVMemtableEntries()
+	m, sst, err := testFlush(t.TempDir(), entries, true)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
@@ -106,8 +106,8 @@ func TestFlushFewLargeKVMultipleFiles(t *testing.T) {
 }
 
 func TestFlushFewLargeKVOneFile(t *testing.T) {
-	mem := fewLargeKeyKVMemtable{}
-	m, sst, err := testFlush(t.TempDir(), mem, false)
+	entries := fewLargeKeyKVMemtableEntries()
+	m, sst, err := testFlush(t.TempDir(), entries, false)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
@@ -121,8 +121,8 @@ func TestFlushFewLargeKVOneFile(t *testing.T) {
 }
 
 func TestFlushManySmallKVMultipleFiles(t *testing.T) {
-	mem := manySmallKeyKVMemtable{}
-	m, sst, err := testFlush(t.TempDir(), mem, true)
+	entries := manySmallKeyKVMemtableEntries()
+	m, sst, err := testFlush(t.TempDir(), entries, true)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
@@ -138,8 +138,8 @@ func TestFlushManySmallKVMultipleFiles(t *testing.T) {
 }
 
 func TestFlushManySmallKVOneFile(t *testing.T) {
-	mem := manySmallKeyKVMemtable{}
-	m, sst, err := testFlush(t.TempDir(), mem, false)
+	entries := manySmallKeyKVMemtableEntries()
+	m, sst, err := testFlush(t.TempDir(), entries, false)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
@@ -155,8 +155,8 @@ func TestFlushManySmallKVOneFile(t *testing.T) {
 }
 
 func TestFlushManyLargeKVMultipleFIles(t *testing.T) {
-	mem := manyLargeKeyKVMemtable{}
-	m, sst, err := testFlush(t.TempDir(), mem, true)
+	entries := manyLargeKeyKVMemtableEntries()
+	m, sst, err := testFlush(t.TempDir(), entries, true)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
@@ -170,8 +170,8 @@ func TestFlushManyLargeKVMultipleFIles(t *testing.T) {
 }
 
 func TestFlushManyLargeKVOneFile(t *testing.T) {
-	mem := manyLargeKeyKVMemtable{}
-	m, sst, err := testFlush(t.TempDir(), mem, false)
+	entries := manyLargeKeyKVMemtableEntries()
+	m, sst, err := testFlush(t.TempDir(), entries, false)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
@@ -221,15 +221,15 @@ func testMergeFiles(t *testing.T, ssts []*SSTable, config SSTableConfig, expecte
 
 func TestMergeMultipleFiles(t *testing.T) {
 	tempDir := t.TempDir()
-	_, sst1, err := testFlush(tempDir, smallSmallKeyKVMemtable{}, true)
+	_, sst1, err := testFlush(tempDir, smallSmallKeyKVMemtableEntries(), true)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
-	_, sst2, err := testFlush(tempDir, fewLargeKeyKVMemtable{}, true)
+	_, sst2, err := testFlush(tempDir, fewLargeKeyKVMemtableEntries(), true)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
-	_, sst3, err := testFlush(tempDir, manySmallKeyKVMemtable{}, true)
+	_, sst3, err := testFlush(tempDir, manySmallKeyKVMemtableEntries(), true)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
@@ -248,15 +248,15 @@ func TestMergeMultipleFiles(t *testing.T) {
 
 func TestMergeOneFile(t *testing.T) {
 	tempDir := t.TempDir()
-	_, sst1, err := testFlush(tempDir, smallSmallKeyKVMemtable{}, false)
+	_, sst1, err := testFlush(tempDir, smallSmallKeyKVMemtableEntries(), false)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
-	_, sst2, err := testFlush(tempDir, fewLargeKeyKVMemtable{}, false)
+	_, sst2, err := testFlush(tempDir, fewLargeKeyKVMemtableEntries(), false)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
-	_, sst3, err := testFlush(tempDir, manySmallKeyKVMemtable{}, false)
+	_, sst3, err := testFlush(tempDir, manySmallKeyKVMemtableEntries(), false)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
@@ -275,11 +275,11 @@ func TestMergeOneFile(t *testing.T) {
 
 func testMergeHonorsTombstones(t *testing.T, multipleFiles bool) {
 	tempDir := t.TempDir()
-	_, olderSST, err := testFlush(tempDir, tombstoneOlderMemtable{}, multipleFiles)
+	_, olderSST, err := testFlush(tempDir, tombstoneOlderMemtableEntries(), multipleFiles)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
-	_, newerSST, err := testFlush(tempDir, tombstoneNewerMemtable{}, multipleFiles)
+	_, newerSST, err := testFlush(tempDir, tombstoneNewerMemtableEntries(), multipleFiles)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}

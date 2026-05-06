@@ -5,11 +5,10 @@ import (
 	"testing"
 	"time"
 
-	mt "github.com/Avram-2005/PROJEKAT_NASP/Memtable"
 	. "github.com/Avram-2005/PROJEKAT_NASP/Record"
 )
 
-func testLSM(t *testing.T, memtables []mt.Memtable) (lsm *LSM) {
+func testLSM(t *testing.T, flushBatches [][]*Record) (lsm *LSM) {
 	sstCfg := SSTableConfig{
 		SummaryInterval: 1,
 		MultipleFiles:   true,
@@ -23,8 +22,8 @@ func testLSM(t *testing.T, memtables []mt.Memtable) (lsm *LSM) {
 		t.Fatalf("Failed to create LSM: %v", err)
 	}
 
-	for i, mem := range memtables {
-		err := lsm.Flush(mem)
+	for i, records := range flushBatches {
+		err := lsm.Flush(records)
 		if err != nil {
 			t.Fatalf("Flush failed for memtable %d: %v", i, err)
 		}
@@ -33,8 +32,8 @@ func testLSM(t *testing.T, memtables []mt.Memtable) (lsm *LSM) {
 }
 
 func TestLSMFlushNoCompaction(t *testing.T) {
-	lsm := testLSM(t, []mt.Memtable{
-		smallSmallKeyKVMemtable{},
+	lsm := testLSM(t, [][]*Record{
+		smallSmallKeyKVMemtableEntries(),
 	})
 	if len(lsm.levels[0].tables) != 1 {
 		t.Fatalf("Expected 2 SSTables in level 0, got %d", len(lsm.levels[0].tables))
@@ -42,10 +41,10 @@ func TestLSMFlushNoCompaction(t *testing.T) {
 }
 
 func TestLSMFlushL0Compaction(t *testing.T) {
-	lsm := testLSM(t, []mt.Memtable{
-		smallSmallKeyKVMemtable{},
-		manyLargeKeyKVMemtable{},
-		smallSmallKeyKVMemtable{},
+	lsm := testLSM(t, [][]*Record{
+		smallSmallKeyKVMemtableEntries(),
+		manyLargeKeyKVMemtableEntries(),
+		smallSmallKeyKVMemtableEntries(),
 	})
 	if len(lsm.levels[0].tables) != 1 {
 		t.Fatalf("Expected 0 SSTables in level 0 after compaction, got %d", len(lsm.levels[0].tables))
@@ -56,11 +55,11 @@ func TestLSMFlushL0Compaction(t *testing.T) {
 }
 
 func TestLSMFlushL1Compaction(t *testing.T) {
-	lsm := testLSM(t, []mt.Memtable{
-		smallSmallKeyKVMemtable{},
-		manyLargeKeyKVMemtable{},
-		smallSmallKeyKVMemtable{},
-		manyLargeKeyKVMemtable{},
+	lsm := testLSM(t, [][]*Record{
+		smallSmallKeyKVMemtableEntries(),
+		manyLargeKeyKVMemtableEntries(),
+		smallSmallKeyKVMemtableEntries(),
+		manyLargeKeyKVMemtableEntries(),
 	})
 	if len(lsm.levels[0].tables) != 0 {
 		t.Fatalf("Expected 0 SSTables in level 0 after compaction, got %d", len(lsm.levels[0].tables))
@@ -74,9 +73,9 @@ func TestLSMFlushL1Compaction(t *testing.T) {
 }
 
 func TestLSMGetWithUpdatedAndDeletedKeysAfterCompaction(t *testing.T) {
-	lsm := testLSM(t, []mt.Memtable{
-		tombstoneOlderMemtable{},
-		tombstoneNewerMemtable{},
+	lsm := testLSM(t, [][]*Record{
+		tombstoneOlderMemtableEntries(),
+		tombstoneNewerMemtableEntries(),
 	})
 
 	keepVal, err := lsm.Get("keep")
@@ -100,19 +99,13 @@ func TestLSMGetWithUpdatedAndDeletedKeysAfterCompaction(t *testing.T) {
 	}
 }
 
-type largeOverlapMemtable struct {
-	mockMemtableBase
-	version int
-	count   int
-}
-
-func (m largeOverlapMemtable) GetSortedEntries() []*Record {
-	ts := time.Unix(int64(1000+m.version), 0)
-	entries := make([]*Record, m.count)
-	for i := range m.count {
+func largeOverlapMemtableEntries(version int, count int) []*Record {
+	ts := time.Unix(int64(1000+version), 0)
+	entries := make([]*Record, count)
+	for i := range count {
 		rec, _ := NewRecord(
 			fmt.Sprintf("bulk-%05d", i),
-			[]byte(fmt.Sprintf("v%02d-%05d", m.version, i)),
+			[]byte(fmt.Sprintf("v%02d-%05d", version, i)),
 			false,
 			ts,
 		)
@@ -141,10 +134,7 @@ func TestLSMGetLargeDatasetNewestWins(t *testing.T) {
 	}
 
 	for v := range versions {
-		if err := lsm.Flush(largeOverlapMemtable{
-			version: v,
-			count:   keyCount,
-		}); err != nil {
+		if err := lsm.Flush(largeOverlapMemtableEntries(v, keyCount)); err != nil {
 			t.Fatalf("Flush failed for version %d: %v", v, err)
 		}
 	}
