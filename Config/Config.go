@@ -50,86 +50,6 @@ type Config struct {
 	} `yaml:"LSMConfig"`
 }
 
-//TODO: delete when structs are merged to develop
-
-/*type MemtableManager struct {
-}
-
-type MemtableConfig struct {
-	Type              string //neka od tri strukture: hashmapa, skiplista ili b+ stablo
-	MaxSizeBytes      int    //max velicina u bajtovima
-	MaxSizeEntries    int    //max broj elemenata koji moze da primi
-	BPlusTreeDegree   int    //max stepen stabla
-	SkipListMaxHeight int    //max visina skipliste
-
-}
-
-func FakeFlush(kv []KeyValue) error {
-	return nil
-}
-
-type KeyValue struct {
-	Key       string
-	Value     []byte
-	Tombstone bool //za brisanje, true ako je obrisan
-}
-
-func NewMemtableManager(maxCount int, config MemtableConfig, Flush func([]KeyValue) error) (*MemtableManager, error) {
-	return &MemtableManager{}, nil
-}
-
-// Fake cache
-
-type Cache struct {
-}
-
-func NewCache(size int) (*Cache, error) {
-	return &Cache{}, nil
-}
-
-// Fake token bucket
-
-type TokenBucket struct {
-}
-
-func NewTokenBucket(maxNumTokens int64, refillInterval time.Duration) (*TokenBucket, error) {
-	return &TokenBucket{}, nil
-}
-
-// Fake SSTable
-
-type SSTableConfig struct {
-	SummaryInterval int
-	MultipleFiles   bool
-}
-
-type SSTableManager struct {
-}
-
-func SetupSSTableManager(root string, summaryInt int, multFiles bool, bm *BlockManager.BlockManager) (*SSTableManager, error) {
-	return &SSTableManager{}, nil
-}
-
-// Fake WAL
-type WAL struct {
-}
-
-func CreatNewWAL(sizeSegment int, blocksize int) (*WAL, error) {
-	return &WAL{}, nil
-}
-
-type LSM struct {
-}
-
-func NewLSM(lsmConfig LSMConfig, tablesRoot string, sstConfig SSTableConfig, bm *BlockManager.BlockManager) (*LSM, error) {
-	return &LSM{}, nil
-}
-
-type LSMConfig struct {
-	NumLevels        int
-	CompactionFactor int
-}*/
-
 type TokenBucket struct {
 }
 
@@ -179,7 +99,7 @@ WriteAheadLogConfig:
   FilePath: ../DataBase/walDATA
 LSMConfig:
   NumLevels: 4
-  CompactionFactor: 4`
+  CompactionFactor: 10`
 	bytesDefault := []byte(defaultValue)
 	err := yaml.Unmarshal(bytesDefault, config)
 	if err != nil {

@@ -58,7 +58,7 @@ func TestInitialize(t *testing.T) {
 		fmt.Print(config.WriteAheadLogConfig)
 		t.FailNow()
 	}
-	if config.LSMConfig.NumLevels != 4 || config.LSMConfig.CompactionFactor != 4 {
+	if config.LSMConfig.NumLevels != 4 || config.LSMConfig.CompactionFactor != 10 {
 		fmt.Print("Wrong LSM configuration")
 		fmt.Print(config.LSMConfig)
 		t.FailNow()
@@ -116,7 +116,7 @@ func TestInitializeDefualt(t *testing.T) {
 		fmt.Print(config.WriteAheadLogConfig)
 		t.FailNow()
 	}
-	if config.LSMConfig.NumLevels != 4 || config.LSMConfig.CompactionFactor != 4 {
+	if config.LSMConfig.NumLevels != 4 || config.LSMConfig.CompactionFactor != 10 {
 		fmt.Print("Wrong LSM configuration")
 		fmt.Print(config.LSMConfig)
 		t.FailNow()
@@ -173,7 +173,7 @@ func TestIncorrectConfiguration(t *testing.T) {
 		fmt.Print(config.WriteAheadLogConfig)
 		t.FailNow()
 	}
-	if config.LSMConfig.NumLevels != 4 || config.LSMConfig.CompactionFactor != 4 {
+	if config.LSMConfig.NumLevels != 4 || config.LSMConfig.CompactionFactor != 10 {
 		fmt.Print("Wrong LSM configuration")
 		fmt.Print(config.LSMConfig)
 		t.FailNow()
