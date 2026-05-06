@@ -30,3 +30,6 @@ SSTableConfig:
   MultipleFiles: false
 WriteAheadLogConfig:
   SegmentSize: 40
+LSMConfig:
+  NumLevels: 4
+  CompactionFactor: 4

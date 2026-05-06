@@ -38,6 +38,10 @@ type Config struct {
 	WriteAheadLogConfig struct {
 		SegmentSize int `yaml:"SegmentSize"`
 	} `yaml:"WriteAheadLogConfig"`
+	LSMConfig struct {
+		NumLevels        int `yaml:"NumLevels"`
+		CompactionFactor int `yaml:"CompactionFactor"`
+	} `yaml:"LSMConfig"`
 }
 
 //TODO: delete when structs are merged to develop
@@ -108,6 +112,18 @@ func CreatNewWAL(sizeSegment int, blocksize int) (*WAL, error) {
 	return &WAL{}, nil
 }
 
+type LSM struct {
+}
+
+func NewLSM(lsmConfig LSMConfig, tablesRoot string, sstConfig SSTableConfig, bm *BlockManager.BlockManager) (*LSM, error) {
+	return &LSM{}, nil
+}
+
+type LSMConfig struct {
+	NumLevels        int
+	CompactionFactor int
+}
+
 //Config related functions
 
 func NewConfig() *Config {
@@ -146,7 +162,10 @@ SSTableConfig:
   SummaryInterval: 40
   MultipleFiles: false
 WriteAheadLogConfig:
-  SegmentSize: 40`
+  SegmentSize: 40
+LSMConfig:
+  NumLevels: 4
+  CompactionFactor: 4`
 	bytesDefault := []byte(defaultValue)
 	err := yaml.Unmarshal(bytesDefault, config)
 	if err != nil {
@@ -171,7 +190,7 @@ func (config *Config) Initialize(bm *BlockManager.BlockManager, configFile *os.F
 		return err
 	}
 	isConfigValid := true
-	_, err = config.InitializeBlockManager()
+	bm, err = config.InitializeBlockManager()
 	if err != nil {
 		fmt.Print("Blockmanager configuration is incorrect, default configuration will be used.")
 		config.BufferPoolConfig = defaultConfig.BufferPoolConfig
@@ -195,7 +214,7 @@ func (config *Config) Initialize(bm *BlockManager.BlockManager, configFile *os.F
 		config.TokenBucketConfig = defaultConfig.TokenBucketConfig
 		isConfigValid = false
 	}
-	_, err = config.InitializeSSTable()
+	_, err = config.InitializeSSTable(bm)
 	if err != nil {
 		fmt.Print("SSTable configuration is incorrect, default configuration will be used.")
 		config.SSTableConfig = defaultConfig.SSTableConfig
@@ -236,14 +255,22 @@ func (config *Config) InitializeTokenBucket() (*TokenBucket, error) {
 	return NewTokenBucket(int64(config.TokenBucketConfig.MaxNumTokens), time.Millisecond*time.Duration(config.TokenBucketConfig.RefillTime))
 }
 
-func (config *Config) InitializeSSTable() (*SSTableManager, error) {
-	bm, err := config.InitializeBlockManager()
-	if err != nil {
-		return nil, err
-	}
+func (config *Config) InitializeSSTable(bm *BlockManager.BlockManager) (*SSTableManager, error) {
 	return SetupSSTableManager(config.SSTableConfig.TablesRoot, config.SSTableConfig.SummaryInterval, config.SSTableConfig.MultipleFiles, bm)
 }
 
 func (config *Config) InitializeWAL() (*WAL, error) {
 	return CreatNewWAL(config.WriteAheadLogConfig.SegmentSize, config.BufferPoolConfig.BlockSize)
+}
+
+func (config *Config) InitializeLSM(bm *BlockManager.BlockManager) (*LSM, error) {
+	LSMConfig := &LSMConfig{
+		NumLevels:        config.LSMConfig.NumLevels,
+		CompactionFactor: config.LSMConfig.CompactionFactor,
+	}
+	SSTableConfig := &SSTableConfig{
+		SummaryInterval: config.SSTableConfig.SummaryInterval,
+		MultipleFiles:   config.SSTableConfig.MultipleFiles,
+	}
+	return NewLSM(*LSMConfig, config.SSTableConfig.TablesRoot, *SSTableConfig, bm)
 }
