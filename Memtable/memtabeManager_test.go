@@ -3,6 +3,7 @@ package memtable
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	record "github.com/Avram-2005/PROJEKAT_NASP/Record"
 )
@@ -139,7 +140,7 @@ func TestManagerDelete(t *testing.T) {
 			if !found || string(val) != "delete_value" {
 				t.Fatal("Key should exist before delete")
 			}
-			err := m.Delete("delete_key")
+			err := m.Delete("delete_key", time.Now())
 			if err != nil {
 				t.Fatalf("Delete failed: %v", err)
 			}
@@ -155,7 +156,7 @@ func TestManagerDeleteNonExistent(t *testing.T) {
 	for _, typ := range allStructTypes {
 		t.Run(typ, func(t *testing.T) {
 			m := makeManager(t, typ, 3, 10)
-			err := m.Delete("nonexistent_key_12345")
+			err := m.Delete("nonexistent_key_12345", time.Now())
 			if err != nil {
 				t.Fatalf("Delete of non-existent key should not return error, got %v", err)
 			}
@@ -169,7 +170,7 @@ func TestManagerGetAfterDeleteAndRotation(t *testing.T) {
 			m := makeManager(t, typ, 2, 2)
 			m.Put("key1", []byte("value1"))
 			m.Put("key2", []byte("value2"))
-			m.Delete("key1")
+			m.Delete("key1", time.Now())
 			val, found, _ := m.Get("key2")
 			if !found || string(val) != "value2" {
 				t.Fatal("key2 should exist before rotation")
@@ -224,7 +225,7 @@ func TestGetRecordAfterDelete(t *testing.T) {
 		t.Run(typ, func(t *testing.T) {
 			m := makeManager(t, typ, 3, 10)
 			m.Put("delete_key", []byte("delete_value"))
-			m.Delete("delete_key")
+			m.Delete("delete_key", time.Now())
 			rec, found, err := m.GetRecord("delete_key")
 			if err != nil {
 				t.Fatalf("GetRecord error: %v", err)
@@ -267,7 +268,7 @@ func TestGetRecordAfterRotation(t *testing.T) {
 			m := makeManager(t, typ, 2, 2)
 			m.Put("key1", []byte("value1"))
 			m.Put("key2", []byte("value2"))
-			m.Delete("key1")
+			m.Delete("key1", time.Now())
 			m.Put("key3", []byte("value3"))
 			rec, found, err := m.GetRecord("key1")
 			if err != nil {
