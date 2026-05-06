@@ -1,6 +1,10 @@
 package engine
 
-import "testing"
+import (
+	"fmt"
+	"os"
+	"testing"
+)
 
 func initEngine(t *testing.T) Engine {
 	root := t.TempDir()
@@ -17,4 +21,28 @@ func initEngine(t *testing.T) Engine {
 
 func TestEngineOnePutGet(t *testing.T) {
 
+}
+
+func TestEngineBasicFunctions(t *testing.T) {
+	configPath := "engineConfig_test.yaml"
+	walPath := "TestDataBase/walDATA"
+	sstPath := "TestDataBase/sstable"
+
+	engine, err := NewEngine(configPath, walPath, sstPath)
+	if err != nil {
+		fmt.Print("Engine initialization failed!")
+		t.FailNow()
+	}
+
+	engine.ShutDown()
+	err = os.RemoveAll(walPath)
+	if err != nil {
+		fmt.Print("Deleting WAL directory failed!")
+		t.FailNow()
+	}
+	err = os.RemoveAll(sstPath)
+	if err != nil {
+		fmt.Print("Deleting SSTable directory failed!")
+		t.FailNow()
+	}
 }
