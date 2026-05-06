@@ -120,25 +120,27 @@ func (engine *Engine) ReadPath(key string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	//deserijalizujemo pronadjen niz bajtova
-	rec, _, err := record.DeserializeRecord(sstValue)
-	if err != nil {
-		return nil, err
-	}
 	//vracamo vrednost iz record-a
-	retVal := rec.Value
-	return retVal, nil
+	return sstValue, nil
 }
 
 func (engine *Engine) Put(key string, value []byte) error {
-	return nil
+	return engine.WritePath(key, value)
 }
 
-func (engin *Engine) Get(key string) ([]byte, error) {
-	return nil, nil
+func (engine *Engine) Get(key string) ([]byte, error) {
+	return engine.ReadPath(key)
 }
 
 func (engine *Engine) Delete(key string) error {
+	rec, err := engine.writeAheadLog.DeleteRecord(key)
+	if err != nil {
+		return err
+	}
+	err = engine.memtable.Delete(key, rec.Timestamp)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
