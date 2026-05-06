@@ -213,3 +213,11 @@ func (config *Config) InitializeLSM(bm *BlockManager.BlockManager) (*sstable.LSM
 	}
 	return sstable.NewLSM(*LSMConfig, config.SSTableConfig.TablesRoot, *SSTableConfig, bm)
 }
+
+func (config *Config) SetSSTableRoot(SSTableRoot string) {
+	config.SSTableConfig.TablesRoot = SSTableRoot
+}
+
+func (config *Config) SetWALRoot(WALRoot string) {
+	config.WriteAheadLogConfig.FilePath = WALRoot
+}
