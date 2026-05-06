@@ -1,5 +1,9 @@
 package memtable
 
+import (
+	record "github.com/Avram-2005/PROJEKAT_NASP/Record"
+)
+
 type KeyValue struct {
 	Key       string
 	Value     []byte
@@ -16,18 +20,19 @@ type Iterator interface {
 	Error() error
 }
 type Memtable interface {
-	Put(key string, value []byte) error
+	PutRecord(rec *record.Record) error
 	Get(key string) ([]byte, bool, error) //povratna vred-vrednost, uspesnost dodavanja, error
-	Delete(key string) (bool, error)      //povratna vred- uspesnost brisanja, error
-
+	GetRecord(key string) (*record.Record, bool, error)
+	Put(key string, value []byte) error
+	Delete(key string) (bool, error)
 	Size() int         //broj postojecih elem (bez tombstone elem)
 	TotalEntries() int //ukupan broj unosa
 	IsEmpty() bool
 	Clear()
 
-	GetSortedEntries() []KeyValue //povratna vred/ parovi kljuc-vred neophodni za sstable
-	RangeScan(startKey, endKey string) []KeyValue
-	PrefixScan(prefix string) []KeyValue
+	GetSortedEntries() []*record.Record //povratna vrednost je record, neophodna za sstable
+	RangeScan(startKey, endKey string) []*record.Record
+	PrefixScan(prefix string) []*record.Record
 
 	Iterator() Iterator
 	ShouldFlush() bool //provera da li je vreme za flush u SSTable
