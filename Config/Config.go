@@ -10,6 +10,7 @@ import (
 	cache "github.com/Avram-2005/PROJEKAT_NASP/Cache"
 	sstable "github.com/Avram-2005/PROJEKAT_NASP/LSM"
 	memtable "github.com/Avram-2005/PROJEKAT_NASP/Memtable"
+	record "github.com/Avram-2005/PROJEKAT_NASP/Record"
 	wal "github.com/Avram-2005/PROJEKAT_NASP/WAL"
 
 	"go.yaml.in/yaml/v4"
@@ -136,7 +137,15 @@ func (config *Config) Initialize(bm *BlockManager.BlockManager, configFile *os.F
 		config.CacheConfig = defaultConfig.CacheConfig
 		isConfigValid = false
 	}
-	_, err = config.InitializeMemtable()
+	lsm, err := config.InitializeLSM(bm)
+	if err != nil {
+		fmt.Print("SSTable configuration is incorrect, default configuration will be used.\n")
+		config.SSTableConfig = defaultConfig.SSTableConfig
+		isConfigValid = false
+	}
+	_, err = config.InitializeMemtable(func(entries []*record.Record) error {
+		return lsm.Flush(entries)
+	})
 	if err != nil {
 		fmt.Print("Memtable configuration is incorrect, default configuration will be used.\n")
 		config.MemtableConfig = defaultConfig.MemtableConfig
@@ -146,12 +155,6 @@ func (config *Config) Initialize(bm *BlockManager.BlockManager, configFile *os.F
 	if err != nil {
 		fmt.Print("Token bucket configuration is incorrect, default configuration will be used.\n")
 		config.TokenBucketConfig = defaultConfig.TokenBucketConfig
-		isConfigValid = false
-	}
-	_, err = config.InitializeSSTable(bm)
-	if err != nil {
-		fmt.Print("SSTable configuration is incorrect, default configuration will be used.\n")
-		config.SSTableConfig = defaultConfig.SSTableConfig
 		isConfigValid = false
 	}
 	wal, err := config.InitializeWAL()
@@ -171,7 +174,7 @@ func (config *Config) InitializeBlockManager() (*BlockManager.BlockManager, erro
 	return BlockManager.NewBlockManager(config.BufferPoolConfig.MaxSize, config.BufferPoolConfig.BlockSize)
 }
 
-func (config *Config) InitializeMemtable() (*memtable.MemtableManager, error) {
+func (config *Config) InitializeMemtable(Flush func([]*record.Record) error) (*memtable.MemtableManager, error) {
 	memtableConfig := &memtable.MemtableConfig{
 		Type:              config.MemtableConfig.Type,
 		MaxSizeBytes:      config.MemtableConfig.MaxSizeBytes,
@@ -179,7 +182,7 @@ func (config *Config) InitializeMemtable() (*memtable.MemtableManager, error) {
 		BPlusTreeDegree:   config.MemtableConfig.BPlusTreeDegree,
 		SkipListMaxHeight: config.MemtableConfig.SkipListMaxHeight,
 	}
-	return memtable.NewMemtableManager(config.MemtableConfig.MaxCount, *memtableConfig, nil)
+	return memtable.NewMemtableManager(config.MemtableConfig.MaxCount, *memtableConfig, Flush)
 }
 
 func (config *Config) InitializeCache() (*cache.Cache, error) {
@@ -188,14 +191,6 @@ func (config *Config) InitializeCache() (*cache.Cache, error) {
 
 func (config *Config) InitializeTokenBucket() (*TokenBucket, error) {
 	return NewTokenBucket(int64(config.TokenBucketConfig.MaxNumTokens), time.Millisecond*time.Duration(config.TokenBucketConfig.RefillTime))
-}
-
-func (config *Config) InitializeSSTable(bm *BlockManager.BlockManager) (*sstable.SSTableManager, error) {
-	sstableConfig := &sstable.SSTableConfig{
-		SummaryInterval: config.SSTableConfig.SummaryInterval,
-		MultipleFiles:   config.SSTableConfig.MultipleFiles,
-	}
-	return sstable.SetupSSTableManager(config.SSTableConfig.TablesRoot, *sstableConfig, bm)
 }
 
 func (config *Config) InitializeWAL() (*wal.WAL, error) {
