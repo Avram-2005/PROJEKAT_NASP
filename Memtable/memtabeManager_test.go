@@ -190,3 +190,112 @@ func TestManagerGetAfterDeleteAndRotation(t *testing.T) {
 		})
 	}
 }
+
+func TestGetRecord(t *testing.T) {
+	for _, typ := range allStructTypes {
+		t.Run(typ, func(t *testing.T) {
+			m := makeManager(t, typ, 3, 10)
+			m.Put("test_key", []byte("test_value"))
+			rec, found, err := m.GetRecord("test_key")
+			if err != nil {
+				t.Fatalf("GetRecord error: %v", err)
+			}
+			if !found {
+				t.Fatal("Key not found")
+			}
+			if rec.Key != "test_key" {
+				t.Fatalf("Wrong key, expected test_key, got %s", rec.Key)
+			}
+			if string(rec.Value) != "test_value" {
+				t.Fatalf("Wrong value, expected test_value, got %s", rec.Value)
+			}
+			if rec.Tombstone {
+				t.Fatal("Tombstone should be false for existing key")
+			}
+			if rec.Timestamp.IsZero() {
+				t.Fatal("Timestamp is zero")
+			}
+		})
+	}
+}
+
+func TestGetRecordAfterDelete(t *testing.T) {
+	for _, typ := range allStructTypes {
+		t.Run(typ, func(t *testing.T) {
+			m := makeManager(t, typ, 3, 10)
+			m.Put("delete_key", []byte("delete_value"))
+			m.Delete("delete_key")
+			rec, found, err := m.GetRecord("delete_key")
+			if err != nil {
+				t.Fatalf("GetRecord error: %v", err)
+			}
+			if !found {
+				t.Fatal(" Key should exist as tombstone")
+			}
+			if !rec.Tombstone {
+				t.Fatal("Tombstone should be true after delete")
+			}
+			if rec.Value == nil {
+				t.Fatal("Value should not be nil for tombstone")
+			}
+		})
+	}
+}
+
+func TestGetRecordNonExistent(t *testing.T) {
+	for _, typ := range allStructTypes {
+		t.Run(typ, func(t *testing.T) {
+			m := makeManager(t, typ, 3, 10)
+
+			rec, found, err := m.GetRecord("nonexistent_key_12345")
+			if err != nil {
+				t.Fatalf("GetRecord error: %v", err)
+			}
+			if found {
+				t.Fatal("Should return found=false for non-existent key")
+			}
+			if rec != nil {
+				t.Fatal("Should return nil record for non-existent key")
+			}
+		})
+	}
+}
+
+func TestGetRecordAfterRotation(t *testing.T) {
+	for _, typ := range allStructTypes {
+		t.Run(typ, func(t *testing.T) {
+			m := makeManager(t, typ, 2, 2)
+			m.Put("key1", []byte("value1"))
+			m.Put("key2", []byte("value2"))
+			m.Delete("key1")
+			m.Put("key3", []byte("value3"))
+			rec, found, err := m.GetRecord("key1")
+			if err != nil {
+				t.Fatalf("GetRecord error: %v", err)
+			}
+			if !found {
+				t.Fatal("Key1 should exist as tombstone")
+			}
+			if !rec.Tombstone {
+				t.Fatal("Key1 should be tombstone")
+			}
+			rec2, found2, err := m.GetRecord("key2")
+			if err != nil {
+				t.Fatalf("GetRecord error for key2: %v", err)
+			}
+			if found2 && rec2.Tombstone {
+				t.Fatal("Key2 should not be tombstone if found")
+			}
+			rec3, found3, err := m.GetRecord("key3")
+			if err != nil {
+				t.Fatalf("GetRecord error for key3: %v", err)
+			}
+			if !found3 {
+				t.Fatal("Key3 not found")
+			}
+			if string(rec3.Value) != "value3" {
+				t.Fatalf("Key3 wrong value, got %s", rec3.Value)
+			}
+		})
+	}
+}

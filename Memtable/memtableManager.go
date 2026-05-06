@@ -129,6 +129,19 @@ func (mm *MemtableManager) Get(key string) ([]byte, bool, error) {
 	return nil, false, nil
 }
 
+func (mm *MemtableManager) GetRecord(key string) (*record.Record, bool, error) {
+	for i := len(mm.instances) - 1; i >= 0; i-- {
+		rec, found, err := mm.instances[i].GetRecord(key)
+		if err != nil {
+			return nil, false, err
+		}
+		if found {
+			return rec, true, nil
+		}
+	}
+	return nil, false, nil
+}
+
 // vraca trenutni broj instanci u memoriji
 func (mm *MemtableManager) InstanceCount() int {
 	return len(mm.instances)
