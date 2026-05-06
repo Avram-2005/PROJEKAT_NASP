@@ -7,6 +7,11 @@ import (
 	"time"
 
 	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
+	cache "github.com/Avram-2005/PROJEKAT_NASP/Cache"
+	sstable "github.com/Avram-2005/PROJEKAT_NASP/LSM"
+	memtable "github.com/Avram-2005/PROJEKAT_NASP/Memtable"
+	wal "github.com/Avram-2005/PROJEKAT_NASP/WAL"
+
 	"go.yaml.in/yaml/v4"
 )
 
@@ -36,7 +41,8 @@ type Config struct {
 		MultipleFiles   bool   `yaml:"MultipleFiles"`
 	} `yaml:"SSTableConfig"`
 	WriteAheadLogConfig struct {
-		SegmentSize int `yaml:"SegmentSize"`
+		SegmentSize int    `yaml:"SegmentSize"`
+		FilePath    string `yaml:"FilePath"`
 	} `yaml:"WriteAheadLogConfig"`
 	LSMConfig struct {
 		NumLevels        int `yaml:"NumLevels"`
@@ -46,7 +52,7 @@ type Config struct {
 
 //TODO: delete when structs are merged to develop
 
-type MemtableManager struct {
+/*type MemtableManager struct {
 }
 
 type MemtableConfig struct {
@@ -122,6 +128,13 @@ func NewLSM(lsmConfig LSMConfig, tablesRoot string, sstConfig SSTableConfig, bm 
 type LSMConfig struct {
 	NumLevels        int
 	CompactionFactor int
+}*/
+
+type TokenBucket struct {
+}
+
+func NewTokenBucket(maxNumTokens int64, refillInterval time.Duration) (*TokenBucket, error) {
+	return &TokenBucket{}, nil
 }
 
 //Config related functions
@@ -236,41 +249,45 @@ func (config *Config) InitializeBlockManager() (*BlockManager.BlockManager, erro
 	return BlockManager.NewBlockManager(config.BufferPoolConfig.MaxSize, config.BufferPoolConfig.BlockSize)
 }
 
-func (config *Config) InitializeMemtable() (*MemtableManager, error) {
-	memtableConfig := &MemtableConfig{
+func (config *Config) InitializeMemtable() (*memtable.MemtableManager, error) {
+	memtableConfig := &memtable.MemtableConfig{
 		Type:              config.MemtableConfig.Type,
 		MaxSizeBytes:      config.MemtableConfig.MaxSizeBytes,
 		MaxSizeEntries:    config.MemtableConfig.MaxSizeEntries,
 		BPlusTreeDegree:   config.MemtableConfig.BPlusTreeDegree,
 		SkipListMaxHeight: config.MemtableConfig.SkipListMaxHeight,
 	}
-	return NewMemtableManager(config.MemtableConfig.MaxCount, *memtableConfig, FakeFlush)
+	return memtable.NewMemtableManager(config.MemtableConfig.MaxCount, *memtableConfig, nil)
 }
 
-func (config *Config) InitializeCache() (*Cache, error) {
-	return NewCache(config.CacheConfig.MaxSize)
+func (config *Config) InitializeCache() (*cache.Cache, error) {
+	return cache.NewCache(config.CacheConfig.MaxSize)
 }
 
 func (config *Config) InitializeTokenBucket() (*TokenBucket, error) {
 	return NewTokenBucket(int64(config.TokenBucketConfig.MaxNumTokens), time.Millisecond*time.Duration(config.TokenBucketConfig.RefillTime))
 }
 
-func (config *Config) InitializeSSTable(bm *BlockManager.BlockManager) (*SSTableManager, error) {
-	return SetupSSTableManager(config.SSTableConfig.TablesRoot, config.SSTableConfig.SummaryInterval, config.SSTableConfig.MultipleFiles, bm)
-}
-
-func (config *Config) InitializeWAL() (*WAL, error) {
-	return CreatNewWAL(config.WriteAheadLogConfig.SegmentSize, config.BufferPoolConfig.BlockSize)
-}
-
-func (config *Config) InitializeLSM(bm *BlockManager.BlockManager) (*LSM, error) {
-	LSMConfig := &LSMConfig{
-		NumLevels:        config.LSMConfig.NumLevels,
-		CompactionFactor: config.LSMConfig.CompactionFactor,
-	}
-	SSTableConfig := &SSTableConfig{
+func (config *Config) InitializeSSTable(bm *BlockManager.BlockManager) (*sstable.SSTableManager, error) {
+	sstableConfig := &sstable.SSTableConfig{
 		SummaryInterval: config.SSTableConfig.SummaryInterval,
 		MultipleFiles:   config.SSTableConfig.MultipleFiles,
 	}
-	return NewLSM(*LSMConfig, config.SSTableConfig.TablesRoot, *SSTableConfig, bm)
+	return sstable.SetupSSTableManager(config.SSTableConfig.TablesRoot, *sstableConfig, bm)
+}
+
+func (config *Config) InitializeWAL() (*wal.WAL, error) {
+	return wal.CreatNewWAL(config.WriteAheadLogConfig.SegmentSize, config.BufferPoolConfig.BlockSize, config.WriteAheadLogConfig.FilePath, config.MemtableConfig.MaxCount)
+}
+
+func (config *Config) InitializeLSM(bm *BlockManager.BlockManager) (*sstable.LSM, error) {
+	LSMConfig := &sstable.LSMConfig{
+		NumLevels:        config.LSMConfig.NumLevels,
+		CompactionFactor: config.LSMConfig.CompactionFactor,
+	}
+	SSTableConfig := &sstable.SSTableConfig{
+		SummaryInterval: config.SSTableConfig.SummaryInterval,
+		MultipleFiles:   config.SSTableConfig.MultipleFiles,
+	}
+	return sstable.NewLSM(*LSMConfig, config.SSTableConfig.TablesRoot, *SSTableConfig, bm)
 }
