@@ -34,5 +34,5 @@ WriteAheadLogConfig:
   FilePath: ./TestDataBase/walData
 LSMConfig:
   NumLevels: 4
-  CompactionFactor: 4
+  CompactionFactor: 10
 
