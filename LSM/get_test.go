@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"testing"
 
-	mt "github.com/Avram-2005/PROJEKAT_NASP/Memtable"
+	. "github.com/Avram-2005/PROJEKAT_NASP/Record"
 )
 
 var testTempDirs = make(map[testHelper]string)
@@ -18,7 +18,7 @@ type testHelper interface {
 	TempDir() string
 }
 
-func flush(t testHelper, multFiles bool, mem mt.Memtable) (*SSTableManager, *SSTable) {
+func flush(t testHelper, multFiles bool, entries []*Record) (*SSTableManager, *SSTable) {
 	// Get or create temp directory for this test
 	tempDir, exists := testTempDirs[t]
 	if !exists {
@@ -40,7 +40,7 @@ func flush(t testHelper, multFiles bool, mem mt.Memtable) (*SSTableManager, *SST
 	}
 	m.config.MultipleFiles = multFiles
 
-	sst, err := m.Flush(mem)
+	sst, err := m.Flush(entries)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
@@ -48,15 +48,15 @@ func flush(t testHelper, multFiles bool, mem mt.Memtable) (*SSTableManager, *SST
 }
 
 func flush1(t testHelper, multFiles bool) (*SSTableManager, *SSTable) {
-	return flush(t, multFiles, &manySmallKeyKVMemtable{})
+	return flush(t, multFiles, manySmallKeyKVMemtableEntries())
 }
 
 func flush2(t testHelper, multFiles bool) (*SSTableManager, *SSTable) {
-	return flush(t, multFiles, &fewLargeKeyKVMemtable{})
+	return flush(t, multFiles, fewLargeKeyKVMemtableEntries())
 }
 
 func flush3(t testHelper, multFiles bool) (*SSTableManager, *SSTable) {
-	return flush(t, multFiles, &manyLargeKeyKVMemtable{})
+	return flush(t, multFiles, manyLargeKeyKVMemtableEntries())
 }
 
 func testGetSpecific(t *testing.T, key string, expectedValue string, multFiles bool) {

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
-	mt "github.com/Avram-2005/PROJEKAT_NASP/Memtable"
+	. "github.com/Avram-2005/PROJEKAT_NASP/Record"
 )
 
 // FIXME: Delete this after config is done
@@ -91,8 +91,8 @@ func (l *Level) delete() error {
 	return nil
 }
 
-func (lsm *LSM) Flush(mem mt.Memtable) error {
-	sst, err := lsm.sstm.Flush(mem)
+func (lsm *LSM) Flush(records []*Record) error {
+	sst, err := lsm.sstm.Flush(records)
 	if err != nil {
 		return fmt.Errorf("failed to flush memtable: %v", err)
 	}
