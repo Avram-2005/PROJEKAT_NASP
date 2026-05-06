@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"os"
+
 	blockmanager "github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
 	cache "github.com/Avram-2005/PROJEKAT_NASP/Cache"
 	configuration "github.com/Avram-2005/PROJEKAT_NASP/Config"
@@ -17,18 +19,118 @@ type Engine struct {
 	lsmTree       lsm.LSM
 	writeAheadLog wal.WAL
 	blockManager  blockmanager.BlockManager
+	//TODO: add token bucket after tokenbucket merge
 }
 
-func (engine *Engine) NewEngine() (*Engine, error) {
-	return nil, nil
+// TODO: incorporate token bucket after merge
+func NewEngine(configPath string, walPath string, sstablePath string) (*Engine, error) {
+	configuration := configuration.NewConfig()
+	//kreiramo blockmanager koji samo cita sadrzaj config fajla
+	temporaryBlockManager, err := blockmanager.NewBlockManager(2, 4)
+	if err != nil {
+		return nil, err
+	}
+	//otvaramo specificirani config fajl
+	file, err := os.OpenFile(configPath, 0644, os.FileMode(os.O_RDONLY))
+	if err != nil {
+		return nil, err
+	}
+	//initialize cita config fajl, proverava validnost vrednosti i cuva sve sto je dobro
+	//bilo koje nevalidne konfiguracije config zamenjuje za default
+	//engine.configuration = *configuration
+	configuration.Initialize(temporaryBlockManager, file)
+	engineCache, err := configuration.InitializeCache()
+	if err != nil {
+		return nil, err
+	}
+
+	engineBlockManager, err := configuration.InitializeBlockManager()
+	if err != nil {
+		return nil, err
+	}
+
+	engineMemtable, err := configuration.InitializeMemtable()
+	if err != nil {
+		return nil, err
+	}
+
+	configuration.SetSSTableRoot(sstablePath)
+	configuration.SetWALRoot(walPath)
+
+	engineLSMTree, err := configuration.InitializeLSM(engineBlockManager)
+	if err != nil {
+		return nil, err
+	}
+
+	engineWriteAheadLog, err := configuration.InitializeWAL()
+	if err != nil {
+		return nil, err
+	}
+
+	err = engineWriteAheadLog.Recovery(engineMemtable)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Engine{
+		configuration: *configuration,
+		cache:         *engineCache,
+		memtable:      *engineMemtable,
+		lsmTree:       *engineLSMTree,
+		writeAheadLog: *engineWriteAheadLog,
+		blockManager:  *engineBlockManager,
+	}, nil
 }
 
 func (engine *Engine) WritePath(key string, value []byte) error {
+
+	rec, err := engine.writeAheadLog.AddRecord(key, value)
+	if err != nil {
+		return err
+	}
+	err = engine.memtable.PutRecord(rec)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
 func (engine *Engine) ReadPath(key string) ([]byte, error) {
-	return nil, nil
+	//proveravamo da li vrednost u cache-u
+	value, err, ok := engine.cache.Get(key)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		return *value, nil
+	}
+	//ako nije pronadjeno u cache-u trazimo u memtableu
+	memValue, ok, err := engine.memtable.Get(key)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		//serijalizujemo u record
+		rec, _, err := record.DeserializeRecord(memValue)
+		//vracamo vrednost record-a
+		retVal := rec.Value
+		if err != nil {
+			return nil, err
+		}
+		//dodajemo pronadjenu vrednost u cache
+		engine.cache.Put(key, &retVal)
+		return retVal, nil
+	}
+	sstValue, err := engine.lsmTree.Get(key)
+	if err != nil {
+		return nil, err
+	}
+	rec, _, err := record.DeserializeRecord(sstValue)
+	if err != nil {
+		return nil, err
+	}
+	retVal := rec.Value
+	return retVal, nil
 }
 
 func (engine *Engine) Put(key string, value []byte) error {
