@@ -1,4 +1,4 @@
-package Snapshot
+package snapshot
 
 import (
 	"time"
@@ -9,4 +9,5 @@ import (
 type SnapshotInterface interface {
 	GetTimestamp() time.Time
 	GetValue(bm *BlockManager.BlockManager) (*[]byte, error)
+	GetType() string
 }

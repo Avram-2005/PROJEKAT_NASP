@@ -1,4 +1,4 @@
-package Snapshot
+package snapshot
 
 import (
 	"os"
@@ -50,4 +50,8 @@ func (sp *SnapshotSSTable) GetValue(bm *BlockManager.BlockManager) (*[]byte, err
 		return nil, err
 	}
 	return returnValue, nil
+}
+
+func (sp *SnapshotSSTable) GetType() string {
+	return "sstable"
 }
