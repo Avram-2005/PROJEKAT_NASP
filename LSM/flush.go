@@ -70,7 +70,7 @@ func commonPrefixLength(a, b string) int {
 
 func (iw *indexWriter) Write(key string, offset uint64) uint64 {
 	prefixSize := 0
-	if iw.prevKey != "" {
+	if iw.prevKey != "" && key != iw.prevKey {
 		prefixSize = commonPrefixLength(iw.prevKey, key)
 	}
 	suffixSize := len(key) - prefixSize
