@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
+	record "github.com/Avram-2005/PROJEKAT_NASP/Record"
 	snapshot "github.com/Avram-2005/PROJEKAT_NASP/Snapshot"
 )
 
@@ -40,7 +41,21 @@ func (sp *SnapshotManager) Add(key string, value snapshot.SnapshotInterface) err
 	}
 	// ako kljuc vec postoji, dodajemo novu vrednost na kraj njegovog SnapshotManager-a
 	foundList.PushFront(value)
+	elem := foundList.Front()
+	elem.Next()
 	return nil
+}
+
+// prototype for add many function
+func (sp *SnapshotManager) AddMany(records *[]record.Record) {
+	len := len(*records)
+	for i := 0; i < len; i++ {
+		key := (*records)[i].Key
+		value := (*records)[i].Value
+		timestamp := (*records)[i].Timestamp
+		snapshot := snapshot.NewSnapshotMemtable(&value, timestamp)
+		sp.Add(key, snapshot)
+	}
 }
 
 // Funkcija koja dobavlja odredjenu verziju naseg podatka
@@ -62,6 +77,14 @@ func (sp *SnapshotManager) Get(key string, version int) (snapshot.SnapshotInterf
 		counter += 1
 	}
 	return nil, fmt.Errorf("version number not found for the specified key")
+}
+
+func (sp *SnapshotManager) GetList(key string) (*list.List, error) {
+	value, ok := sp.SnapshotManagerMap[key]
+	if ok {
+		return value, nil
+	}
+	return nil, fmt.Errorf("no list at that key")
 }
 
 // Funkcija koja dobavlja odredjenu verziju naseg podatka
@@ -201,5 +224,21 @@ func (sp *SnapshotManager) ChangeInterfaceType(key string, version int, newVersi
 		counter += 1
 	}
 
+	return fmt.Errorf("key version not found in SnapshotManager")
+}
+
+func (sp *SnapshotManager) ChangeInterfaceTypeByTimestamp(key string, timestamp time.Time, newVersion snapshot.SnapshotInterface) error {
+	foundList, ok := sp.SnapshotManagerMap[key]
+	//error ako kljuc koji trazimo ne postoji
+	if !ok || foundList.Len() == 0 {
+		return fmt.Errorf("key not found in SnapshotManager")
+	}
+	for elem := foundList.Back(); elem != nil; elem = elem.Prev() {
+		// da bi pronasli odgovarajucu verziju koristimo brojac i petlju
+		if time.Time.Equal(elem.Value.(snapshot.SnapshotInterface).GetTimestamp(), timestamp) {
+			elem.Value = newVersion
+			return nil
+		}
+	}
 	return fmt.Errorf("key version not found in SnapshotManager")
 }

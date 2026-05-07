@@ -1,4 +1,4 @@
-package Snapshot
+package snapshot
 
 import (
 	"time"
@@ -24,4 +24,8 @@ func (sp *SnapshotMemtable) GetTimestamp() time.Time {
 
 func (sp *SnapshotMemtable) GetValue(bm *BlockManager.BlockManager) (*[]byte, error) {
 	return sp.value, nil
+}
+
+func (sp *SnapshotMemtable) GetType() string {
+	return "memtable"
 }

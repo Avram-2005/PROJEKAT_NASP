@@ -1,4 +1,4 @@
-package Snapshot
+package snapshot
 
 import (
 	"container/list"
