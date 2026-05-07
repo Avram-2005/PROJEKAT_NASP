@@ -6,6 +6,7 @@ import (
 	"os"
 	"testing"
 
+	BlockManager "github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
 	memtable "github.com/Avram-2005/PROJEKAT_NASP/Memtable"
 )
 
@@ -37,11 +38,17 @@ func TestCreateAndReopen(t *testing.T) {
 	setupTest(t)
 	defer cleanupTest()
 
-	w, _ := CreatNewWAL(8, 4, FILE_PATH, 10)
+	w, _ := CreatNewWAL(64, 4, FILE_PATH, 10)
+	bm, err := BlockManager.NewBlockManager(2, 4)
+	if err != nil {
+		t.Fatalf("Nije moguće kreirati BlockManager: %v", err)
+	}
+	w.SetBufferPool(bm)
 	w.AddRecord("test", []byte("data"))
 	w.Close()
 
-	w2, err := CreatNewWAL(8, 4, FILE_PATH, 10)
+	w2, err := CreatNewWAL(64, 4, FILE_PATH, 10)
+	w2.SetBufferPool(bm)
 	if err != nil {
 		t.Fatalf("Neuspešno ponovno otvaranje: %v", err)
 	}
@@ -56,8 +63,12 @@ func TestFullRecoveryCycle(t *testing.T) {
 	setupTest(t)
 	defer cleanupTest()
 
-	w, _ := CreatNewWAL(8, 4, FILE_PATH, 10)
-
+	w, _ := CreatNewWAL(64, 4, FILE_PATH, 10)
+	bm, err := BlockManager.NewBlockManager(2, 4)
+	if err != nil {
+		t.Fatalf("Nije moguće kreirati BlockManager: %v", err)
+	}
+	w.SetBufferPool(bm)
 	w.AddRecord("mali", []byte("v"))
 	bigVal := []byte("vrednost_koja_se_fragmentise")
 	w.AddRecord("veliki", bigVal)
@@ -65,7 +76,8 @@ func TestFullRecoveryCycle(t *testing.T) {
 	w.DeleteRecord("obrisan")
 	w.Close()
 
-	w2, _ := CreatNewWAL(8, 4, FILE_PATH, 10)
+	w2, _ := CreatNewWAL(64, 4, FILE_PATH, 10)
+	w2.SetBufferPool(bm)
 	mm, _ := getTestMemtableManager()
 
 	if err := w2.Recovery(mm); err != nil {
@@ -90,14 +102,19 @@ func TestHeaderBoundaryEdgeCase(t *testing.T) {
 	setupTest(t)
 	defer cleanupTest()
 
-	w, _ := CreatNewWAL(8, 4, FILE_PATH, 10)
-
+	w, _ := CreatNewWAL(64, 4, FILE_PATH, 10)
+	bm, err := BlockManager.NewBlockManager(2, 4)
+	if err != nil {
+		t.Fatalf("Nije moguće kreirati BlockManager: %v", err)
+	}
+	w.SetBufferPool(bm)
 	w.AddRecord("k1", []byte("v1"))
 	bigKey := "kljuc_posle_skoka"
 	w.AddRecord(bigKey, []byte("podatak"))
 	w.Close()
 
-	w2, _ := CreatNewWAL(8, 4, FILE_PATH, 10)
+	w2, _ := CreatNewWAL(64, 4, FILE_PATH, 10)
+	w2.SetBufferPool(bm)
 	mm, _ := getTestMemtableManager()
 	if err := w2.Recovery(mm); err != nil {
 		t.Fatalf("Recovery greška na granici bloka: %v", err)
@@ -115,9 +132,13 @@ func TestRotationAndFlush(t *testing.T) {
 	setupTest(t)
 	defer cleanupTest()
 
-	w, _ := CreatNewWAL(8, 4, FILE_PATH, 10)
-
-	for i := 0; i < 200; i++ {
+	w, _ := CreatNewWAL(64, 4, FILE_PATH, 10)
+	bm, err := BlockManager.NewBlockManager(2, 4)
+	if err != nil {
+		t.Fatalf("Nije moguće kreirati BlockManager: %v", err)
+	}
+	w.SetBufferPool(bm)
+	for i := 0; i < 1600; i++ {
 		w.AddRecord(fmt.Sprintf("key%d", i), []byte("duzi_podatak_za_rotaciju"))
 	}
 
@@ -137,7 +158,12 @@ func TestCorruptedChunk(t *testing.T) {
 	setupTest(t)
 	defer cleanupTest()
 
-	w, _ := CreatNewWAL(8, 4, FILE_PATH, 10)
+	w, _ := CreatNewWAL(64, 4, FILE_PATH, 10)
+	bm, err := BlockManager.NewBlockManager(2, 4)
+	if err != nil {
+		t.Fatalf("Nije moguće kreirati BlockManager: %v", err)
+	}
+	w.SetBufferPool(bm)
 	w.AddRecord("validan", []byte("podatak"))
 	w.Close()
 
@@ -147,7 +173,8 @@ func TestCorruptedChunk(t *testing.T) {
 	f.Close()
 
 	mm, _ := getTestMemtableManager()
-	w2, _ := CreatNewWAL(8, 4, FILE_PATH, 10)
+	w2, _ := CreatNewWAL(64, 4, FILE_PATH, 10)
+	w2.SetBufferPool(bm)
 
 	w2.Recovery(mm)
 
