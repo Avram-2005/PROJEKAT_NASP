@@ -21,14 +21,14 @@ func iteratorMemtableEntries() []*Record {
 }
 
 func TestPrefixIterator(t *testing.T) {
-	mem := iteratorMemtableEntries()
+	entries := iteratorMemtableEntries()
 
-	m, sst, err := testFlush(t.TempDir(), mem, false)
+	m, sst, err := testFlush(t.TempDir(), entries, false)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	m2, sst2, err := testFlush(t.TempDir(), mem, true)
+	m2, sst2, err := testFlush(t.TempDir(), entries, true)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
@@ -174,14 +174,14 @@ func TestPrefixIterator(t *testing.T) {
 }
 
 func TestRangeIterator(t *testing.T) {
-	mem := iteratorMemtableEntries()
+	entries := iteratorMemtableEntries()
 
-	m, sst, err := testFlush(t.TempDir(), mem, false)
+	m, sst, err := testFlush(t.TempDir(), entries, false)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
 
-	m2, sst2, err := testFlush(t.TempDir(), mem, true)
+	m2, sst2, err := testFlush(t.TempDir(), entries, true)
 	if err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
