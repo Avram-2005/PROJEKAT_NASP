@@ -168,7 +168,7 @@ func TestStressEngineFunction(t *testing.T) {
 		t.FailNow()
 	}
 
-	n := 1000
+	n := 5000
 
 	dataArray := make([][]byte, int(n))
 
