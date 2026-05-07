@@ -112,6 +112,7 @@ func (sstm *SSTableManager) NewSSTableIterator(sst *SSTable, startKey string, ch
 		if err != nil {
 			return nil, fmt.Errorf("failed to open SSTable file: %v", err)
 		}
+		defer file.Close()
 		indexOffset, dataOffset := sst.footer.IndexStart, uint64(0)
 		if startKey != "" {
 			_, indexOffset, err := sst.summary.IsFound(startKey)
