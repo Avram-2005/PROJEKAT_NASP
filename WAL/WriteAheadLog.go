@@ -30,7 +30,7 @@ const (
 	FILE_PATH      = "./WAL/walDATA"
 	FILE_EXTENSION = ".wal"
 
-	//Tipovi "chunk-ova" koji se koriste kada zapis ne staje u jedan blok i mora da se iseče na delove
+	//Tipovi chunkova koji se koriste kada zapis ne staje u jedan blok i mora da se iseče na delove
 	ChunkTypeZero   byte = 0
 	ChunkTypeFull   byte = 1
 	ChunkTypeFirst  byte = 2
@@ -40,9 +40,16 @@ const (
 
 // CreatNewWAL pronalazi postojeće fajlove ili pravi nove, i vraća spremnu WAL strukturu
 func CreatNewWAL(sizeSegment int, blocksize int, filePath string, memtableRotationCount int) (*WAL, error) {
-	bm, err := BlockManager.NewBlockManager(2, blocksize)
-	if err != nil {
-		return nil, err
+	if sizeSegment < 64 {
+		return nil, fmt.Errorf("velicina segmenta mora biti bar 64KB")
+	}
+
+	if sizeSegment%blocksize != 0 {
+		return nil, fmt.Errorf("velicina segmenta mora biti deljiva sa velicinom bloka")
+	}
+
+	if memtableRotationCount <= 0 {
+		return nil, fmt.Errorf("broj rotacija memtable-a pre brisanja starih WAL segmenata mora biti pozitivan broj")
 	}
 
 	//Pravimo folder za WAL ukoliko već ne postoji
@@ -88,15 +95,25 @@ func CreatNewWAL(sizeSegment int, blocksize int, filePath string, memtableRotati
 		writeFile:             writeFile,
 		currentWritePosition:  int(pos),
 		segmentSize:           sizeSegment * 1024,
-		blockManager:          bm,
+		blockManager:          nil,
 		memtableRotationCount: memtableRotationCount,
-	}
-	//proveravamo da li je segmentSize promenjen od poslednjeg pokretanja, i ako jeste, refaktorisemo fajlove da se uklope u novu veličinu
-	if err := walInstance.refactor(); err != nil {
-		return nil, err
 	}
 
 	return walInstance, nil
+}
+
+func (wal *WAL) SetBufferPool(blockManager *BlockManager.BlockManager) error {
+	if blockManager == nil {
+		return fmt.Errorf("BlockManager ne sme biti nil")
+	}
+	wal.blockManager = blockManager
+
+	//proveravamo da li je segmentSize promenjen od poslednjeg pokretanja, i ako jeste, refaktorisemo fajlove da se uklope u novu veličinu
+	err := wal.refactor()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // AddRecord pakuje ključ i vrednost u novi Record i šalje ga na upis
