@@ -7,7 +7,6 @@ import (
 	"os"
 
 	"github.com/Avram-2005/PROJEKAT_NASP/BloomFilter"
-	mt "github.com/Avram-2005/PROJEKAT_NASP/Memtable"
 	merkleTree "github.com/Avram-2005/PROJEKAT_NASP/MerkleTree"
 	. "github.com/Avram-2005/PROJEKAT_NASP/Record"
 	. "github.com/Avram-2005/PROJEKAT_NASP/utils"
@@ -187,9 +186,7 @@ func (sstm *SSTableManager) multipleFilesFlushFinalize(level int, state *multipl
 	}, nil
 }
 
-func (sstm *SSTableManager) multipleFilesFlush(mem mt.Memtable, tableNum int) (*SSTable, error) {
-	entries := mem.GetSortedEntries()
-
+func (sstm *SSTableManager) multipleFilesFlush(entries []*Record, tableNum int) (*SSTable, error) {
 	state, err := sstm.multipleFilesFlushInit(0, tableNum, uint(len(entries)))
 	if err != nil {
 		return nil, err
@@ -304,14 +301,14 @@ func (sstm *SSTableManager) oneFileFlushFinalize(level int, state *oneFileFlushS
 	}, nil
 }
 
-func (sstm *SSTableManager) oneFileFlush(mem mt.Memtable, tableNum int) (*SSTable, error) {
-	state, err := sstm.oneFileFlushInit(0, tableNum, uint(len(mem.GetSortedEntries())))
+func (sstm *SSTableManager) oneFileFlush(entries []*Record, tableNum int) (*SSTable, error) {
+	state, err := sstm.oneFileFlushInit(0, tableNum, uint(len(entries)))
 	if err != nil {
 		return nil, err
 	}
 	defer state.file.Close()
 
-	for i, entry := range mem.GetSortedEntries() {
+	for i, entry := range entries {
 		sstm.oneFileFlushRecord(i, entry, state)
 	}
 

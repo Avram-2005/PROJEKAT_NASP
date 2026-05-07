@@ -7,11 +7,7 @@ import (
 	. "github.com/Avram-2005/PROJEKAT_NASP/Record"
 )
 
-type memtable struct {
-	mockMemtableBase
-}
-
-func (m memtable) GetSortedEntries() []*Record {
+func iteratorMemtableEntries() []*Record {
 	ts := time.Now()
 	r1, _ := NewRecord("a", []byte("value3"), false, ts)
 	r2, _ := NewRecord("bar", []byte("value3"), false, ts)
@@ -25,7 +21,7 @@ func (m memtable) GetSortedEntries() []*Record {
 }
 
 func TestPrefixIterator(t *testing.T) {
-	mem := memtable{}
+	mem := iteratorMemtableEntries()
 
 	m, sst, err := testFlush(t.TempDir(), mem, false)
 	if err != nil {
@@ -178,7 +174,7 @@ func TestPrefixIterator(t *testing.T) {
 }
 
 func TestRangeIterator(t *testing.T) {
-	mem := memtable{}
+	mem := iteratorMemtableEntries()
 
 	m, sst, err := testFlush(t.TempDir(), mem, false)
 	if err != nil {

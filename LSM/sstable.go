@@ -7,7 +7,6 @@ import (
 
 	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
 	"github.com/Avram-2005/PROJEKAT_NASP/BloomFilter"
-	mt "github.com/Avram-2005/PROJEKAT_NASP/Memtable"
 	. "github.com/Avram-2005/PROJEKAT_NASP/Record"
 )
 
@@ -108,13 +107,13 @@ func (s *Summary) IsFound(key string) (bool, uint64, error) {
 }
 
 // TODO: Compression (1.3[DZ3])
-func (sstm *SSTableManager) Flush(mem mt.Memtable) (*SSTable, error) {
+func (sstm *SSTableManager) Flush(entries []*Record) (*SSTable, error) {
 	var sst *SSTable
 	var err error
 	if sstm.config.MultipleFiles {
-		sst, err = sstm.multipleFilesFlush(mem, sstm.numTables)
+		sst, err = sstm.multipleFilesFlush(entries, sstm.numTables)
 	} else {
-		sst, err = sstm.oneFileFlush(mem, sstm.numTables)
+		sst, err = sstm.oneFileFlush(entries, sstm.numTables)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to flush memtable: %v", err)
