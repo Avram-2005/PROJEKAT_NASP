@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	eng "github.com/Avram-2005/PROJEKAT_NASP/Engine"
 )
@@ -37,20 +38,35 @@ func main() {
 
 		switch command {
 		case 1:
-			Put()
+			key := readLine("Unesite key: ")
+			value := readLine("Unesite value: ")
+
+			err := engine.Put(key, []byte(value))
+			if err != nil {
+				fmt.Println("Greska pri upisu:", err)
+				continue
+			}
+			fmt.Println("OK")
 
 		case 2:
-			Delete()
+			key := readLine("Unesite key za brisanje: ")
+
+			err := engine.Delete(key)
+			if err != nil {
+				fmt.Println("Greska pri brisanju:", err)
+				continue
+			}
+			fmt.Println("OK")
 
 		case 3:
-			result := SearchCache()
-			if result == "" {
-				result = SearchMemtable()
+			key := readLine("Unesite key za pretragu: ")
+
+			value, err := engine.Get(key)
+			if err != nil {
+				fmt.Println("Greska pri citanju:", err)
+				continue
 			}
-			if result == "" {
-				result = SearchSSTable()
-			}
-			Return(result)
+			fmt.Println(string(value))
 
 		case 4:
 			Return(PrefixScan())
@@ -77,6 +93,13 @@ func main() {
 			fmt.Println("GRESKA NEPOZNATA KOMANDA")
 		}
 	}
+}
+
+func readLine(prompt string) string {
+	fmt.Print(prompt)
+	var text string
+	fmt.Scanln(&text)
+	return strings.TrimSpace(text)
 }
 
 func LoadConfig()                     {}
