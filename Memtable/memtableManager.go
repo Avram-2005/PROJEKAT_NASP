@@ -165,6 +165,7 @@ func (mm *MemtableManager) PrefixScan(prefix string) []*record.Record {
 	return result
 }
 
+// skenira sve instance memtable-a za zadati opseg
 func (mm *MemtableManager) RangeScan(startKey, endKey string) []*record.Record {
 	result := make([]*record.Record, 0)
 	for _, instance := range mm.instances {
