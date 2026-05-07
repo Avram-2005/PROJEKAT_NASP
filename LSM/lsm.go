@@ -131,6 +131,12 @@ func (lsm *LSM) PrefixScan(prefix string) ([]*Record, error) {
 	results := make([]*Record, 0)
 	for _, level := range lsm.levels {
 		for _, sstab := range level.tables {
+			if sstab.summary == nil || len(sstab.summary.entries) == 0 {
+				continue
+			}
+			if sstab.filter == nil {
+				continue
+			}
 			if sstab.summary.lastKey < prefix { //ako je poslednji kljuc manji od prefixa, sigurno ga nema u datom nivou
 				continue
 			}
