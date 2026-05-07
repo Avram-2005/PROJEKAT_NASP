@@ -39,6 +39,7 @@ type Config struct {
 	SSTableConfig struct {
 		TablesRoot      string `yaml:"TablesRoot"`
 		SummaryInterval int    `yaml:"SummaryInterval"`
+		MultipleFiles   bool   `yaml:"MultipleFiles"`
 	} `yaml:"SSTableConfig"`
 	WriteAheadLogConfig struct {
 		SegmentSize int    `yaml:"SegmentSize"`
@@ -93,6 +94,7 @@ TokenBucketConfig:
 SSTableConfig:
   TablesRoot: ../DataBase/sstable
   SummaryInterval: 40
+  MultipleFiles: false
 WriteAheadLogConfig:
   SegmentSize: 64
   FilePath: ../DataBase/walDATA
@@ -202,7 +204,7 @@ func (config *Config) InitializeLSM(bm *BlockManager.BlockManager) (*sstable.LSM
 	}
 	SSTableConfig := &sstable.SSTableConfig{
 		SummaryInterval: config.SSTableConfig.SummaryInterval,
-		MultipleFiles:   true,
+		MultipleFiles:   config.SSTableConfig.MultipleFiles,
 	}
 	return sstable.NewLSM(*LSMConfig, config.SSTableConfig.TablesRoot, *SSTableConfig, bm)
 }
