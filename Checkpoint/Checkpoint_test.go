@@ -378,6 +378,12 @@ func TestCheckpointManager(t *testing.T) {
 		t.FailNow()
 	}
 
+	checkpointList := checkpointManager.GetCheckpointList()
+	if checkpointList.Len() != 2 {
+		fmt.Print("error getting checkpoint list ")
+		t.FailNow()
+	}
+
 	err = firstTable.Close()
 	if err != nil {
 		fmt.Print("error closing file ", err)
