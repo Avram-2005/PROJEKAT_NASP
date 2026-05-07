@@ -67,6 +67,14 @@ func (ch *CheckpointManager) GetCheckpoint(name string) (*Checkpoint, error) {
 	return checkpoint, nil
 }
 
+func (ch *CheckpointManager) GetCheckpointList() *list.List {
+	checkpointList := list.New()
+	for key := range ch.checkpointMap {
+		checkpointList.PushBack(key)
+	}
+	return checkpointList
+}
+
 func (ch *CheckpointManager) DeleteCheckpoint(name string) error {
 	checkpoint, ok := ch.checkpointMap[name]
 	if !ok {
