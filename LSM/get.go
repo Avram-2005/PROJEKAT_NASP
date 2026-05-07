@@ -80,29 +80,29 @@ func (ir *indexReader) Next() (indexEntry, int, error) {
 	}, n, nil
 }
 
-func findNextKeyOffset(searchKey string, reader *indexReader, sectionEnd uint64) (uint64, error) {
-	lastOffset := uint64(0)
+func findExactKeyOffset(searchKey string, reader *indexReader, sectionEnd uint64) (uint64, bool, error) {
 	for {
 		if sectionEnd > 0 {
 			curr := reader.br.CurrOffset()
 			if curr >= sectionEnd || sectionEnd-curr < INDEX_HEADER_L {
-				return lastOffset, nil
+				return 0, false, nil
 			}
 		}
 
 		indexEntry, n, err := reader.Next()
 		if err != nil {
-			return 0, err
+			return 0, false, err
 		}
 		if n == 0 {
-			return lastOffset, nil
+			return 0, false, nil
 		}
 
-		if searchKey <= indexEntry.Key {
-			return indexEntry.Offset, nil
+		if searchKey == indexEntry.Key {
+			return indexEntry.Offset, true, nil
 		}
-
-		lastOffset = indexEntry.Offset
+		if searchKey < indexEntry.Key {
+			return 0, false, nil
+		}
 	}
 }
 
@@ -132,9 +132,9 @@ func findPreviousKeyOffset(searchKey string, reader *indexReader, sectionEnd uin
 	}
 }
 
-func (sstm *SSTableManager) searchIndex(file *os.File, key string, oldOffset uint64, sectionEnd uint64) (uint64, error) {
+func (sstm *SSTableManager) searchIndex(file *os.File, key string, oldOffset uint64, sectionEnd uint64) (uint64, bool, error) {
 	indexReader := newIndexReader(file, sstm.bm, oldOffset)
-	return findNextKeyOffset(key, indexReader, sectionEnd)
+	return findExactKeyOffset(key, indexReader, sectionEnd)
 }
 
 func readKey(reader *blockReader, keySize int) (string, error) {
@@ -293,9 +293,12 @@ func (sstm *SSTableManager) getMultipleFiles(key string, sst *SSTable) (*Record,
 		return nil, nil
 	}
 
-	offset, err = sstm.searchIndex(files.indexFile, key, offset, 0)
+	offset, isFound, err = sstm.searchIndex(files.indexFile, key, offset, 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search index file: %v", err)
+	}
+	if !isFound {
+		return nil, nil
 	}
 
 	dataReader := newBlockReader(files.dataFile, sstm.bm, offset)
@@ -333,9 +336,12 @@ func (sstm *SSTableManager) getOneFile(key string, sst *SSTable) (*Record, error
 		return nil, nil
 	}
 
-	offset, err = sstm.searchIndex(file, key, offset, footer.SummaryStart)
+	offset, isFound, err = sstm.searchIndex(file, key, offset, footer.SummaryStart)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search index file: %v", err)
+	}
+	if !isFound {
+		return nil, nil
 	}
 
 	dataReader := newBlockReader(file, sstm.bm, offset)
