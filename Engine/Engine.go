@@ -2,6 +2,7 @@ package engine
 
 import (
 	"os"
+	"strings"
 
 	blockmanager "github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
 	cache "github.com/Avram-2005/PROJEKAT_NASP/Cache"
@@ -85,6 +86,12 @@ func NewEngine(configPath string, walPath string, sstablePath string) (*Engine, 
 	}, nil
 }
 
+func (engine *Engine) GetRoot() string {
+	sstableRoot := engine.configuration.SSTableConfig.TablesRoot
+	split := strings.Split(sstableRoot, "/")
+	return split[0]
+}
+
 func (engine *Engine) ShutDown() {
 	engine.writeAheadLog.Close()
 	engine.configuration = nil
@@ -155,6 +162,10 @@ func (engine *Engine) Delete(key string) error {
 		return err
 	}
 	err = engine.memtable.Delete(key, rec.Timestamp)
+	if err != nil {
+		return err
+	}
+	err = engine.cache.Put(key, nil)
 	if err != nil {
 		return err
 	}
