@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	eng "github.com/Avram-2005/PROJEKAT_NASP/Engine"
+	record "github.com/Avram-2005/PROJEKAT_NASP/Record"
 )
 
 func main() {
@@ -46,7 +47,6 @@ func main() {
 				fmt.Println("Greska pri upisu:", err)
 				continue
 			}
-			fmt.Println("OK")
 
 		case 2:
 			key := readLine("Unesite key za brisanje: ")
@@ -56,7 +56,6 @@ func main() {
 				fmt.Println("Greska pri brisanju:", err)
 				continue
 			}
-			fmt.Println("OK")
 
 		case 3:
 			key := readLine("Unesite key za pretragu: ")
@@ -69,25 +68,30 @@ func main() {
 			fmt.Println(string(value))
 
 		case 4:
-			Return(PrefixScan())
+			prefix := readLine("Unesite prefix: ")
+			records := engine.PrefixScan(prefix)
+			printRecords(records)
 
 		case 5:
-			Return(RangeScan())
+			startKey := readLine("Unesite pocetni key: ")
+			endKey := readLine("Unesite krajnji key: ")
+			records := engine.RangeScan(startKey, endKey)
+			printRecords(records)
 
 		case 6:
-			Return(PrefixIterate())
+			fmt.Println("PREFIX_ITERATE nije implementiran!")
 
 		case 7:
-			Return(RangeIterate())
+			fmt.Println("RANGE_ITERATE nije implementiran!")
 
 		case 8:
-			Return(Snapshot())
+			fmt.Println("SNAPSHOT nije implementiran!")
 
 		case 9:
-			Return(Checkpoint())
+			fmt.Println("CHECKPOINT nije implementiran!")
 
 		case 10:
-			Return(ValidateMerkleTree())
+			fmt.Println("VALIDACIJA_MERKLE_STABLA nije implementirana!")
 
 		default:
 			fmt.Println("GRESKA NEPOZNATA KOMANDA")
@@ -102,39 +106,12 @@ func readLine(prompt string) string {
 	return strings.TrimSpace(text)
 }
 
-func LoadConfig()                     {}
-func InitializeSystem()               {}
-func RecoverSystem()                  {}
-func ShutdownSystem()                 {}
-func IsTokenBucketEnabled() bool      { return false }
-func IsTokenBucketAllowed(i int) bool { return true }
-
-func Put() {
-	if IsMemtableFull() {
-		Flush()
+func printRecords(records *[]record.Record) {
+	if len(*records) == 0 {
+		fmt.Println("Nema rezultata.")
+		return
+	}
+	for _, rec := range *records {
+		fmt.Printf("Key: %s, Value: %s\n", rec.Key, string(rec.Value))
 	}
 }
-
-func Delete() {
-	if IsMemtableFull() {
-		Flush()
-	}
-}
-
-func IsMemtableFull() bool { return false }
-func Flush()               {}
-
-func SearchCache() string    { return "" }
-func SearchMemtable() string { return "" }
-func SearchSSTable() string  { return "" }
-
-func PrefixScan() string    { return "" }
-func RangeScan() string     { return "" }
-func PrefixIterate() string { return "" }
-func RangeIterate() string  { return "" }
-
-func Snapshot() string           { return "" }
-func Checkpoint() string         { return "" }
-func ValidateMerkleTree() string { return "" }
-
-func Return(string) { /* Prikazuje rezultat korisniku */ }
