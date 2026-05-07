@@ -22,7 +22,18 @@ func main() {
 	for {
 		fmt.Println()
 		fmt.Print("Unesite komandu: ")
-		fmt.Println("0 - UGASI SISTEM, 1 - PUT, 2 - DELETE, 3 - GET, 4 - PREFIX_SCAN, 5 - RANGE_SCAN, 6 - PREFIX_ITERATE, 7 - RANGE_ITERATE, 8 - SNAPSHOT, 9 - CHECKPOINT, 10 - VALIDACIJA_MERKLE_STABLA")
+		fmt.Println("0  - UGASI SISTEM")
+		fmt.Println("1  - PUT")
+		fmt.Println("2  - DELETE")
+		fmt.Println("3  - GET")
+		fmt.Println("4  - PREFIX_SCAN")
+		fmt.Println("5  - RANGE_SCAN")
+		fmt.Println("6  - PREFIX_ITERATE")
+		fmt.Println("7  - RANGE_ITERATE")
+		fmt.Println("8  - SNAPSHOT")
+		fmt.Println("9  - CHECKPOINT")
+		fmt.Println("10 - VALIDACIJA_MERKLE_STABLA")
+		fmt.Println("----------------------------------------------")
 
 		var command int
 		_, err := fmt.Scanln(&command)
@@ -39,8 +50,13 @@ func main() {
 
 		switch command {
 		case 1:
-			key := readLine("Unesite key: ")
-			value := readLine("Unesite value: ")
+			key := readLine("Unesite kljuc: ")
+			value := readLine("Unesite vrednost: ")
+
+			if key == "" || value == "" {
+				fmt.Println("Kljuc i vrednost ne smeju biti prazni.")
+				continue
+			}
 
 			err := engine.Put(key, []byte(value))
 			if err != nil {
@@ -49,7 +65,11 @@ func main() {
 			}
 
 		case 2:
-			key := readLine("Unesite key za brisanje: ")
+			key := readLine("Unesite kljuc za brisanje: ")
+			if key == "" {
+				fmt.Println("Kljuc ne sme biti prazan.")
+				continue
+			}
 
 			err := engine.Delete(key)
 			if err != nil {
@@ -58,23 +78,47 @@ func main() {
 			}
 
 		case 3:
-			key := readLine("Unesite key za pretragu: ")
+			key := readLine("Unesite kljuc za pretragu: ")
+			if key == "" {
+				fmt.Println("Kljuc ne sme biti prazan.")
+				continue
+			}
 
 			value, err := engine.Get(key)
 			if err != nil {
-				fmt.Println("Greska pri citanju:", err)
+				fmt.Println("Greska pri citanju: " + err.Error())
 				continue
 			}
-			fmt.Println(string(value))
+			if len(value) == 0 {
+				fmt.Println("Nije pronadjena vrednost.")
+				continue
+			}
+
+			fmt.Println("Vrednost:", string(value))
 
 		case 4:
 			prefix := readLine("Unesite prefix: ")
+			if prefix == "" {
+				fmt.Println("Prefix ne sme biti prazan.")
+				continue
+			}
+
 			records := engine.PrefixScan(prefix)
 			printRecords(records)
 
 		case 5:
 			startKey := readLine("Unesite pocetni key: ")
 			endKey := readLine("Unesite krajnji key: ")
+
+			if startKey == "" || endKey == "" {
+				fmt.Println("Pocetni i krajnji kljucevi ne smeju biti prazni.")
+				continue
+			}
+			if startKey > endKey {
+				fmt.Println("Pocetni kljuc ne sme biti veci od krajnjeg kljuca.")
+				continue
+			}
+
 			records := engine.RangeScan(startKey, endKey)
 			printRecords(records)
 
@@ -107,11 +151,15 @@ func readLine(prompt string) string {
 }
 
 func printRecords(records *[]record.Record) {
-	if len(*records) == 0 {
+	if records == nil || len(*records) == 0 {
 		fmt.Println("Nema rezultata.")
 		return
 	}
-	for _, rec := range *records {
-		fmt.Printf("Key: %s, Value: %s\n", rec.Key, string(rec.Value))
+
+	fmt.Println("Rezultati:")
+	fmt.Println("----------------------------------------------")
+	for i, r := range *records {
+		fmt.Printf("%d. Kljuc: %s, Vrednost: %s\n", i+1, r.Key, string(r.Value))
 	}
+	fmt.Println("----------------------------------------------")
 }
