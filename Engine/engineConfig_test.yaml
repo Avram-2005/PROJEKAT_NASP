@@ -12,7 +12,7 @@ MemtableConfig:
   #Whether memtable uses hashmap, skiplist or btree
   Type: hashmap
   #How large the memtable can be in bytes
-  MaxSizeBytes: 100
+  MaxSizeBytes: 1000
   #How many entries memtable can contain
   MaxSizeEntries: 100
   #Bplus tree configuration
@@ -25,12 +25,13 @@ TokenBucketConfig:
   #Number of seconds between refills
   RefillTime: 60
 SSTableConfig:
-  TablesRoot: ../DataBase/sstable
+  TablesRoot: ./TestDataBase/sstable
   SummaryInterval: 40
   MultipleFiles: false
 WriteAheadLogConfig:
   SegmentSize: 64
-  FilePath: ../DataBase/walDATA
+  FilePath: ./TestDataBase/walDATA
 LSMConfig:
   NumLevels: 4
   CompactionFactor: 10
+
