@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"os"
 	"strings"
 
 	eng "github.com/Avram-2005/PROJEKAT_NASP/Engine"
@@ -19,70 +21,53 @@ func main() {
 		return
 	}
 
+	printHelp()
+
+	scanner := bufio.NewScanner(os.Stdin)
 	for {
-		fmt.Println()
-		fmt.Print("Unesite komandu: ")
-		fmt.Println("0  - UGASI SISTEM")
-		fmt.Println("1  - PUT")
-		fmt.Println("2  - DELETE")
-		fmt.Println("3  - GET")
-		fmt.Println("4  - PREFIX_SCAN")
-		fmt.Println("5  - RANGE_SCAN")
-		fmt.Println("6  - PREFIX_ITERATE")
-		fmt.Println("7  - RANGE_ITERATE")
-		fmt.Println("8  - SNAPSHOT")
-		fmt.Println("9  - CHECKPOINT")
-		fmt.Println("10 - VALIDACIJA_MERKLE_STABLA")
-		fmt.Println("----------------------------------------------")
-
-		var command int
-		_, err := fmt.Scanln(&command)
-		if err != nil {
-			fmt.Println("Neispravan unos komande")
-			continue
-		}
-
-		if command == 0 {
-			engine.ShutDown()
-			fmt.Println("Sistem je ugasen.")
+		fmt.Print("> ")
+		if !scanner.Scan() {
 			break
 		}
 
-		switch command {
-		case 1:
-			key := readLine("Unesite kljuc: ")
-			value := readLine("Unesite vrednost: ")
+		input := strings.TrimSpace(scanner.Text())
+		if input == "" {
+			continue
+		}
 
-			if key == "" || value == "" {
-				fmt.Println("Kljuc i vrednost ne smeju biti prazni.")
+		parts := strings.Fields(input)
+		command := strings.ToLower(parts[0])
+
+		switch command {
+		case "exit", "quit", "shutdown":
+			engine.ShutDown()
+			fmt.Println("Sistem je ugasen.")
+			return
+
+		case "help":
+			printHelp()
+
+		case "put":
+			if len(parts) < 3 {
+				fmt.Println("Greska: put <key> <value>")
 				continue
 			}
+			key := parts[1]
+			value := strings.Join(parts[2:], " ")
 
 			err := engine.Put(key, []byte(value))
 			if err != nil {
 				fmt.Println("Greska pri upisu:", err)
 				continue
 			}
+			fmt.Printf("OK - Upisana vrednost za kljuc '%s'\n", key)
 
-		case 2:
-			key := readLine("Unesite kljuc za brisanje: ")
-			if key == "" {
-				fmt.Println("Kljuc ne sme biti prazan.")
+		case "get":
+			if len(parts) < 2 {
+				fmt.Println("Greska: get <key>")
 				continue
 			}
-
-			err := engine.Delete(key)
-			if err != nil {
-				fmt.Println("Greska pri brisanju:", err)
-				continue
-			}
-
-		case 3:
-			key := readLine("Unesite kljuc za pretragu: ")
-			if key == "" {
-				fmt.Println("Kljuc ne sme biti prazan.")
-				continue
-			}
+			key := parts[1]
 
 			value, err := engine.Get(key)
 			if err != nil {
@@ -94,60 +79,80 @@ func main() {
 				continue
 			}
 
-			fmt.Println("Vrednost:", string(value))
+			fmt.Printf("'%s' => '%s'\n", key, string(value))
 
-		case 4:
-			prefix := readLine("Unesite prefix: ")
-			if prefix == "" {
-				fmt.Println("Prefix ne sme biti prazan.")
+		case "delete", "del":
+			if len(parts) < 2 {
+				fmt.Println("Greska: delete <key>")
 				continue
 			}
+			key := parts[1]
+
+			err := engine.Delete(key)
+			if err != nil {
+				fmt.Println("Greska pri brisanju:", err)
+				continue
+			}
+			fmt.Printf("OK - Obrisan kljuc '%s'\n", key)
+
+		case "prefix_scan":
+			if len(parts) < 2 {
+				fmt.Println("Greska: prefix_scan <prefix>")
+				continue
+			}
+			prefix := parts[1]
 
 			records := engine.PrefixScan(prefix)
 			printRecords(records)
 
-		case 5:
-			startKey := readLine("Unesite pocetni key: ")
-			endKey := readLine("Unesite krajnji key: ")
-
-			if startKey == "" || endKey == "" {
-				fmt.Println("Pocetni i krajnji kljucevi ne smeju biti prazni.")
+		case "range_scan":
+			if len(parts) < 3 {
+				fmt.Println("Greska: range_scan <start> <end>")
 				continue
 			}
+			startKey := parts[1]
+			endKey := parts[2]
+
 			if startKey > endKey {
-				fmt.Println("Pocetni kljuc ne sme biti veci od krajnjeg kljuca.")
+				fmt.Println("Greska: pocetni kljuc ne sme biti veci od krajnjeg kljuca.")
 				continue
 			}
 
 			records := engine.RangeScan(startKey, endKey)
 			printRecords(records)
 
-		case 6:
-			fmt.Println("PREFIX_ITERATE nije implementiran!")
+		case "prefix_iterate":
+			fmt.Println("prefix_iterate nije implementiran!")
 
-		case 7:
-			fmt.Println("RANGE_ITERATE nije implementiran!")
+		case "range_iterate":
+			fmt.Println("range_iterate nije implementiran!")
 
-		case 8:
-			fmt.Println("SNAPSHOT nije implementiran!")
+		case "snapshot":
+			fmt.Println("snapshot nije implementiran!")
 
-		case 9:
-			fmt.Println("CHECKPOINT nije implementiran!")
+		case "checkpoint":
+			fmt.Println("checkpoint nije implementiran!")
 
-		case 10:
-			fmt.Println("VALIDACIJA_MERKLE_STABLA nije implementirana!")
+		case "validate":
+			fmt.Println("validacija_merkle_stabla nije implementirana!")
 
 		default:
-			fmt.Println("GRESKA NEPOZNATA KOMANDA")
+			fmt.Printf("Nepoznata komanda: '%s'. Ukucajte 'help' za popis komandi.\n", command)
 		}
 	}
 }
 
-func readLine(prompt string) string {
-	fmt.Print(prompt)
-	var text string
-	fmt.Scanln(&text)
-	return strings.TrimSpace(text)
+func printHelp() {
+	fmt.Println()
+	fmt.Println("Dostupne komande:")
+	fmt.Println("  put <key> <value>          - Upiši vrednost sa ključem")
+	fmt.Println("  get <key>                  - Pročitaj vrednost po ključu")
+	fmt.Println("  delete <key>               - Obriši ključ")
+	fmt.Println("  prefix_scan <prefix>       - Skenira sve ključeve sa datim prefiksom")
+	fmt.Println("  range_scan <start> <end>   - Skenira sve ključeve u rasponu")
+	fmt.Println("  help                       - Prikaži ovu poruku")
+	fmt.Println("  exit                       - Gasi sistem i izlazi")
+	fmt.Println()
 }
 
 func printRecords(records *[]record.Record) {
