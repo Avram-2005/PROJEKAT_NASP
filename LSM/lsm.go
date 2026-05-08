@@ -181,7 +181,8 @@ func (lsm *LSM) RangeScan(startKey, endKey string) ([]*Record, error) {
 		}
 	}
 	return results, nil
-  
+}
+
 type SSTableInfo struct {
 	Level int
 	Path  string
