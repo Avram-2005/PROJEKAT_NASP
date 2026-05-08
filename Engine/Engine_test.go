@@ -61,7 +61,7 @@ func TestEngineBasicFunctions(t *testing.T) {
 		t.FailNow()
 	}
 	if !reflect.DeepEqual(data3, compare3) {
-		fmt.Print("data1 not equal before and after write")
+		fmt.Print("data3 not equal before and after write")
 		fmt.Print(data3, compare3)
 		t.FailNow()
 	}
@@ -83,7 +83,7 @@ func TestEngineBasicFunctions(t *testing.T) {
 		t.FailNow()
 	}
 	if !reflect.DeepEqual(data1, compare1) {
-		fmt.Print("data1 not equal before and after write")
+		fmt.Print("data12 not equal before and after write")
 		fmt.Print(data1, compare1)
 		t.FailNow()
 	}
@@ -94,7 +94,7 @@ func TestEngineBasicFunctions(t *testing.T) {
 		t.FailNow()
 	}
 	if !reflect.DeepEqual(data2, compare2) {
-		fmt.Print("data2 not equal before and after write")
+		fmt.Print("data22 not equal before and after write")
 		fmt.Print(data2, compare2)
 		t.FailNow()
 	}
@@ -105,7 +105,7 @@ func TestEngineBasicFunctions(t *testing.T) {
 		t.FailNow()
 	}
 	if !reflect.DeepEqual(data3, compare3) {
-		fmt.Print("data1 not equal before and after write")
+		fmt.Print("data32 not equal before and after write")
 		fmt.Print(data3, compare3)
 		t.FailNow()
 	}
@@ -126,17 +126,21 @@ func TestEngineBasicFunctions(t *testing.T) {
 	engine2.ShutDown()
 
 	err = os.RemoveAll(walPath)
+
 	if err != nil {
 		fmt.Print("Deleting WAL directory failed!")
 		fmt.Print(err)
 		t.FailNow()
 	}
+
 	err = os.RemoveAll(sstPath)
+
 	if err != nil {
 		fmt.Print("Deleting SSTable directory failed!")
 		fmt.Print(err)
 		t.FailNow()
 	}
+
 }
 
 func TestStressEngineFunction(t *testing.T) {
@@ -204,6 +208,19 @@ func TestStressEngineFunction(t *testing.T) {
 	}
 
 	engine2.ShutDown()
+
+	err = os.RemoveAll(walPath)
+	if err != nil {
+		fmt.Print("Deleting WAL directory failed!")
+		fmt.Print(err)
+		t.FailNow()
+	}
+	err = os.RemoveAll(sstPath)
+	if err != nil {
+		fmt.Print("Deleting SSTable directory failed!")
+		fmt.Print(err)
+		t.FailNow()
+	}
 }
 
 func TestEngineDelete(t *testing.T) {
@@ -290,4 +307,17 @@ func TestEngineDelete(t *testing.T) {
 	}
 
 	engine2.ShutDown()
+
+	err = os.RemoveAll(walPath)
+	if err != nil {
+		fmt.Print("Deleting WAL directory failed!")
+		fmt.Print(err)
+		t.FailNow()
+	}
+	err = os.RemoveAll(sstPath)
+	if err != nil {
+		fmt.Print("Deleting SSTable directory failed!")
+		fmt.Print(err)
+		t.FailNow()
+	}
 }

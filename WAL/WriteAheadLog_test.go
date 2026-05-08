@@ -17,7 +17,7 @@ func getTestMemtableManager() (*memtable.MemtableManager, error) {
 		Type:           "hashmap",
 		MaxSizeEntries: 100,
 	}
-	return memtable.NewMemtableManager(2, conf, nil)
+	return memtable.NewMemtableManager(2, conf, nil, nil)
 }
 
 // Priprema testa: briše stare i pravi nove čiste foldere
