@@ -2,12 +2,14 @@ package main
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	checkpoint "github.com/Avram-2005/PROJEKAT_NASP/Checkpoint"
 	eng "github.com/Avram-2005/PROJEKAT_NASP/Engine"
 	engine "github.com/Avram-2005/PROJEKAT_NASP/Engine"
 	record "github.com/Avram-2005/PROJEKAT_NASP/Record"
+	tokenbucket "github.com/Avram-2005/PROJEKAT_NASP/TokenBucket"
 )
 
 func main() {
@@ -24,6 +26,7 @@ func mainMenu() {
 		fmt.Println("Error during system initialization:", err)
 		return
 	}
+	engine.CheckTokenBucketInsert()
 
 	for {
 		fmt.Println()
@@ -54,6 +57,14 @@ func mainMenu() {
 			break
 		}
 
+		ok, err := checkTokens(engine)
+		if err != nil {
+			break
+		}
+		if !ok {
+			continue
+		}
+
 		switch command {
 		case 1:
 			key := readLine("Enter key: ")
@@ -61,6 +72,12 @@ func mainMenu() {
 
 			if key == "" || value == "" {
 				fmt.Println("Key and value must not be empty.")
+				continue
+			}
+
+			//User cannot put to tokenbucket key
+			if key == tokenbucket.INTERNAL_KEY {
+				fmt.Println("Key reserved for token bucket.")
 				continue
 			}
 
@@ -77,6 +94,12 @@ func mainMenu() {
 				continue
 			}
 
+			//User cannot delete tokenbucket key
+			if key == tokenbucket.INTERNAL_KEY {
+				fmt.Println("Key reserved for token bucket.")
+				continue
+			}
+
 			err := engine.Delete(key)
 			if err != nil {
 				fmt.Println("Error during deletion:", err)
@@ -87,6 +110,12 @@ func mainMenu() {
 			key := readLine("Unesite kljuc za pretragu: ")
 			if key == "" {
 				fmt.Println("Key must not be empty.")
+				continue
+			}
+
+			//User cannot get tokenbucket key
+			if key == tokenbucket.INTERNAL_KEY {
+				fmt.Println("Key reserved for token bucket.")
 				continue
 			}
 
@@ -173,6 +202,14 @@ func checkPointMenu(engine *engine.Engine) {
 			break
 		}
 
+		ok, err := checkTokens(engine)
+		if err != nil {
+			break
+		}
+		if !ok {
+			continue
+		}
+
 		if command == 1 {
 			fmt.Println()
 			fmt.Print("Enter checkpoint name: ")
@@ -214,7 +251,7 @@ func checkPointOpen(checkPointManager *checkpoint.CheckpointManager, engine *eng
 				return
 			}
 			isFound = true
-			openedCheckpoint(checkpoint)
+			openedCheckpoint(checkpoint, engine)
 		}
 	}
 	if !isFound {
@@ -223,7 +260,7 @@ func checkPointOpen(checkPointManager *checkpoint.CheckpointManager, engine *eng
 
 }
 
-func openedCheckpoint(ch *checkpoint.Checkpoint) {
+func openedCheckpoint(ch *checkpoint.Checkpoint, originalEngine *eng.Engine) {
 	configPath := "config/config.yaml"
 
 	walPath := "checkpoints/" + ch.GetName() + "/walDATA"
@@ -234,6 +271,7 @@ func openedCheckpoint(ch *checkpoint.Checkpoint) {
 		fmt.Println("Error during system initialization:", err)
 		return
 	}
+	originalEngine.CheckTokenBucketInsert()
 
 	for {
 		fmt.Println()
@@ -260,11 +298,26 @@ func openedCheckpoint(ch *checkpoint.Checkpoint) {
 			fmt.Println("System is shut down.")
 			break
 		}
+
+		ok, err := checkTokens(originalEngine)
+		if err != nil {
+			break
+		}
+		if !ok {
+			continue
+		}
+
 		switch command {
 		case 1:
 			key := readLine("Enter key for search: ")
 			if key == "" {
 				fmt.Println("Key must not be empty.")
+				continue
+			}
+
+			//User cannot get tokenbucket key
+			if key == tokenbucket.INTERNAL_KEY {
+				fmt.Println("Key reserved for token bucket.")
 				continue
 			}
 
@@ -307,12 +360,18 @@ func openedCheckpoint(ch *checkpoint.Checkpoint) {
 			printRecords(records)
 
 		case 4:
+			//TODO: implement token bucket once functionality is implemented
+			//tokenbucket.INTERNAL_KEY may not be accessed by prefix iterate
 			fmt.Println("PREFIX_ITERATE is not implemented!")
 
 		case 5:
+			//TODO: implement token bucket once functionality is implemented
+			//tokenbucket.INTERNAL_KEY may not be accessed by range iterate
 			fmt.Println("RANGE_ITERATE is not implemented!")
 
 		case 6:
+			//TODO: implement token bucket once functionality is implemented
+
 			fmt.Println("MERKLE TREE VALIDATION is not implemented!")
 
 		case 7:
@@ -328,6 +387,33 @@ func openedCheckpoint(ch *checkpoint.Checkpoint) {
 			fmt.Println("ERROR UNKNOWN COMMAND")
 		}
 	}
+}
+
+func checkTokens(engine *eng.Engine) (bool, error) {
+	tokenBucketBytes, err := engine.Get(tokenbucket.INTERNAL_KEY)
+	if err != nil {
+		fmt.Print(err)
+		return false, err
+	}
+	tokenBucket, err := tokenbucket.Deserialize(tokenBucketBytes)
+	if err != nil {
+		fmt.Print(err)
+		return false, err
+	}
+	allowed := tokenBucket.Allow()
+	if !allowed {
+		fmt.Println("You currently have no tokens")
+		timeToRefill := tokenBucket.GetNextRefill()
+		output := strconv.Itoa(int(timeToRefill)) + " seconds to next refill"
+		fmt.Println(output)
+		return false, nil
+	}
+	putBytes := tokenBucket.Serialize()
+	err = engine.Put(tokenbucket.INTERNAL_KEY, putBytes)
+	if err != nil {
+		fmt.Print(err)
+	}
+	return true, nil
 }
 
 func readLine(prompt string) string {
