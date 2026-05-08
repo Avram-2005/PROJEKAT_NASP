@@ -2,8 +2,11 @@ package sstable
 
 import (
 	"fmt"
+	"os"
 	"testing"
 	"time"
+
+	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
 
 	. "github.com/Avram-2005/PROJEKAT_NASP/Record"
 )
@@ -149,5 +152,195 @@ func TestLSMGetLargeDatasetNewestWins(t *testing.T) {
 		if string(val) != expected {
 			t.Fatalf("Expected '%s' for key '%s', got '%s'", expected, key, string(val))
 		}
+	}
+}
+
+// helper
+func setupTestLSM(t *testing.T) (*LSM, func()) {
+	// privremeni direktorijum za test
+	tmpDir, err := os.MkdirTemp("", "lsm_test")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+
+	bm, err := BlockManager.NewBlockManager(10, 4)
+	if err != nil {
+		t.Fatalf("Failed to create block manager: %v", err)
+	}
+
+	sstConfig := SSTableConfig{
+		SummaryInterval: 2,
+		MultipleFiles:   false,
+	}
+
+	lsmConfig := LSMConfig{
+		NumLevels:        3,
+		CompactionFactor: 2,
+	}
+
+	lsm, err := NewLSM(lsmConfig, tmpDir, sstConfig, bm)
+	if err != nil {
+		t.Fatalf("Failed to create LSM: %v", err)
+	}
+
+	cleanup := func() {
+		os.RemoveAll(tmpDir)
+	}
+
+	return lsm, cleanup
+}
+
+// helper za kreiranje Record-a
+func makeRecord(key string, value string) *Record {
+	return &Record{
+		Key:       key,
+		Value:     []byte(value),
+		Tombstone: false,
+		Timestamp: time.Now(),
+	}
+}
+
+func TestLSMPrefixScan(t *testing.T) {
+	lsm, cleanup := setupTestLSM(t)
+	defer cleanup()
+
+	records1 := []*Record{
+		makeRecord("apple", "fruit1"),
+		makeRecord("apricot", "fruit2"),
+		makeRecord("banana", "fruit3"),
+	}
+	if err := lsm.Flush(records1); err != nil {
+		t.Fatalf("Failed to flush: %v", err)
+	}
+
+	records2 := []*Record{
+		makeRecord("berry", "fruit4"),
+		makeRecord("blueberry", "fruit5"),
+		makeRecord("cherry", "fruit6"),
+	}
+	if err := lsm.Flush(records2); err != nil {
+		t.Fatalf("Failed to flush: %v", err)
+	}
+
+	results, err := lsm.PrefixScan("ap")
+	if err != nil {
+		t.Fatalf("PrefixScan error: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("Expected 2 results for 'ap', got %d", len(results))
+	}
+
+	results, err = lsm.PrefixScan("b")
+	if err != nil {
+		t.Fatalf("PrefixScan error: %v", err)
+	}
+	if len(results) != 3 {
+		t.Fatalf("Expected 3 results for 'b', got %d", len(results))
+	}
+
+	results, err = lsm.PrefixScan("xyz")
+	if err != nil {
+		t.Fatalf("PrefixScan error: %v", err)
+	}
+	if len(results) != 0 {
+		t.Fatalf("Expected 0 results for 'xyz', got %d", len(results))
+	}
+}
+
+func TestLSMRangeScan(t *testing.T) {
+	lsm, cleanup := setupTestLSM(t)
+	defer cleanup()
+	records := []*Record{
+		makeRecord("a", "1"),
+		makeRecord("b", "2"),
+		makeRecord("c", "3"),
+		makeRecord("d", "4"),
+		makeRecord("e", "5"),
+		makeRecord("f", "6"),
+		makeRecord("g", "7"),
+		makeRecord("h", "8"),
+	}
+	if err := lsm.Flush(records); err != nil {
+		t.Fatalf("Failed to flush: %v", err)
+	}
+	results, err := lsm.RangeScan("b", "e")
+	if err != nil {
+		t.Fatalf("RangeScan error: %v", err)
+	}
+	if len(results) != 4 {
+		t.Fatalf("Expected 4 results for 'b'-'e', got %d", len(results))
+	}
+	expected := []string{"b", "c", "d", "e"}
+	for i, r := range results {
+		if r.Key != expected[i] {
+			t.Fatalf("Expected %s, got %s", expected[i], r.Key)
+		}
+	}
+	results, err = lsm.RangeScan("x", "z")
+	if err != nil {
+		t.Fatalf("RangeScan error: %v", err)
+	}
+	if len(results) != 0 {
+		t.Fatalf("Expected 0 results for 'x'-'z', got %d", len(results))
+	}
+}
+
+func TestLSMPrefixScanWithTombstone(t *testing.T) {
+	lsm, cleanup := setupTestLSM(t)
+	defer cleanup()
+
+	records := []*Record{
+		makeRecord("test_key1", "value1"),
+		makeRecord("test_key2", "value2"),
+	}
+	if err := lsm.Flush(records); err != nil {
+		t.Fatalf("Failed to flush: %v", err)
+	}
+	tombstoneRec := &Record{
+		Key:       "test_key1",
+		Value:     nil,
+		Tombstone: true,
+		Timestamp: time.Now(),
+	}
+	if err := lsm.Flush([]*Record{tombstoneRec}); err != nil {
+		t.Fatalf("Failed to flush tombstone: %v", err)
+	}
+
+	results, err := lsm.PrefixScan("test")
+	if err != nil {
+		t.Fatalf("PrefixScan error: %v", err)
+	}
+	for _, r := range results {
+		if r.Tombstone {
+			t.Fatalf("Tombstone should not appear in results: %s", r.Key)
+		}
+	}
+}
+func TestLSMPrefixScanMultipleLevels(t *testing.T) {
+	lsm, cleanup := setupTestLSM(t)
+	defer cleanup()
+
+	for i := 0; i < 5; i++ {
+		records := []*Record{
+			makeRecord("key_a", "value"),
+			makeRecord("key_b", "value"),
+		}
+		if err := lsm.Flush(records); err != nil {
+			t.Fatalf("Failed to flush: %v", err)
+		}
+	}
+
+	results, err := lsm.PrefixScan("key")
+	if err != nil {
+		t.Fatalf("PrefixScan error: %v", err)
+	}
+
+	uniqueKeys := make(map[string]bool)
+	for _, r := range results {
+		uniqueKeys[r.Key] = true
+	}
+
+	if len(uniqueKeys) != 2 {
+		t.Fatalf("Expected 2 unique keys, got %d", len(uniqueKeys))
 	}
 }

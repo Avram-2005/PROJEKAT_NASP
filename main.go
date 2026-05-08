@@ -2,12 +2,14 @@ package main
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	checkpoint "github.com/Avram-2005/PROJEKAT_NASP/Checkpoint"
 	eng "github.com/Avram-2005/PROJEKAT_NASP/Engine"
 	engine "github.com/Avram-2005/PROJEKAT_NASP/Engine"
-	record "github.com/Avram-2005/PROJEKAT_NASP/Record"
+	scan "github.com/Avram-2005/PROJEKAT_NASP/Scan"
+	tokenbucket "github.com/Avram-2005/PROJEKAT_NASP/TokenBucket"
 )
 
 func main() {
@@ -21,14 +23,15 @@ func mainMenu() {
 
 	engine, err := eng.NewEngine(configPath, walPath, sstablePath)
 	if err != nil {
-		fmt.Println("Greska pri inicijalizaciji sistema:", err)
+		fmt.Println("Error during system initialization:", err)
 		return
 	}
+	engine.CheckTokenBucketInsert()
 
 	for {
 		fmt.Println()
-		fmt.Print("Unesite komandu: ")
-		fmt.Println("0  - UGASI SISTEM")
+		fmt.Print("Enter command: ")
+		fmt.Println("0  - SHUT DOWN SYSTEM")
 		fmt.Println("1  - PUT")
 		fmt.Println("2  - DELETE")
 		fmt.Println("3  - GET")
@@ -38,113 +41,364 @@ func mainMenu() {
 		fmt.Println("7  - RANGE_ITERATE")
 		fmt.Println("8  - SNAPSHOT")
 		fmt.Println("9  - CHECKPOINT")
-		fmt.Println("10 - VALIDACIJA_MERKLE_STABLA")
+		fmt.Println("10 - MERKLE TREE VALIDATION")
 		fmt.Println("----------------------------------------------")
 
 		var command int
 		_, err := fmt.Scanln(&command)
 		if err != nil {
-			fmt.Println("Neispravan unos komande")
+			fmt.Println("Invalid command input")
 			continue
 		}
 
 		if command == 0 {
 			engine.ShutDown()
-			fmt.Println("Sistem je ugasen.")
+			fmt.Println("System is shut down.")
 			break
+		}
+
+		ok, err := checkTokens(engine)
+		if err != nil {
+			break
+		}
+		if !ok {
+			continue
 		}
 
 		switch command {
 		case 1:
-			key := readLine("Unesite kljuc: ")
-			value := readLine("Unesite vrednost: ")
+			key := readLine("Enter key: ")
+			value := readLine("Enter value: ")
 
 			if key == "" || value == "" {
-				fmt.Println("Kljuc i vrednost ne smeju biti prazni.")
+				fmt.Println("Key and value must not be empty.")
+				continue
+			}
+
+			//User cannot put to tokenbucket key
+			if key == tokenbucket.INTERNAL_KEY {
+				fmt.Println("Key reserved for token bucket.")
 				continue
 			}
 
 			err := engine.Put(key, []byte(value))
 			if err != nil {
-				fmt.Println("Greska pri upisu:", err)
+				fmt.Println("Error during write:", err)
 				continue
 			}
 
 		case 2:
-			key := readLine("Unesite kljuc za brisanje: ")
+			key := readLine("Enter key for deletion: ")
 			if key == "" {
-				fmt.Println("Kljuc ne sme biti prazan.")
+				fmt.Println("Key must not be empty.")
+				continue
+			}
+
+			//User cannot delete tokenbucket key
+			if key == tokenbucket.INTERNAL_KEY {
+				fmt.Println("Key reserved for token bucket.")
 				continue
 			}
 
 			err := engine.Delete(key)
 			if err != nil {
-				fmt.Println("Greska pri brisanju:", err)
+				fmt.Println("Error during deletion:", err)
 				continue
 			}
 
 		case 3:
 			key := readLine("Unesite kljuc za pretragu: ")
 			if key == "" {
-				fmt.Println("Kljuc ne sme biti prazan.")
+				fmt.Println("Key must not be empty.")
+				continue
+			}
+
+			//User cannot get tokenbucket key
+			if key == tokenbucket.INTERNAL_KEY {
+				fmt.Println("Key reserved for token bucket.")
 				continue
 			}
 
 			value, err := engine.Get(key)
 			if err != nil {
-				fmt.Println("Greska pri citanju: " + err.Error())
+				fmt.Println("Error during reading: " + err.Error())
 				continue
 			}
 			if len(value) == 0 {
-				fmt.Println("Nije pronadjena vrednost.")
+				fmt.Println("Value not found.")
 				continue
 			}
 
-			fmt.Println("Vrednost:", string(value))
+			fmt.Println("Value:", string(value))
 
 		case 4:
-			prefix := readLine("Unesite prefix: ")
+			prefix := readLine("Enter prefix: ")
 			if prefix == "" {
-				fmt.Println("Prefix ne sme biti prazan.")
+				fmt.Println("Prefix must not be empty.")
 				continue
 			}
+			if strings.HasPrefix(tokenbucket.INTERNAL_KEY, prefix) {
+				fmt.Println("Cannot scan token bucket internal key.")
+				continue
+			}
+			currentPage := 1
+			pageSize := 0
+			fmt.Print("Enter page size: ")
+			fmt.Scanln(&pageSize)
+			if pageSize < 0 {
+				pageSize = 5
+			}
+			for {
+				result, err := engine.PrefixScan(prefix, currentPage, pageSize)
+				if err != nil {
+					fmt.Printf("Prefix scan error: %v\n", err)
+				}
+				printScanResult(result, currentPage, pageSize)
+				if result.TotalCount == 0 {
+					break
+				}
+				fmt.Println("\nOptions:")
+				fmt.Println("  n - NEXT PAGE")
+				fmt.Println("  p - PREVIOUS PAGE")
+				fmt.Println("  g - GO TO SPECIFIC PAGE")
+				fmt.Println("  q - QUIT")
+				fmt.Print("Enter command: ")
 
-			records := engine.PrefixScan(prefix)
-			printRecords(records)
+				var userInput string
+				fmt.Scanln(&userInput)
+				if userInput == "q" {
+					break
+				}
+				switch userInput {
+				case "n":
+					if result.HasMore {
+						currentPage++
+					} else {
+						fmt.Println("Already on last page.")
+					}
+				case "p":
+					if currentPage > 1 {
+						currentPage--
+					} else {
+						fmt.Println("Already on first page.")
+					}
+				case "g":
+					fmt.Print("Enter page number: ")
+					var page int
+					fmt.Scanln(&page)
+					if page >= 1 && page <= (result.TotalCount+pageSize-1)/pageSize {
+						currentPage = page
+					} else {
+						fmt.Println("Invalid page number.")
+					}
+				default:
+					fmt.Println("Unknown command.")
+
+				}
+
+				fmt.Println()
+			}
 
 		case 5:
-			startKey := readLine("Unesite pocetni key: ")
-			endKey := readLine("Unesite krajnji key: ")
+			startKey := readLine("Enter start key: ")
+			endKey := readLine("Enter end key: ")
 
 			if startKey == "" || endKey == "" {
-				fmt.Println("Pocetni i krajnji kljucevi ne smeju biti prazni.")
+				fmt.Println("Start and end keys must not be empty.")
 				continue
 			}
 			if startKey > endKey {
-				fmt.Println("Pocetni kljuc ne sme biti veci od krajnjeg kljuca.")
+				fmt.Println("Start key must not be greater than end key.")
 				continue
 			}
 
-			records := engine.RangeScan(startKey, endKey)
-			printRecords(records)
+			currentPage := 1
+			pageSize := 0
+
+			fmt.Print("Enter page size: ")
+			fmt.Scanln(&pageSize)
+			if pageSize <= 0 {
+				pageSize = 5
+			}
+
+			for {
+				result, err := engine.RangeScan(startKey, endKey, currentPage, pageSize)
+				if err != nil {
+					fmt.Printf("Range scan error: %v\n", err)
+					break
+				}
+				printScanResult(result, currentPage, pageSize)
+				if result.TotalCount == 0 {
+					break
+				}
+				fmt.Println("\nOptions:")
+				fmt.Println("  n - NEXT PAGE")
+				fmt.Println("  p - PREVIOUS PAGE")
+				fmt.Println("  g - GO TO SPECIFIC PAGE")
+				fmt.Println("  q - QUIT")
+				fmt.Print("Enter command: ")
+
+				var userInput string
+				fmt.Scanln(&userInput)
+				if userInput == "q" {
+					break
+				}
+				switch userInput {
+				case "n":
+					if result.HasMore {
+						currentPage++
+					} else {
+						fmt.Println("Already on last page.")
+					}
+				case "p":
+					if currentPage > 1 {
+						currentPage--
+					} else {
+						fmt.Println("Already on first page.")
+					}
+				case "g":
+					fmt.Print("Enter page number: ")
+					var page int
+					fmt.Scanln(&page)
+					if page >= 1 && page <= (result.TotalCount+pageSize-1)/pageSize {
+						currentPage = page
+					} else {
+						fmt.Println("Invalid page number.")
+					}
+				default:
+					fmt.Println("Unknown command.")
+
+				}
+
+				fmt.Println()
+			}
 
 		case 6:
-			fmt.Println("PREFIX_ITERATE nije implementiran!")
+			prefix := readLine("Enter prefix: ")
+			if prefix == "" {
+				fmt.Println("Prefix must not be empty")
+				continue
+			}
+			if strings.HasPrefix(tokenbucket.INTERNAL_KEY, prefix) {
+				fmt.Println("Cannot iterate over token bucket internal key.")
+				continue
+			}
+			iter, err := engine.NewPrefixIterator(prefix)
+			if err != nil {
+				fmt.Printf("Failed to create iterator: %v\n", err)
+				continue
+			}
+			defer iter.Stop()
+			fmt.Println("Iterating through records: ")
+			fmt.Println("----------------------------------------------")
+			count := 0
+			for {
+				fmt.Print("\nPress 'n' for next record, 's' to stop: ")
+				var command string
+				fmt.Scanln(&command)
+				if command == "s" || command == "stop" {
+					iter.Stop()
+					fmt.Println("Iteration stopped.")
+					break
+				}
+				if command == "n" || command == "next" {
+					if !iter.Next() {
+						fmt.Println("No more records.End of iteration.")
+						break
+					}
+					count++
+					fmt.Printf("%d. Key: %s, Value: %s\n", count, iter.Key(), string(iter.Value()))
+				} else {
+					fmt.Println("Unknown command. Use 'n' for next, 's' to stop.")
+				}
+			}
+			if count == 0 {
+				fmt.Println("No results found.")
+			}
+			fmt.Println("----------------------------------------------")
 
 		case 7:
-			fmt.Println("RANGE_ITERATE nije implementiran!")
+			startKey := readLine("Enter start key: ")
+			endKey := readLine("Enter endKey: ")
+			if startKey == "" || endKey == "" {
+				fmt.Println("Start and end keys must not be empty.")
+				continue
+			}
+			iter, err := engine.NewRangeIterator(startKey, endKey)
+			if err != nil {
+				fmt.Printf("Failed to create iterator: %v\n", err)
+				continue
+			}
+			defer iter.Stop()
+			fmt.Println("Iterating through records: ")
+			fmt.Println("----------------------------------------------")
+			count := 0
+			for {
+				fmt.Print("\nPress 'n' for next record, 's' to stop: ")
+				var command string
+				fmt.Scanln(&command)
+				if command == "s" || command == "stop" {
+					iter.Stop()
+					fmt.Println("Iteration stopped.")
+					break
+				}
+				if command == "n" || command == "next" {
+					if !iter.Next() {
+						fmt.Println("No more records.End of iteration.")
+						break
+					}
+					count++
+					fmt.Printf("%d. Key: %s, Value: %s\n", count, iter.Key(), string(iter.Value()))
+				} else {
+					fmt.Println("Unknown command. Use 'n' for next, 's' to stop.")
+				}
+			}
+			if count == 0 {
+				fmt.Println("No results found.")
+			}
+			fmt.Println("----------------------------------------------")
 
 		case 8:
-			fmt.Println("SNAPSHOT nije implementiran!")
+			fmt.Println("SNAPSHOT is not implemented!")
 
 		case 9:
 			checkPointMenu(engine)
 
 		case 10:
-			fmt.Println("VALIDACIJA_MERKLE_STABLA nije implementirana!")
+			all := engine.GetAllSSTables()
+			if len(all) == 0 {
+				fmt.Println("There are no SSTables to validate.")
+				continue
+			}
+
+			for i, info := range all {
+				fmt.Printf("%d. Level: %d, Path: %s\n", i+1, info.Level, info.Path)
+			}
+			fmt.Println("Choose SSTable: ")
+			var choice int
+			_, err := fmt.Scanln(&choice)
+			if err != nil || choice > len(all) || choice <= 0 {
+				fmt.Print("Choice doesnt exist!")
+				continue
+			}
+			selected := all[choice-1].Table
+
+			valid, corrupted, err := engine.ValidateSSTable(selected)
+			if err != nil {
+				fmt.Printf("Validation error %v", err)
+				continue
+			}
+			if valid {
+				fmt.Print("SSTable is valid")
+			} else {
+				fmt.Printf("Found corrupted records: %d", len(corrupted))
+				for _, rec := range corrupted {
+					fmt.Printf("\nKey: %s, Value: %s, Timestamp: %s, Tombstone: %t", rec.Key, rec.Value, rec.Timestamp.String(), rec.Tombstone)
+				}
+			}
 
 		default:
-			fmt.Println("GRESKA NEPOZNATA KOMANDA")
+			fmt.Println("ERROR UNKNOWN COMMAND")
 		}
 	}
 }
@@ -157,15 +411,15 @@ func checkPointMenu(engine *engine.Engine) {
 	}
 	for {
 		fmt.Println()
-		fmt.Print("Unesite komandu: ")
-		fmt.Println("0  - IDI NAZAD")
-		fmt.Println("1  - STVORI CHECKPOINT SISTEMA")
-		fmt.Println("2  - OTVORI CHECKPOINT")
+		fmt.Print("Enter command: ")
+		fmt.Println("0  - GO BACK")
+		fmt.Println("1  - CREATE SYSTEM CHECKPOINT")
+		fmt.Println("2  - OPEN CHECKPOINT")
 
 		var command int
 		_, err := fmt.Scanln(&command)
 		if err != nil {
-			fmt.Println("Neispravan unos komande")
+			fmt.Println("Invalid command input")
 			continue
 		}
 
@@ -173,17 +427,25 @@ func checkPointMenu(engine *engine.Engine) {
 			break
 		}
 
+		ok, err := checkTokens(engine)
+		if err != nil {
+			break
+		}
+		if !ok {
+			continue
+		}
+
 		if command == 1 {
 			fmt.Println()
-			fmt.Print("Unesite ime checkpoint-a: ")
+			fmt.Print("Enter checkpoint name: ")
 			var command string
 			_, err := fmt.Scanln(&command)
 			if err != nil {
-				fmt.Println("Neispravan unos komande")
+				fmt.Println("Invalid command input")
 				continue
 			}
 			checkPointManager.AddCheckpoint(engine.GetRoot(), command)
-			fmt.Print("Checkpoint uspesno dodat: ")
+			fmt.Print("Checkpoint successfully added: ")
 		}
 		if command == 2 {
 			checkPointOpen(checkPointManager, engine)
@@ -197,11 +459,11 @@ func checkPointOpen(checkPointManager *checkpoint.CheckpointManager, engine *eng
 		fmt.Println(elem.Value.(string))
 	}
 	fmt.Println()
-	fmt.Print("Unesite ime checkpoint-a koji zelite da otvorite: ")
+	fmt.Print("Enter the name of the checkpoint you want to open: ")
 	var command string
 	_, err := fmt.Scanln(&command)
 	if err != nil {
-		fmt.Println("Neispravan unos komande")
+		fmt.Println("Invalid command input")
 		checkPointOpen(checkPointManager, engine)
 	}
 	isFound := false
@@ -210,20 +472,20 @@ func checkPointOpen(checkPointManager *checkpoint.CheckpointManager, engine *eng
 		if elem.Value == command {
 			checkpoint, err := checkPointManager.GetCheckpoint(elem.Value.(string))
 			if err != nil {
-				fmt.Println("Nesto je poslo po zlu")
+				fmt.Println("Something went wrong")
 				return
 			}
 			isFound = true
-			openedCheckpoint(checkpoint)
+			openedCheckpoint(checkpoint, engine)
 		}
 	}
 	if !isFound {
-		fmt.Println("Nepostojeci checkpoint")
+		fmt.Println("Non-existent checkpoint")
 	}
 
 }
 
-func openedCheckpoint(ch *checkpoint.Checkpoint) {
+func openedCheckpoint(ch *checkpoint.Checkpoint, originalEngine *eng.Engine) {
 	configPath := "config/config.yaml"
 
 	walPath := "checkpoints/" + ch.GetName() + "/walDATA"
@@ -231,89 +493,330 @@ func openedCheckpoint(ch *checkpoint.Checkpoint) {
 
 	engine, err := eng.NewEngine(configPath, walPath, sstablePath)
 	if err != nil {
-		fmt.Println("Greska pri inicijalizaciji sistema:", err)
+		fmt.Println("Error during system initialization:", err)
 		return
 	}
+	originalEngine.CheckTokenBucketInsert()
 
 	for {
 		fmt.Println()
-		fmt.Print("Unesite komandu: ")
-		fmt.Println("0  - UGASI SISTEM")
+		fmt.Print("Enter command: ")
+		fmt.Println("0  - SHUT DOWN SYSTEM")
 		fmt.Println("1  - GET")
 		fmt.Println("2  - PREFIX_SCAN")
 		fmt.Println("3  - RANGE_SCAN")
 		fmt.Println("4  - PREFIX_ITERATE")
 		fmt.Println("5  - RANGE_ITERATE")
-		fmt.Println("6 - VALIDACIJA_MERKLE_STABLA")
-		fmt.Println("7 - OBRISI CHECKPOINT")
+		fmt.Println("6 - MERKLE TREE VALIDATION")
+		fmt.Println("7 - DELETE CHECKPOINT")
 		fmt.Println("----------------------------------------------")
 
 		var command int
 		_, err := fmt.Scanln(&command)
 		if err != nil {
-			fmt.Println("Neispravan unos komande")
+			fmt.Println("Invalid command input")
 			continue
 		}
 
 		if command == 0 {
 			engine.ShutDown()
-			fmt.Println("Sistem je ugasen.")
+			fmt.Println("System is shut down.")
 			break
 		}
+
+		ok, err := checkTokens(originalEngine)
+		if err != nil {
+			break
+		}
+		if !ok {
+			continue
+		}
+
 		switch command {
 		case 1:
-			key := readLine("Unesite kljuc za pretragu: ")
+			key := readLine("Enter key for search: ")
 			if key == "" {
-				fmt.Println("Kljuc ne sme biti prazan.")
+				fmt.Println("Key must not be empty.")
+				continue
+			}
+
+			//User cannot get tokenbucket key
+			if key == tokenbucket.INTERNAL_KEY {
+				fmt.Println("Key reserved for token bucket.")
 				continue
 			}
 
 			value, err := engine.Get(key)
 			if err != nil {
-				fmt.Println("Greska pri citanju: " + err.Error())
+				fmt.Println("Error during reading: " + err.Error())
 				continue
 			}
 			if len(value) == 0 {
-				fmt.Println("Nije pronadjena vrednost.")
+				fmt.Println("Value not found.")
 				continue
 			}
 
-			fmt.Println("Vrednost:", string(value))
+			fmt.Println("Value:", string(value))
 
 		case 2:
-			prefix := readLine("Unesite prefix: ")
+			prefix := readLine("Enter prefix: ")
 			if prefix == "" {
-				fmt.Println("Prefix ne sme biti prazan.")
+				fmt.Println("Prefix must not be empty.")
 				continue
 			}
+			if strings.HasPrefix(tokenbucket.INTERNAL_KEY, prefix) {
+				fmt.Println("Cannot scan token bucket internal key.")
+				continue
+			}
+			currentPage := 1
+			pageSize := 0
+			fmt.Print("Enter page size: ")
+			fmt.Scanln(&pageSize)
+			if pageSize < 0 {
+				pageSize = 5
+			}
+			for {
+				result, err := engine.PrefixScan(prefix, currentPage, pageSize)
+				if err != nil {
+					fmt.Printf("Prefix scan error: %v\n", err)
+				}
+				printScanResult(result, currentPage, pageSize)
+				if result.TotalCount == 0 {
+					break
+				}
+				fmt.Println("\nOptions:")
+				fmt.Println("  n - NEXT PAGE")
+				fmt.Println("  p - PREVIOUS PAGE")
+				fmt.Println("  g - GO TO SPECIFIC PAGE")
+				fmt.Println("  q - QUIT")
+				fmt.Print("Enter command: ")
 
-			records := engine.PrefixScan(prefix)
-			printRecords(records)
+				var userInput string
+				fmt.Scanln(&userInput)
+				if userInput == "q" {
+					break
+				}
+				switch userInput {
+				case "n":
+					if result.HasMore {
+						currentPage++
+					} else {
+						fmt.Println("Already on last page.")
+					}
+				case "p":
+					if currentPage > 1 {
+						currentPage--
+					} else {
+						fmt.Println("Already on first page.")
+					}
+				case "g":
+					fmt.Print("Enter page number: ")
+					var page int
+					fmt.Scanln(&page)
+					if page >= 1 && page <= (result.TotalCount+pageSize-1)/pageSize {
+						currentPage = page
+					} else {
+						fmt.Println("Invalid page number.")
+					}
+				default:
+					fmt.Println("Unknown command.")
+
+				}
+
+				fmt.Println()
+			}
 
 		case 3:
-			startKey := readLine("Unesite pocetni key: ")
-			endKey := readLine("Unesite krajnji key: ")
+			startKey := readLine("Enter start key: ")
+			endKey := readLine("Enter end key: ")
 
 			if startKey == "" || endKey == "" {
-				fmt.Println("Pocetni i krajnji kljucevi ne smeju biti prazni.")
+				fmt.Println("Start and end keys must not be empty.")
 				continue
 			}
 			if startKey > endKey {
-				fmt.Println("Pocetni kljuc ne sme biti veci od krajnjeg kljuca.")
+				fmt.Println("Start key must not be greater than end key.")
 				continue
 			}
 
-			records := engine.RangeScan(startKey, endKey)
-			printRecords(records)
+			currentPage := 1
+			pageSize := 0
+
+			fmt.Print("Enter page size: ")
+			fmt.Scanln(&pageSize)
+			if pageSize <= 0 {
+				pageSize = 5
+			}
+
+			for {
+				result, err := engine.RangeScan(startKey, endKey, currentPage, pageSize)
+				if err != nil {
+					fmt.Printf("Range scan error: %v\n", err)
+					break
+				}
+				printScanResult(result, currentPage, pageSize)
+				if result.TotalCount == 0 {
+					break
+				}
+				fmt.Println("\nOptions:")
+				fmt.Println("  n - NEXT PAGE")
+				fmt.Println("  p - PREVIOUS PAGE")
+				fmt.Println("  g - GO TO SPECIFIC PAGE")
+				fmt.Println("  q - QUIT")
+				fmt.Print("Enter command: ")
+
+				var userInput string
+				fmt.Scanln(&userInput)
+				if userInput == "q" {
+					break
+				}
+				switch userInput {
+				case "n":
+					if result.HasMore {
+						currentPage++
+					} else {
+						fmt.Println("Already on last page.")
+					}
+				case "p":
+					if currentPage > 1 {
+						currentPage--
+					} else {
+						fmt.Println("Already on first page.")
+					}
+				case "g":
+					fmt.Print("Enter page number: ")
+					var page int
+					fmt.Scanln(&page)
+					if page >= 1 && page <= (result.TotalCount+pageSize-1)/pageSize {
+						currentPage = page
+					} else {
+						fmt.Println("Invalid page number.")
+					}
+				default:
+					fmt.Println("Unknown command.")
+
+				}
+
+				fmt.Println()
+			}
 
 		case 4:
-			fmt.Println("PREFIX_ITERATE nije implementiran!")
+			prefix := readLine("Enter prefix: ")
+			if prefix == "" {
+				fmt.Println("Prefix must not be empty")
+				continue
+			}
+			if strings.HasPrefix(tokenbucket.INTERNAL_KEY, prefix) {
+				fmt.Println("Cannot iterate over token bucket internal key.")
+				continue
+			}
+			iter, err := engine.NewPrefixIterator(prefix)
+			if err != nil {
+				fmt.Printf("Failed to create iterator: %v\n", err)
+				continue
+			}
+			defer iter.Stop()
+			fmt.Println("Iterating through records: ")
+			fmt.Println("----------------------------------------------")
+			count := 0
+			for {
+				fmt.Print("\nPress 'n' for next record, 's' to stop: ")
+				var command string
+				fmt.Scanln(&command)
+				if command == "s" || command == "stop" {
+					iter.Stop()
+					fmt.Println("Iteration stopped.")
+					break
+				}
+				if command == "n" || command == "next" {
+					if !iter.Next() {
+						fmt.Println("No more records.End of iteration.")
+						break
+					}
+					count++
+					fmt.Printf("%d. Key: %s, Value: %s\n", count, iter.Key(), string(iter.Value()))
+				} else {
+					fmt.Println("Unknown command. Use 'n' for next, 's' to stop.")
+				}
+			}
+			if count == 0 {
+				fmt.Println("No results found.")
+			}
+			fmt.Println("----------------------------------------------")
 
 		case 5:
-			fmt.Println("RANGE_ITERATE nije implementiran!")
+			startKey := readLine("Enter start key: ")
+			endKey := readLine("Enter endKey: ")
+			if startKey == "" || endKey == "" {
+				fmt.Println("Start and end keys must not be empty.")
+				continue
+			}
+			iter, err := engine.NewRangeIterator(startKey, endKey)
+			if err != nil {
+				fmt.Printf("Failed to create iterator: %v\n", err)
+				continue
+			}
+			defer iter.Stop()
+			fmt.Println("Iterating through records: ")
+			fmt.Println("----------------------------------------------")
+			count := 0
+			for {
+				fmt.Print("\nPress 'n' for next record, 's' to stop: ")
+				var command string
+				fmt.Scanln(&command)
+				if command == "s" || command == "stop" {
+					iter.Stop()
+					fmt.Println("Iteration stopped.")
+					break
+				}
+				if command == "n" || command == "next" {
+					if !iter.Next() {
+						fmt.Println("No more records.End of iteration.")
+						break
+					}
+					count++
+					fmt.Printf("%d. Key: %s, Value: %s\n", count, iter.Key(), string(iter.Value()))
+				} else {
+					fmt.Println("Unknown command. Use 'n' for next, 's' to stop.")
+				}
+			}
+			if count == 0 {
+				fmt.Println("No results found.")
+			}
+			fmt.Println("----------------------------------------------")
 
 		case 6:
-			fmt.Println("VALIDACIJA_MERKLE_STABLA nije implementirana!")
+			all := engine.GetAllSSTables()
+			if len(all) == 0 {
+				fmt.Println("There are no SSTables to validate.")
+				continue
+			}
+
+			for i, info := range all {
+				fmt.Printf("%d. Level: %d, Path: %s\n", i+1, info.Level, info.Path)
+			}
+			fmt.Println("Choose SSTable: ")
+			var choice int
+			_, err := fmt.Scanln(&choice)
+			if err != nil || choice > len(all) || choice <= 0 {
+				fmt.Print("Choice doesnt exist!")
+				continue
+			}
+			selected := all[choice-1].Table
+
+			valid, corrupted, err := engine.ValidateSSTable(selected)
+			if err != nil {
+				fmt.Printf("Validation error %v", err)
+				continue
+			}
+			if valid {
+				fmt.Print("SSTable is valid")
+			} else {
+				fmt.Printf("Found corrupted records: %d", len(corrupted))
+				for _, rec := range corrupted {
+					fmt.Printf("Key: %s, Value: %s, Timestamp: %s, Tombstone: %t", rec.Key, rec.Value, rec.Timestamp.String(), rec.Tombstone)
+				}
+			}
 
 		case 7:
 			engine.ShutDown()
@@ -321,13 +824,40 @@ func openedCheckpoint(ch *checkpoint.Checkpoint) {
 			if err != nil {
 				fmt.Print(err)
 			}
-			fmt.Print("Checkpoint uspesno obrisan")
+			fmt.Print("Checkpoint successfully deleted")
 			return
 
 		default:
-			fmt.Println("GRESKA NEPOZNATA KOMANDA")
+			fmt.Println("ERROR UNKNOWN COMMAND")
 		}
 	}
+}
+
+func checkTokens(engine *eng.Engine) (bool, error) {
+	tokenBucketBytes, err := engine.Get(tokenbucket.INTERNAL_KEY)
+	if err != nil {
+		fmt.Print(err)
+		return false, err
+	}
+	tokenBucket, err := tokenbucket.Deserialize(tokenBucketBytes)
+	if err != nil {
+		fmt.Print(err)
+		return false, err
+	}
+	allowed := tokenBucket.Allow()
+	if !allowed {
+		fmt.Println("You currently have no tokens")
+		timeToRefill := tokenBucket.GetNextRefill()
+		output := strconv.Itoa(int(timeToRefill)) + " seconds to next refill"
+		fmt.Println(output)
+		return false, nil
+	}
+	putBytes := tokenBucket.Serialize()
+	err = engine.Put(tokenbucket.INTERNAL_KEY, putBytes)
+	if err != nil {
+		fmt.Print(err)
+	}
+	return true, nil
 }
 
 func readLine(prompt string) string {
@@ -337,16 +867,30 @@ func readLine(prompt string) string {
 	return strings.TrimSpace(text)
 }
 
-func printRecords(records *[]record.Record) {
-	if records == nil || len(*records) == 0 {
-		fmt.Println("Nema rezultata.")
+// helper for scan results
+func printScanResult(result *scan.ScanResult, currentPage, pageSize int) {
+	if result == nil || len(result.Records) == 0 {
+		fmt.Println("No results found")
 		return
 	}
+	totalPages := (result.TotalCount + pageSize - 1) / pageSize
 
-	fmt.Println("Rezultati:")
 	fmt.Println("----------------------------------------------")
-	for i, r := range *records {
-		fmt.Printf("%d. Kljuc: %s, Vrednost: %s\n", i+1, r.Key, string(r.Value))
+	fmt.Printf("Page %d of %d | Total records: %d\n", currentPage, totalPages, result.TotalCount)
+	fmt.Println("----------------------------------------------")
+
+	startIdx := (currentPage-1)*pageSize + 1
+	for i, rec := range result.Records {
+		fmt.Printf("%d. Key: %s\n", startIdx+i, rec.Key)
+		fmt.Printf("   Value: %s\n", string(rec.Value))
+		fmt.Println("   ---")
 	}
 	fmt.Println("----------------------------------------------")
+
+	if result.HasMore {
+		fmt.Printf("Next page available (page %d)\n", currentPage+1)
+	}
+	if currentPage > 1 {
+		fmt.Printf("Previous page available (page %d)\n", currentPage-1)
+	}
 }

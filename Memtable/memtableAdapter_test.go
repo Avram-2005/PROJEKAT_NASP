@@ -464,3 +464,75 @@ func TestPutRecordInManager(t *testing.T) {
 		})
 	}
 }
+
+func TestPrefixIterator(t *testing.T) {
+	for _, typ := range allStructTypes {
+		t.Run(typ, func(t *testing.T) {
+			adapt := makeAdapter(t, typ)
+			adapt.Put("apple", []byte("fruit1"))
+			adapt.Put("apricot", []byte("fruit2"))
+			adapt.Put("banana", []byte("fruit3"))
+			adapt.Put("blueberry", []byte("fruit4"))
+			adapt.Put("cherry", []byte("fruit5"))
+			iter := adapt.PrefixIterator("ap")
+			defer iter.Stop()
+			expectedKeys := []string{"apple", "apricot"}
+			count := 0
+			for iter.Next() {
+				if iter.Key() != expectedKeys[count] {
+					t.Fatalf("Expected %s, got %s", expectedKeys[count], iter.Key())
+				}
+				count++
+			}
+			if count != 2 {
+				t.Fatalf("Expected 2 records, got %d", count)
+			}
+		})
+	}
+}
+
+func TestRangeIterator(t *testing.T) {
+	for _, typ := range allStructTypes {
+		t.Run(typ, func(t *testing.T) {
+			adapt := makeAdapter(t, typ)
+
+			adapt.Put("a", []byte("1"))
+			adapt.Put("b", []byte("2"))
+			adapt.Put("c", []byte("3"))
+			adapt.Put("d", []byte("4"))
+			adapt.Put("e", []byte("5"))
+
+			iter := adapt.RangeIterator("b", "d")
+			defer iter.Stop()
+
+			expectedKeys := []string{"b", "c", "d"}
+			count := 0
+			for iter.Next() {
+				if iter.Key() != expectedKeys[count] {
+					t.Fatalf("Expected %s, got %s", expectedKeys[count], iter.Key())
+				}
+				count++
+			}
+			if count != 3 {
+				t.Fatalf("Expected 3 records, got %d", count)
+			}
+		})
+	}
+}
+
+func TestPrefixIteratorEmpty(t *testing.T) {
+	for _, typ := range allStructTypes {
+		t.Run(typ, func(t *testing.T) {
+			adapt := makeAdapter(t, typ)
+
+			adapt.Put("apple", []byte("fruit1"))
+
+			iter := adapt.PrefixIterator("xyz")
+			defer iter.Stop()
+
+			if iter.Next() {
+				t.Fatal("Iterator should be empty")
+			}
+		})
+	}
+}

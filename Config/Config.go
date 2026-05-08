@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
 	cache "github.com/Avram-2005/PROJEKAT_NASP/Cache"
 	sstable "github.com/Avram-2005/PROJEKAT_NASP/LSM"
 	memtable "github.com/Avram-2005/PROJEKAT_NASP/Memtable"
 	record "github.com/Avram-2005/PROJEKAT_NASP/Record"
+	tokenbucket "github.com/Avram-2005/PROJEKAT_NASP/TokenBucket"
 	wal "github.com/Avram-2005/PROJEKAT_NASP/WAL"
 
 	"go.yaml.in/yaml/v4"
@@ -49,13 +49,6 @@ type Config struct {
 		NumLevels        int `yaml:"NumLevels"`
 		CompactionFactor int `yaml:"CompactionFactor"`
 	} `yaml:"LSMConfig"`
-}
-
-type TokenBucket struct {
-}
-
-func NewTokenBucket(maxNumTokens int64, refillInterval time.Duration) (*TokenBucket, error) {
-	return &TokenBucket{}, nil
 }
 
 //Config related functions
@@ -189,8 +182,8 @@ func (config *Config) InitializeCache() (*cache.Cache, error) {
 	return cache.NewCache(config.CacheConfig.MaxSize)
 }
 
-func (config *Config) InitializeTokenBucket() (*TokenBucket, error) {
-	return NewTokenBucket(int64(config.TokenBucketConfig.MaxNumTokens), time.Millisecond*time.Duration(config.TokenBucketConfig.RefillTime))
+func (config *Config) InitializeTokenBucket() (*tokenbucket.TokenBucket, error) {
+	return tokenbucket.NewTokenBucket(int64(config.TokenBucketConfig.MaxNumTokens), int64(config.TokenBucketConfig.RefillTime))
 }
 
 func (config *Config) InitializeWAL() (*wal.WAL, error) {
