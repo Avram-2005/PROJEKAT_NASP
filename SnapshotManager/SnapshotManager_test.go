@@ -49,27 +49,7 @@ func TestSnapshotManager(t *testing.T) {
 		memtableManager.Put(key, temp)
 	}
 	memtables := memtableManager.GetMemtables()
-	/*for i := 0; i < 3; i++ {
-		temp := make([]byte, 10)
-		random := uint32(rand.Intn(100))
-		binary.BigEndian.PutUint32(temp, random)
-		key := "key" + strconv.Itoa(i)
-		memtables[0].Put(key, temp)
-	}
-	for i := 0; i < 2; i++ {
-		temp := make([]byte, 100)
-		random := uint32(rand.Intn(100))
-		binary.BigEndian.PutUint32(temp, random)
-		key := "key" + strconv.Itoa(i)
-		memtables[1].Put(key, temp)
-	}
-	for i := 0; i < 3; i++ {
-		temp := make([]byte, 100)
-		random := uint32(rand.Intn(100))
-		binary.BigEndian.PutUint32(temp, random)
-		key := "key" + strconv.Itoa(i)
-		memtables[2].Put(key, temp)
-	}*/
+
 	sstables := make([]sstable.SSTable, 3)
 	sstableManager := &sstable.SSTableManager{}
 	sp.AddMany("key0", &memtables, &sstables, sstableManager)
