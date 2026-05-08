@@ -386,3 +386,60 @@ func TestMemtableRangeScan(t *testing.T) {
 		})
 	}
 }
+
+func TestManagerPrefixIterator(t *testing.T) {
+	for _, typ := range allStructTypes {
+		t.Run(typ, func(t *testing.T) {
+			m := makeManager(t, typ, 3, 10)
+
+			m.Put("apple", []byte("fruit1"))
+			m.Put("apricot", []byte("fruit2"))
+			m.Put("banana", []byte("fruit3"))
+			m.Put("blueberry", []byte("fruit4"))
+
+			iter := m.PrefixIterator("ap")
+			defer iter.Stop()
+
+			expectedKeys := []string{"apple", "apricot"}
+			count := 0
+			for iter.Next() {
+				if iter.Key() != expectedKeys[count] {
+					t.Fatalf("Expected %s, got %s", expectedKeys[count], iter.Key())
+				}
+				count++
+			}
+			if count != 2 {
+				t.Fatalf("Expected 2 records, got %d", count)
+			}
+		})
+	}
+}
+
+func TestManagerRangeIterator(t *testing.T) {
+	for _, typ := range allStructTypes {
+		t.Run(typ, func(t *testing.T) {
+			m := makeManager(t, typ, 3, 10)
+
+			m.Put("a", []byte("1"))
+			m.Put("b", []byte("2"))
+			m.Put("c", []byte("3"))
+			m.Put("d", []byte("4"))
+			m.Put("e", []byte("5"))
+
+			iter := m.RangeIterator("b", "d")
+			defer iter.Stop()
+
+			expectedKeys := []string{"b", "c", "d"}
+			count := 0
+			for iter.Next() {
+				if iter.Key() != expectedKeys[count] {
+					t.Fatalf("Expected %s, got %s", expectedKeys[count], iter.Key())
+				}
+				count++
+			}
+			if count != 3 {
+				t.Fatalf("Expected 3 records, got %d", count)
+			}
+		})
+	}
+}
