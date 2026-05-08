@@ -745,9 +745,45 @@ func openedCheckpoint(ch *checkpoint.Checkpoint, originalEngine *eng.Engine) {
 			fmt.Println("----------------------------------------------")
 
 		case 5:
-			//TODO: implement token bucket once functionality is implemented
-			//tokenbucket.INTERNAL_KEY may not be accessed by range iterate
-			fmt.Println("RANGE_ITERATE is not implemented!")
+			startKey := readLine("Enter start key: ")
+			endKey := readLine("Enter endKey: ")
+			if startKey == "" || endKey == "" {
+				fmt.Println("Start and end keys must not be empty.")
+				continue
+			}
+			iter, err := engine.NewRangeIterator(startKey, endKey)
+			if err != nil {
+				fmt.Printf("Failed to create iterator: %v\n", err)
+				continue
+			}
+			defer iter.Stop()
+			fmt.Println("Iterating through records: ")
+			fmt.Println("----------------------------------------------")
+			count := 0
+			for {
+				fmt.Print("\nPress 'n' for next record, 's' to stop: ")
+				var command string
+				fmt.Scanln(&command)
+				if command == "s" || command == "stop" {
+					iter.Stop()
+					fmt.Println("Iteration stopped.")
+					break
+				}
+				if command == "n" || command == "next" {
+					if !iter.Next() {
+						fmt.Println("No more records.End of iteration.")
+						break
+					}
+					count++
+					fmt.Printf("%d. Key: %s, Value: %s\n", count, iter.Key(), string(iter.Value()))
+				} else {
+					fmt.Println("Unknown command. Use 'n' for next, 's' to stop.")
+				}
+			}
+			if count == 0 {
+				fmt.Println("No results found.")
+			}
+			fmt.Println("----------------------------------------------")
 
 		case 6:
 			all := engine.GetAllSSTables()
@@ -829,23 +865,6 @@ func readLine(prompt string) string {
 	var text string
 	fmt.Scanln(&text)
 	return strings.TrimSpace(text)
-}
-
-// helper for pagination
-func readPage() (int, int) {
-	fmt.Print("Enter page number: ")
-	var pageNumber int
-	fmt.Scanln(&pageNumber)
-	if pageNumber <= 0 {
-		pageNumber = 1
-	}
-	fmt.Print("Enter page size: ")
-	var pageSize int
-	fmt.Scanln(&pageSize)
-	if pageSize <= 0 {
-		pageSize = 10
-	}
-	return pageNumber, pageSize
 }
 
 // helper for scan results
