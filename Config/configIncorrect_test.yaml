@@ -30,7 +30,7 @@ SSTableConfig:
   SummaryInterval: 40
   MultipleFiles: false
 WriteAheadLogConfig:
-  SegmentSize: 64
+  SegmentSize: 16
   FilePath: ./TestDataBase/walData
 LSMConfig:
   NumLevels: 4
