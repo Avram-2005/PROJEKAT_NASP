@@ -173,3 +173,13 @@ func (mm *MemtableManager) RangeScan(startKey, endKey string) []*record.Record {
 	}
 	return result
 }
+
+func (mm *MemtableManager) PrefixIterator(prefix string) Iterator {
+	records := mm.PrefixScan(prefix)
+	return NewBaseIterator(records)
+}
+
+func (mm *MemtableManager) RangeIterator(startKey, endKey string) Iterator {
+	records := mm.RangeScan(startKey, endKey)
+	return NewBaseIterator(records)
+}

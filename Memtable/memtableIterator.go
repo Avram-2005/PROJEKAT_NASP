@@ -52,3 +52,9 @@ func (iter *BaseIterator) Reset() {
 func (iter *BaseIterator) Error() error {
 	return iter.err
 }
+
+func (iter *BaseIterator) Stop() {
+	iter.entries = nil
+	iter.current = -1
+	iter.err = nil
+}
