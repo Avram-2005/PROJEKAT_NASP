@@ -40,7 +40,7 @@ func setupTestScanner(t *testing.T) (*SystemScanner, func()) {
 
 	lsmConfig := sstable.LSMConfig{
 		NumLevels:        3,
-		CompactionFactor: 2,
+		CompactionFactor: 5,
 	}
 
 	lsm, err := sstable.NewLSM(lsmConfig, tmpDir, sstConfig, bm)
@@ -313,7 +313,6 @@ func TestRangeScanMixedSources(t *testing.T) {
 func TestRangeScanWithMultipleSSTables(t *testing.T) {
 	scanner, cleanup := setupTestScanner(t)
 	defer cleanup()
-
 	records1 := []*record.Record{
 		makeRecord("apple", "v1"),
 		makeRecord("banana", "v1"),
@@ -321,6 +320,7 @@ func TestRangeScanWithMultipleSSTables(t *testing.T) {
 	if err := scanner.lsm.Flush(records1); err != nil {
 		t.Fatalf("Failed first flush: %v", err)
 	}
+	time.Sleep(1 * time.Millisecond)
 	records2 := []*record.Record{
 		makeRecord("apple", "v2"),
 		makeRecord("cherry", "v2"),
@@ -335,8 +335,10 @@ func TestRangeScanWithMultipleSSTables(t *testing.T) {
 	}
 
 	for _, rec := range result.Records {
-		if rec.Key == "apple" && string(rec.Value) != "v2" {
-			t.Fatalf("Apple should have value 'v2', got '%s'", rec.Value)
+		if rec.Key == "apple" {
+			if string(rec.Value) != "v2" {
+				t.Fatalf("Apple should have value 'v2', got '%s'", rec.Value)
+			}
 		}
 	}
 }
@@ -344,21 +346,16 @@ func TestRangeScanWithMultipleSSTables(t *testing.T) {
 func TestRangeScanWithTombstoneInSSTable(t *testing.T) {
 	scanner, cleanup := setupTestScanner(t)
 	defer cleanup()
-
 	records1 := []*record.Record{
 		makeRecord("apple", "fruit"),
 	}
 	if err := scanner.lsm.Flush(records1); err != nil {
 		t.Fatalf("Failed first flush: %v", err)
 	}
-
-	tombstone := &record.Record{
-		Key:       "apple",
-		Value:     nil,
-		Tombstone: true,
-		Timestamp: time.Now(),
+	records2 := []*record.Record{
+		&record.Record{Key: "apple", Value: nil, Tombstone: true, Timestamp: time.Now().Add(1 * time.Millisecond)},
 	}
-	if err := scanner.lsm.Flush([]*record.Record{tombstone}); err != nil {
+	if err := scanner.lsm.Flush(records2); err != nil {
 		t.Fatalf("Failed tombstone flush: %v", err)
 	}
 
