@@ -231,6 +231,7 @@ func TestEngineDelete(t *testing.T) {
 
 	value, err = engine.Get("delete-key")
 	if err != nil || len(value) > 0 {
+		fmt.Print(value)
 		t.Fatal("Key should be deleted but was found")
 	}
 
