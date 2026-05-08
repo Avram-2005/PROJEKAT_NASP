@@ -44,12 +44,12 @@ func TestCreateAndReopen(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Nije moguće kreirati BlockManager: %v", err)
 	}
-	w.SetBufferPool(bm)
+	w.SetBlockManager(bm)
 	w.AddRecord("test", []byte("data"))
 	w.Close()
 
 	w2, err := CreatNewWAL(16, 4, FILE_PATH, 10)
-	w2.SetBufferPool(bm)
+	w2.SetBlockManager(bm)
 	if err != nil {
 		t.Fatalf("Neuspešno ponovno otvaranje: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestFullRecoveryCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Nije moguće kreirati BlockManager: %v", err)
 	}
-	w.SetBufferPool(bm)
+	w.SetBlockManager(bm)
 	w.AddRecord("mali", []byte("v"))
 	bigVal := []byte("vrednost_koja_se_fragmentise")
 	w.AddRecord("veliki", bigVal)
@@ -78,7 +78,7 @@ func TestFullRecoveryCycle(t *testing.T) {
 	w.Close()
 
 	w2, _ := CreatNewWAL(16, 4, FILE_PATH, 10)
-	w2.SetBufferPool(bm)
+	w2.SetBlockManager(bm)
 	mm, _ := getTestMemtableManager()
 
 	if err := w2.Recovery(mm, time.Time{}); err != nil {
@@ -108,14 +108,14 @@ func TestHeaderBoundaryEdgeCase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Nije moguće kreirati BlockManager: %v", err)
 	}
-	w.SetBufferPool(bm)
+	w.SetBlockManager(bm)
 	w.AddRecord("k1", []byte("v1"))
 	bigKey := "kljuc_posle_skoka"
 	w.AddRecord(bigKey, []byte("podatak"))
 	w.Close()
 
 	w2, _ := CreatNewWAL(16, 4, FILE_PATH, 10)
-	w2.SetBufferPool(bm)
+	w2.SetBlockManager(bm)
 	mm, _ := getTestMemtableManager()
 	if err := w2.Recovery(mm, time.Time{}); err != nil {
 		t.Fatalf("Recovery greška na granici bloka: %v", err)
@@ -138,7 +138,7 @@ func TestRotationAndFlush(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Nije moguće kreirati BlockManager: %v", err)
 	}
-	w.SetBufferPool(bm)
+	w.SetBlockManager(bm)
 	for i := 0; i < 1600; i++ {
 		w.AddRecord(fmt.Sprintf("key%d", i), []byte("duzi_podatak_za_rotaciju"))
 	}
@@ -164,7 +164,7 @@ func TestCorruptedChunk(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Nije moguće kreirati BlockManager: %v", err)
 	}
-	w.SetBufferPool(bm)
+	w.SetBlockManager(bm)
 	w.AddRecord("validan", []byte("podatak"))
 	w.Close()
 
@@ -175,7 +175,7 @@ func TestCorruptedChunk(t *testing.T) {
 
 	mm, _ := getTestMemtableManager()
 	w2, _ := CreatNewWAL(16, 4, FILE_PATH, 10)
-	w2.SetBufferPool(bm)
+	w2.SetBlockManager(bm)
 
 	w2.Recovery(mm, time.Time{})
 

@@ -79,6 +79,10 @@ func NewEngine(configPath string, walPath string, sstablePath string) (*Engine, 
 	if err != nil {
 		return nil, err
 	}
+	err = engineWriteAheadLog.SetBlockManager(engineBlockManager)
+	if err != nil {
+		return nil, err
+	}
 
 	rec, err := engineLSMTree.GetNewestRecord()
 	if err != nil {

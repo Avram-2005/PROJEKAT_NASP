@@ -99,7 +99,7 @@ func CreatNewWAL(sizeSegment int, blocksize int, filePath string, memtableRotati
 	return walInstance, nil
 }
 
-func (wal *WAL) SetBufferPool(blockManager *BlockManager.BlockManager) error {
+func (wal *WAL) SetBlockManager(blockManager *BlockManager.BlockManager) error {
 	if blockManager == nil {
 		return fmt.Errorf("BlockManager must not be nil")
 	}
