@@ -55,10 +55,41 @@ func (ch *Cache) Put(key string, value *[]byte) error {
 	return nil
 }
 
+func (ch *Cache) Delete(key string) error {
+	//proveravamo da li je kljuc u cache-u
+	_, ok := ch.cacheMap[key]
+	if !ok {
+		//ako nije ubacujemo ga, proveravajuci current size
+		if ch.currentSize >= ch.maxSize {
+			//mehanizam brisanja
+			err := ch.evictOldest()
+			if err != nil {
+				return err
+			}
+		}
+		//dodajemo nov el i povecavamo current size
+		ch.lruList.PushFront(key)
+		ch.cacheMap[key] = nil
+		ch.currentSize += 1
+		return nil
+	}
+	//nalazimo el i pomeramo ga napred ako je vec tu
+	elem, err := ch.findElement(key)
+	if err != nil {
+		return err
+	}
+	ch.lruList.MoveToFront(elem)
+	ch.cacheMap[key] = nil
+	return nil
+}
+
 func (ch *Cache) Get(key string) (*[]byte, error, bool) {
 	//trazimo kljuc
 	value, ok := ch.cacheMap[key]
 	if !ok {
+		return nil, nil, false
+	}
+	if value == nil {
 		return nil, nil, false
 	}
 	//pomeramo element napred

@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"fmt"
 	"os"
 	"strings"
 
@@ -10,6 +11,7 @@ import (
 	lsm "github.com/Avram-2005/PROJEKAT_NASP/LSM"
 	memtable "github.com/Avram-2005/PROJEKAT_NASP/Memtable"
 	record "github.com/Avram-2005/PROJEKAT_NASP/Record"
+	tokenbucket "github.com/Avram-2005/PROJEKAT_NASP/TokenBucket"
 	wal "github.com/Avram-2005/PROJEKAT_NASP/WAL"
 )
 
@@ -20,7 +22,7 @@ type Engine struct {
 	lsmTree       *lsm.LSM
 	writeAheadLog *wal.WAL
 	blockManager  *blockmanager.BlockManager
-	//TODO: add token bucket after tokenbucket merge
+	tokenBucket   *tokenbucket.TokenBucket
 }
 
 // TODO: incorporate token bucket after merge
@@ -46,6 +48,11 @@ func NewEngine(configPath string, walPath string, sstablePath string) (*Engine, 
 	}
 
 	file.Close()
+
+	engineTokenBucket, err := tokenbucket.NewTokenBucket(configuration.TokenBucketConfig.MaxNumTokens, int64(configuration.TokenBucketConfig.RefillTime))
+	if err != nil {
+		return nil, err
+	}
 
 	engineBlockManager, err := configuration.InitializeBlockManager()
 	if err != nil {
@@ -77,6 +84,7 @@ func NewEngine(configPath string, walPath string, sstablePath string) (*Engine, 
 	if err != nil {
 		return nil, err
 	}
+
 	if rec != nil {
 		err = engineWriteAheadLog.Recovery(engineMemtable, rec.Timestamp)
 		if err != nil {
@@ -91,7 +99,35 @@ func NewEngine(configPath string, walPath string, sstablePath string) (*Engine, 
 		lsmTree:       engineLSMTree,
 		writeAheadLog: engineWriteAheadLog,
 		blockManager:  engineBlockManager,
+		tokenBucket:   engineTokenBucket,
 	}, nil
+}
+
+func (engine *Engine) CheckTokenBucketInsert() (bool, error) {
+	bucketBytes, err := engine.Get(tokenbucket.INTERNAL_KEY)
+	if err != nil {
+		fmt.Print("Error trying to get token bucket")
+		newBucketBytes := engine.tokenBucket.Serialize()
+		engine.Put(tokenbucket.INTERNAL_KEY, newBucketBytes)
+		return false, err
+	}
+	//if bucket is empty report error and input a new one
+	if len(bucketBytes) == 0 {
+		//if no tokenbucket was found, insert a new tokenbucket
+		newBucketBytes := engine.tokenBucket.Serialize()
+		engine.Put(tokenbucket.INTERNAL_KEY, newBucketBytes)
+		return false, nil
+	}
+	_, err = tokenbucket.Deserialize(bucketBytes)
+	//if old bucket cannot be deserialized input a new one
+	if err != nil {
+		fmt.Print("Error deserializing current bucket")
+		newBucketBytes := engine.tokenBucket.Serialize()
+		engine.Put(tokenbucket.INTERNAL_KEY, newBucketBytes)
+		return false, err
+	}
+	//if everything went right return true
+	return true, nil
 }
 
 func (engine *Engine) GetRoot() string {
@@ -141,7 +177,7 @@ func (engine *Engine) ReadPath(key string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if ok {
+	if ok && !foundRecord.Tombstone {
 		retVal := foundRecord.Value
 		//dodajemo pronadjenu vrednost u cache
 		engine.cache.Put(key, &retVal)
@@ -173,7 +209,7 @@ func (engine *Engine) Delete(key string) error {
 	if err != nil {
 		return err
 	}
-	err = engine.cache.Put(key, nil)
+	err = engine.cache.Delete(key)
 	if err != nil {
 		return err
 	}
@@ -186,4 +222,12 @@ func (engine *Engine) PrefixScan(prefix string) *[]record.Record {
 
 func (engine *Engine) RangeScan(startKey, endKey string) *[]record.Record {
 	return nil
+}
+
+func (engine *Engine) GetAllSSTables() []lsm.SSTableInfo {
+	return engine.lsmTree.GetAllSSTables()
+}
+
+func (engine *Engine) ValidateSSTable(sst *lsm.SSTable) (bool, []record.Record, error) {
+	return engine.lsmTree.ValidateSSTable(sst)
 }
