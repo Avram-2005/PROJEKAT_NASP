@@ -1,13 +1,9 @@
 package snapshot
 
-import (
-	"time"
-
-	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
-)
+import "time"
 
 type SnapshotInterface interface {
 	GetTimestamp() time.Time
-	GetValue(bm *BlockManager.BlockManager) (*[]byte, error)
+	GetValue() (*[]byte, error)
 	GetType() string
 }

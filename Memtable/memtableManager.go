@@ -155,3 +155,7 @@ func (mm *MemtableManager) TotalSize() int {
 	}
 	return total
 }
+
+func (mm *MemtableManager) GetMemtables() []*MemtableAdapter {
+	return mm.instances
+}

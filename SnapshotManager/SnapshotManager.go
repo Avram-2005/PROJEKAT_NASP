@@ -6,7 +6,8 @@ import (
 	"time"
 
 	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
-	record "github.com/Avram-2005/PROJEKAT_NASP/Record"
+	sstable "github.com/Avram-2005/PROJEKAT_NASP/LSM"
+	memtable "github.com/Avram-2005/PROJEKAT_NASP/Memtable"
 	snapshot "github.com/Avram-2005/PROJEKAT_NASP/Snapshot"
 )
 
@@ -47,15 +48,30 @@ func (sp *SnapshotManager) Add(key string, value snapshot.SnapshotInterface) err
 }
 
 // prototype for add many function
-func (sp *SnapshotManager) AddMany(records *[]record.Record) {
-	len := len(*records)
-	for i := 0; i < len; i++ {
-		key := (*records)[i].Key
-		value := (*records)[i].Value
-		timestamp := (*records)[i].Timestamp
-		snapshot := snapshot.NewSnapshotMemtable(&value, timestamp)
-		sp.Add(key, snapshot)
+func (sp *SnapshotManager) AddMany(key string, memtables *[]*memtable.MemtableAdapter, sstables *[]sstable.SSTable, sstableManager *sstable.SSTableManager) error {
+	memLen := len(*memtables)
+	for i := 0; i < memLen; i++ {
+		newSnapshot, err := snapshot.NewSnapshotMemtable(key, (*memtables)[i])
+		if err != nil {
+			continue
+		}
+		err = sp.Add(key, newSnapshot)
+		if err != nil {
+			return err
+		}
 	}
+	sstLen := len(*sstables)
+	for i := 0; i < sstLen; i++ {
+		newSnapshot, err := snapshot.NewSnapshotSSTable(key, &(*sstables)[i], sstableManager)
+		if err != nil {
+			continue
+		}
+		err = sp.Add(key, newSnapshot)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Funkcija koja dobavlja odredjenu verziju naseg podatka
@@ -115,7 +131,7 @@ func (sp *SnapshotManager) GetValue(key string, version int, bm *BlockManager.Bl
 	if err != nil {
 		return nil, err
 	}
-	value, err := snapshot.GetValue(bm)
+	value, err := snapshot.GetValue()
 	if err != nil {
 		return nil, err
 	}
@@ -131,7 +147,7 @@ func (sp *SnapshotManager) GetValueByTimestamp(key string, timestamp time.Time, 
 	if err != nil {
 		return nil, err
 	}
-	value, err := snapshot.GetValue(bm)
+	value, err := snapshot.GetValue()
 	if err != nil {
 		return nil, err
 	}
@@ -167,7 +183,7 @@ func (sp *SnapshotManager) GetValueFirst(key string, bm *BlockManager.BlockManag
 	if err != nil {
 		return nil, err
 	}
-	value, err := snapshot.GetValue(bm)
+	value, err := snapshot.GetValue()
 	if err != nil {
 		return nil, err
 	}
@@ -182,7 +198,7 @@ func (sp *SnapshotManager) GetValueLatest(key string, bm *BlockManager.BlockMana
 	if err != nil {
 		return nil, err
 	}
-	value, err := snapshot.GetValue(bm)
+	value, err := snapshot.GetValue()
 	if err != nil {
 		return nil, err
 	}
