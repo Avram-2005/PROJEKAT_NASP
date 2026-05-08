@@ -12,7 +12,7 @@ func TestBufferPool(t *testing.T) {
 	file, err := os.Create("test.bin")
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("greska tokom stvaranja fajla")
+		t.Errorf("error during file creation")
 		t.FailNow()
 	}
 	//prvo pravimo cetiri niza bajtova, koje cemo da ubacujemo u fajl
@@ -25,7 +25,7 @@ func TestBufferPool(t *testing.T) {
 	//inicijalizacija bufferpool-a, ciji kes je duzine 3, a velicna blokova 4
 	bp, err := NewBufferPool(3, 4)
 	if err != nil {
-		t.Errorf("greska tokom inicalizacije bufferpoola")
+		t.Errorf("error during buffer pool initialization")
 		t.FailNow()
 	}
 
@@ -33,63 +33,63 @@ func TestBufferPool(t *testing.T) {
 	err = bp.Put(file, 0, &data1)
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("greska tokom prvog pisanja")
+		t.Errorf("error during first write")
 		t.FailNow()
 	}
 	//ubacujemo drugi niz bajtova
 	err = bp.Put(file, 1, &data2)
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("greska tokom drugog pisanja")
+		t.Errorf("error during second write")
 		t.FailNow()
 	}
 	//upisujemo podatke u treci blok
 	err = bp.Put(file, 2, &data3)
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("greska tokom treceg pisanja")
+		t.Errorf("error during third write")
 		t.FailNow()
 	}
 	//citamo prvi blok fajla test.bin
 	readData1, err := bp.Get(file, 0)
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("greska tokom prvog citanja")
+		t.Errorf("error during first read")
 		t.FailNow()
 	}
 	//proveravamo da li je procitana vrednost jednaka sa upisanom vrednoscu
 	if !reflect.DeepEqual(data1, (*readData1)) {
 		fmt.Print(data1[:10])
 		fmt.Print((*readData1)[:10])
-		t.Errorf("data1 nije isto pre i posle citanja")
+		t.Errorf("data1 is not the same before and after reading")
 		t.FailNow()
 	}
 	//citamo drugi blok fajla
 	readData2, err := bp.Get(file, 1)
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("greska tokom drugog citanja")
+		t.Errorf("error during second read")
 		t.FailNow()
 	}
 	//proveravamo da li je upisano i procitano isto
 	if !reflect.DeepEqual(data2, (*readData2)) {
 		fmt.Print(data2[:10])
 		fmt.Print((*readData2)[:10])
-		t.Errorf("data2 nije isto pre i posle citanja")
+		t.Errorf("data2 is not the same before and after reading")
 		t.FailNow()
 	}
 	//citamo treci blok
 	readData3, err := bp.Get(file, 2)
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("greska tokom treceg citanja")
+		t.Errorf("error during third read")
 		t.FailNow()
 	}
 	//proveravamo da li je upisano i procitano isto
 	if !reflect.DeepEqual(data3, (*readData3)) {
 		fmt.Print(data3[:10])
 		fmt.Print((*readData3)[:10])
-		t.Errorf("data3 nije isto pre i posle citanja")
+		t.Errorf("data3 is not the same before and after reading")
 		t.FailNow()
 	}
 	data4 := make([]byte, 4096)
@@ -98,46 +98,46 @@ func TestBufferPool(t *testing.T) {
 	err = bp.Put(file, 3, &data4)
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("greska tokom cetvrtog pisanja")
+		t.Errorf("error during fourth write")
 		t.FailNow()
 	}
 
 	readData4, err := bp.Get(file, 3)
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("greska tokom cetvrtog citanja")
+		t.Errorf("error during fourth read")
 		t.FailNow()
 	}
 	//proveravamo da li je upisano i procitano isto
 	if !reflect.DeepEqual(data4, (*readData4)) {
 		fmt.Print(data4[:10])
 		fmt.Print((*readData4)[:10])
-		t.Errorf("data4 nije isto pre i posle citanja")
+		t.Errorf("data4 is not the same before and after reading")
 		t.FailNow()
 	}
 	readData1, err = bp.Get(file, 0)
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("greska tokom petog citanja")
+		t.Errorf("error during fifth read")
 		t.FailNow()
 	}
 	if !reflect.DeepEqual(data1, (*readData1)) {
 		fmt.Print(data1[:10])
 		fmt.Print((*readData1)[:10])
-		t.Errorf("data1 nije isto pre i posle drugog citanja")
+		t.Errorf("data1 is not the same before and after second reading")
 		t.FailNow()
 	}
 	err = file.Close()
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("Greska tokom zatvaranja fajla")
+		t.Errorf("Error during file closing")
 		t.FailNow()
 	}
 
 	err = os.Remove("test.bin")
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("Greska tokom brisanja fajla")
+		t.Errorf("Error during file deletion")
 		t.FailNow()
 	}
 }
@@ -146,7 +146,7 @@ func TestLru1(t *testing.T) {
 	file, err := os.Create("test.bin")
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("greska tokom stvaranja fajla")
+		t.Errorf("error during file creation")
 		t.FailNow()
 	}
 	//prvo pravimo tri niza bajtova, koje cemo da ubacujemo u fajl
@@ -159,7 +159,7 @@ func TestLru1(t *testing.T) {
 	//inicijalizacija bufferpool-a, ciji kes je duzine 2, a velicna blokova 4
 	bp, err := NewBufferPool(2, 4)
 	if err != nil {
-		t.Errorf("Greska pri inicijalizaciji bufferpool-a")
+		t.Errorf("Error during buffer pool initialization")
 		t.FailNow()
 	}
 	bp.Put(file, 0, &data1)
@@ -185,7 +185,7 @@ func TestLru1(t *testing.T) {
 	if !reflect.DeepEqual(data2, data_from_map1) {
 		fmt.Print(data2)
 		fmt.Print((*check1))
-		t.Errorf("neocekivana vrednost za back")
+		t.Errorf("unexpected value for back")
 		t.FailNow()
 	}
 	//Izvlacimo podatke iz same mape
@@ -195,20 +195,20 @@ func TestLru1(t *testing.T) {
 	if !reflect.DeepEqual(data3, data_from_map2) {
 		fmt.Print(data3)
 		fmt.Print((*check2))
-		t.Errorf("neocekivana vrednost za front")
+		t.Errorf("unexpected value for front")
 		t.FailNow()
 	}
 	err = file.Close()
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("Greska tokom zatvaranja fajla")
+		t.Errorf("Error during file closing")
 		t.FailNow()
 	}
 
 	err = os.Remove("test.bin")
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("Greska tokom brisanja fajla")
+		t.Errorf("Error during file deletion")
 		t.FailNow()
 	}
 }
@@ -218,14 +218,14 @@ func TestBigBufferPool(t *testing.T) {
 	file, err := os.Create("test.bin")
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("greska tokom stvaranja fajla")
+		t.Errorf("error during file creation")
 		t.FailNow()
 	}
 
 	file2, err := os.Create("test.txt")
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("greska tokom stvaranja drugog fajla")
+		t.Errorf("error during creating second file")
 		t.FailNow()
 	}
 	//prvo pravimo cetiri niza bajtova, koje cemo da ubacujemo u fajl
@@ -238,7 +238,7 @@ func TestBigBufferPool(t *testing.T) {
 	//inicijalizacija bufferpool-a, ciji kes je duzine 3, a velicna blokova 4
 	bp, err := NewBufferPool(10, 4)
 	if err != nil {
-		t.Errorf("greska tokom inicalizacije bufferpoola")
+		t.Errorf("error during buffer pool initialization")
 		t.FailNow()
 	}
 
@@ -247,63 +247,63 @@ func TestBigBufferPool(t *testing.T) {
 
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("greska tokom prvog pisanja")
+		t.Errorf("error during first write")
 		t.FailNow()
 	}
 	//citamo prvi blok fajla test.bin
 	readData1, err := bp.Get(file, 0)
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("greska tokom prvog citanja")
+		t.Errorf("error during first read")
 		t.FailNow()
 	}
 	//proveravamo da li je procitana vrednost jednaka sa upisanom vrednoscu
 	if !reflect.DeepEqual(data1, (*readData1)) {
 		fmt.Print(data1[:10])
 		fmt.Print((*readData1)[:10])
-		t.Errorf("data1 nije isto pre i posle citanja")
+		t.Errorf("data1 is not the same before and after reading")
 		t.FailNow()
 	}
 	//ubacujemo drugi niz bajtova
 	err = bp.Put(file, 1, &data2)
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("greska tokom drugog pisanja")
+		t.Errorf("error during second write")
 		t.FailNow()
 	}
 	//citamo drugi blok fajla
 	readData2, err := bp.Get(file, 1)
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("greska tokom drugog citanja")
+		t.Errorf("error during second read")
 		t.FailNow()
 	}
 	//proveravamo da li je upisano i procitano isto
 	if !reflect.DeepEqual(data2, (*readData2)) {
 		fmt.Print(data2[:10])
 		fmt.Print((*readData2)[:10])
-		t.Errorf("data2 nije isto pre i posle citanja")
+		t.Errorf("data2 is not the same before and after reading")
 		t.FailNow()
 	}
 	//upisujemo podatke u treci blok
 	err = bp.Put(file, 2, &data3)
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("greska tokom treceg pisanja")
+		t.Errorf("error during third write")
 		t.FailNow()
 	}
 	//citamo treci blok
 	readData3, err := bp.Get(file, 2)
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("greska tokom treceg citanja")
+		t.Errorf("error during third read")
 		t.FailNow()
 	}
 	//proveravamo da li je upisano i procitano isto
 	if !reflect.DeepEqual(data3, (*readData3)) {
 		fmt.Print(data3[:10])
 		fmt.Print((*readData3)[:10])
-		t.Errorf("data3 nije isto pre i posle citanja")
+		t.Errorf("data3 is not the same before and after reading")
 		t.FailNow()
 	}
 	data4 := make([]byte, 4096)
@@ -312,33 +312,33 @@ func TestBigBufferPool(t *testing.T) {
 	err = bp.Put(file, 3, &data4)
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("greska tokom cetvrtog pisanja")
+		t.Errorf("error during fourth write")
 		t.FailNow()
 	}
 
 	readData4, err := bp.Get(file, 3)
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("greska tokom cetvrtog citanja")
+		t.Errorf("error during fourth read")
 		t.FailNow()
 	}
 	//proveravamo da li je upisano i procitano isto
 	if !reflect.DeepEqual(data4, (*readData4)) {
 		fmt.Print(data4[:10])
 		fmt.Print((*readData4)[:10])
-		t.Errorf("data4 nije isto pre i posle citanja")
+		t.Errorf("data4 is not the same before and after reading")
 		t.FailNow()
 	}
 	readData1, err = bp.Get(file, 0)
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("greska tokom petog citanja")
+		t.Errorf("error during fifth read")
 		t.FailNow()
 	}
 	if !reflect.DeepEqual(data1, (*readData1)) {
 		fmt.Print(data1[:10])
 		fmt.Print((*readData1)[:10])
-		t.Errorf("data1 nije isto pre i posle drugog citanja")
+		t.Errorf("data1 is not the same before and after second reading")
 		t.FailNow()
 	}
 	data1 = []byte{'a', 'b', 'c', 'd', 'e'}
@@ -346,49 +346,49 @@ func TestBigBufferPool(t *testing.T) {
 
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("greska tokom prvog pisanja")
+		t.Errorf("error during first write")
 		t.FailNow()
 	}
 	//citamo prvi blok fajla test.txt
 	readData1, err = bp.Get(file2, 0)
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("greska tokom prvog citanja")
+		t.Errorf("error during first read")
 		t.FailNow()
 	}
 	//proveravamo da li je procitana vrednost jednaka sa upisanom vrednoscu
 	if !reflect.DeepEqual(data1, (*readData1)) {
 		fmt.Print(data1[:10])
 		fmt.Print((*readData1)[:10])
-		t.Errorf("data1 nije isto pre i posle citanja")
+		t.Errorf("data1 is not the same before and after reading")
 		t.FailNow()
 	}
 
 	err = file.Close()
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("Greska tokom zatvaranja fajla")
+		t.Errorf("Error during file closing")
 		t.FailNow()
 	}
 
 	err = os.Remove("test.bin")
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("Greska tokom brisanja fajla")
+		t.Errorf("Error during file deletion")
 		t.FailNow()
 	}
 
 	err = file2.Close()
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("Greska tokom zatvaranja drugog fajla")
+		t.Errorf("Error during closing second file")
 		t.FailNow()
 	}
 
 	err = os.Remove("test.txt")
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("Greska tokom brisanja drugog fajla")
+		t.Errorf("Error during deleting second file")
 		t.FailNow()
 	}
 }
@@ -397,7 +397,7 @@ func TestLru2(t *testing.T) {
 	file, err := os.Create("test.bin")
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("greska tokom stvaranja fajla")
+		t.Errorf("error during file creation")
 		t.FailNow()
 	}
 	//prvo pravimo cetiri niza bajtova, koje cemo da ubacujemo u fajl
@@ -410,7 +410,7 @@ func TestLru2(t *testing.T) {
 	//inicijalizacija bufferpool-a, ciji kes je duzine 3, a velicna blokova 4
 	bp, err := NewBufferPool(2, 4)
 	if err != nil {
-		t.Errorf("Greska pri inicijalizaciji bufferpool-a")
+		t.Errorf("Error during buffer pool initialization")
 		t.FailNow()
 	}
 	bp.Put(file, 0, &data1)
@@ -423,11 +423,11 @@ func TestLru2(t *testing.T) {
 	check2 := bp.lruList.Front()
 
 	if check2 == nil {
-		t.Errorf("Front nije vratio nista")
+		t.Errorf("Front returned nil")
 		t.FailNow()
 	}
 	if check1 == nil {
-		t.Errorf("Back nije vratio nista")
+		t.Errorf("Back returned nil")
 		t.FailNow()
 	}
 	//Ocekujemo da podaci izvuceni iz mape budu jednaki drugom bloku-data2
@@ -435,27 +435,27 @@ func TestLru2(t *testing.T) {
 	if !reflect.DeepEqual((*get_data2), data_from_map1) {
 		fmt.Print(get_data2)
 		fmt.Print(data_from_map1)
-		t.Errorf("neocekivana vrednost za back")
+		t.Errorf("unexpected value for back")
 		t.FailNow()
 	}
 	data_from_map2 := bp.cacheMap[(*check2).Value.(string)]
 	if !reflect.DeepEqual((*get_data3), data_from_map2) {
 		fmt.Print(get_data3)
 		fmt.Print(data_from_map2)
-		t.Errorf("neocekivana vrednost za front")
+		t.Errorf("unexpected value for front")
 		t.FailNow()
 	}
 	err = file.Close()
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("Greska tokom zatvaranja fajla")
+		t.Errorf("Error during file closing")
 		t.FailNow()
 	}
 
 	err = os.Remove("test.bin")
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("Greska tokom brisanja fajla")
+		t.Errorf("Error during file deletion")
 		t.FailNow()
 	}
 }

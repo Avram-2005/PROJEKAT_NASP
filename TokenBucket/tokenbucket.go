@@ -30,6 +30,14 @@ func NewTokenBucket(maxNumTokens int64, refillInterval int64) (*TokenBucket, err
 	}, nil
 }
 
+func (tb *TokenBucket) GetNextRefill() int64 {
+	now := time.Now()
+	deltat := now.Sub(tb.lastTimeRefill)
+	deltatSeconds := deltat.Seconds()
+	timeToNextRefill := tb.refillTime - int64(deltatSeconds)
+	return timeToNextRefill
+}
+
 // puni bucket na osnovu proteklog vremena od poslednjeg punjenja
 func (tb *TokenBucket) refill() {
 	now := time.Now()
