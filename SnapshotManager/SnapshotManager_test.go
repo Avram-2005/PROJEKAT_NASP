@@ -21,19 +21,35 @@ func TestSnapshotManager(t *testing.T) {
 	}
 	config := memtable.MemtableConfig{
 		Type:              "hashmap",
+		MaxSizeBytes:      200,
 		MaxSizeEntries:    10,
 		SkipListMaxHeight: 8,
 		BPlusTreeDegree:   2,
 	}
-	memtableManager, err := memtable.NewMemtableManager(3, config, func(entries []*record.Record) error {
+	memtableManager, err := memtable.NewMemtableManager(5, config, func(entries []*record.Record) error {
 		return nil
 	})
 	if err != nil {
 		fmt.Print("error initializing memtable")
 		t.FailNow()
 	}
-	memtables := memtableManager.GetMemtables()
+
 	for i := 0; i < 3; i++ {
+		temp := make([]byte, 10)
+		random := uint32(rand.Intn(100))
+		binary.BigEndian.PutUint32(temp, random)
+		key := "key" + strconv.Itoa(i)
+		memtableManager.Put(key, temp)
+	}
+	for i := 0; i < 3; i++ {
+		temp := make([]byte, 10)
+		random := uint32(rand.Intn(100))
+		binary.BigEndian.PutUint32(temp, random)
+		key := "key" + strconv.Itoa(i)
+		memtableManager.Put(key, temp)
+	}
+	memtables := memtableManager.GetMemtables()
+	/*for i := 0; i < 3; i++ {
 		temp := make([]byte, 10)
 		random := uint32(rand.Intn(100))
 		binary.BigEndian.PutUint32(temp, random)
@@ -53,11 +69,28 @@ func TestSnapshotManager(t *testing.T) {
 		binary.BigEndian.PutUint32(temp, random)
 		key := "key" + strconv.Itoa(i)
 		memtables[2].Put(key, temp)
-	}
+	}*/
 	sstables := make([]sstable.SSTable, 3)
 	sstableManager := &sstable.SSTableManager{}
 	sp.AddMany("key0", &memtables, &sstables, sstableManager)
 	sp.AddMany("key1", &memtables, &sstables, sstableManager)
 	sp.AddMany("key2", &memtables, &sstables, sstableManager)
-
+	versions, err := sp.GetVersionCount("key0")
+	if err != nil {
+		fmt.Print(err)
+		t.FailNow()
+	}
+	fmt.Print(versions)
+	versions, err = sp.GetVersionCount("key1")
+	if err != nil {
+		fmt.Print(err)
+		t.FailNow()
+	}
+	fmt.Print(versions)
+	versions, err = sp.GetVersionCount("key2")
+	if err != nil {
+		fmt.Print(err)
+		t.FailNow()
+	}
+	fmt.Print(versions)
 }
