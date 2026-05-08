@@ -45,6 +45,8 @@ func NewEngine(configPath string, walPath string, sstablePath string) (*Engine, 
 		return nil, err
 	}
 
+	file.Close()
+
 	engineBlockManager, err := configuration.InitializeBlockManager()
 	if err != nil {
 		return nil, err
