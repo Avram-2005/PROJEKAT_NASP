@@ -193,7 +193,7 @@ func (sstm *SSTableManager) oneFileMerge(ssts []*SSTable, level int, tableNum in
 			continue
 		}
 
-		sstm.oneFileFlushRecord(level, currentRec, state)
+		sstm.oneFileFlushRecord(currentRec, state)
 		numRecs++
 	}
 	sst, err := sstm.oneFileFlushFinalize(level, state, tableNum)

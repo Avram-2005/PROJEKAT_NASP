@@ -41,6 +41,7 @@ func (mm *MemtableManager) activeTable() *MemtableAdapter {
 // rotira tabele kada se jedna napuni
 // ako su sve pune, najstarija se flushuje i aktivira novu
 func (mm *MemtableManager) rotateAndFlushIfNecessary() error {
+	fmt.Printf("Rotating memtable, current instance count: %d\n", len(mm.instances))
 	if len(mm.instances) >= mm.maxCount {
 		oldest := mm.instances[0]
 		if mm.Flush != nil {
