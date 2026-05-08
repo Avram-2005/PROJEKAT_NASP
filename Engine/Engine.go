@@ -181,3 +181,11 @@ func (engine *Engine) PrefixScan(prefix string) *[]record.Record {
 func (engine *Engine) RangeScan(startKey, endKey string) *[]record.Record {
 	return nil
 }
+
+func (engine *Engine) GetAllSSTables() []lsm.SSTableInfo {
+	return engine.lsmTree.GetAllSSTables()
+}
+
+func (engine *Engine) ValidateSSTable(sst *lsm.SSTable) (bool, []record.Record, error) {
+	return engine.lsmTree.ValidateSSTable(sst)
+}

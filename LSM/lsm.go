@@ -127,9 +127,9 @@ func (lsm *LSM) Get(key string) ([]byte, error) {
 }
 
 type SSTableInfo struct {
-	level int
-	path  string
-	table *SSTable
+	Level int
+	Path  string
+	Table *SSTable
 }
 
 func (lsm *LSM) GetAllSSTables() []SSTableInfo {
@@ -137,9 +137,9 @@ func (lsm *LSM) GetAllSSTables() []SSTableInfo {
 	for _, level := range lsm.levels {
 		for _, sst := range level.tables {
 			result = append(result, SSTableInfo{
-				level: level.levelNum,
-				path:  sst.path,
-				table: sst,
+				Level: level.levelNum,
+				Path:  sst.path,
+				Table: sst,
 			})
 		}
 	}
