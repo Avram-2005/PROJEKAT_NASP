@@ -8,7 +8,7 @@ import (
 	checkpoint "github.com/Avram-2005/PROJEKAT_NASP/Checkpoint"
 	eng "github.com/Avram-2005/PROJEKAT_NASP/Engine"
 	engine "github.com/Avram-2005/PROJEKAT_NASP/Engine"
-	record "github.com/Avram-2005/PROJEKAT_NASP/Record"
+	scan "github.com/Avram-2005/PROJEKAT_NASP/Scan"
 	tokenbucket "github.com/Avram-2005/PROJEKAT_NASP/TokenBucket"
 )
 
@@ -132,14 +132,22 @@ func mainMenu() {
 			fmt.Println("Value:", string(value))
 
 		case 4:
-			prefix := readLine("Unesite prefix: ")
+			prefix := readLine("Enter prefix: ")
 			if prefix == "" {
 				fmt.Println("Prefix must not be empty.")
 				continue
 			}
-
-			records := engine.PrefixScan(prefix)
-			printRecords(records)
+			if strings.HasPrefix(tokenbucket.INTERNAL_KEY, prefix) {
+				fmt.Println("Cannot scan token bucket internal key.")
+				continue
+			}
+			pageNumber, pageSize := readPage()
+			result, err := engine.PrefixScan(prefix, pageNumber, pageSize)
+			if err != nil {
+				fmt.Printf("Prefix scan error: %v\n", err)
+				continue
+			}
+			printScanResult(result)
 
 		case 5:
 			startKey := readLine("Enter start key: ")
@@ -154,8 +162,13 @@ func mainMenu() {
 				continue
 			}
 
-			records := engine.RangeScan(startKey, endKey)
-			printRecords(records)
+			pageNumber, pageSize := readPage()
+			result, err := engine.RangeScan(startKey, endKey, pageNumber, pageSize)
+			if err != nil {
+				fmt.Printf("Range scan error: %v\n", err)
+				continue
+			}
+			printScanResult(result)
 
 		case 6:
 			fmt.Println("PREFIX_ITERATE is not implemented!")
@@ -370,8 +383,8 @@ func openedCheckpoint(ch *checkpoint.Checkpoint, originalEngine *eng.Engine) {
 				continue
 			}
 
-			records := engine.PrefixScan(prefix)
-			printRecords(records)
+			//records := engine.PrefixScan(prefix)
+			//printRecords(records)
 
 		case 3:
 			startKey := readLine("Enter start key: ")
@@ -386,8 +399,8 @@ func openedCheckpoint(ch *checkpoint.Checkpoint, originalEngine *eng.Engine) {
 				continue
 			}
 
-			records := engine.RangeScan(startKey, endKey)
-			printRecords(records)
+			//records := engine.RangeScan(startKey, endKey)
+			//printRecords(records)
 
 		case 4:
 			//TODO: implement token bucket once functionality is implemented
@@ -481,7 +494,7 @@ func readLine(prompt string) string {
 	return strings.TrimSpace(text)
 }
 
-func printRecords(records *[]record.Record) {
+/*func printRecords(records *[]record.Record) {
 	if records == nil || len(*records) == 0 {
 		fmt.Println("No results.")
 		return
@@ -493,4 +506,40 @@ func printRecords(records *[]record.Record) {
 		fmt.Printf("%d. Key: %s, Value: %s\n", i+1, r.Key, string(r.Value))
 	}
 	fmt.Println("----------------------------------------------")
+}*/
+
+// helper for pagination
+func readPage() (int, int) {
+	fmt.Print("Enter page number: ")
+	var pageNumber int
+	fmt.Scanln(&pageNumber)
+	if pageNumber <= 0 {
+		pageNumber = 1
+	}
+	fmt.Print("Enter page size: ")
+	var pageSize int
+	fmt.Scanln(&pageSize)
+	if pageSize <= 0 {
+		pageSize = 10
+	}
+	return pageNumber, pageSize
+}
+
+// helper for scan results
+func printScanResult(result *scan.ScanResult) {
+	if result == nil || len(result.Records) == 0 {
+		fmt.Println("No results found")
+		return
+	}
+	fmt.Printf("Total records: %d\n", result.TotalCount)
+	fmt.Printf("Page %d out of %d (page size: %d)\n", result.PageNumber, (result.TotalCount+result.PageSize-1)/result.PageSize, result.PageSize)
+	fmt.Println("----------------------------------------------")
+
+	for i, rec := range result.Records {
+		fmt.Printf("%d. Key: %s, Value: %s\n", (result.PageNumber-1)*result.PageSize+i+1, rec.Key, string(rec.Value))
+	}
+	fmt.Println("----------------------------------------------")
+	if result.HasMore {
+		fmt.Println("More pages available. Use a bigger pageNumber than the current to see more.")
+	}
 }
