@@ -302,7 +302,6 @@ func (sstm *SSTableManager) getMultipleFiles(key string, sst *SSTable) (*Record,
 	}
 
 	dataReader := newBlockReader(files.dataFile, sstm.bm, offset)
-	fmt.Printf("Found key %s at offset %d, reading data from table %s\n", key, offset, sst.path)
 	return sstm.parseData(key, dataReader, true)
 }
 
@@ -334,7 +333,6 @@ func (sstm *SSTableManager) getOneFile(key string, sst *SSTable) (*Record, error
 		return nil, fmt.Errorf("failed to search summary file: %v", err)
 	}
 	if !isFound {
-		fmt.Printf("Key %s not found in summary\n", key)
 		return nil, nil
 	}
 
@@ -343,7 +341,6 @@ func (sstm *SSTableManager) getOneFile(key string, sst *SSTable) (*Record, error
 		return nil, fmt.Errorf("failed to search index file: %v", err)
 	}
 	if !isFound {
-		fmt.Printf("Key %s not found in index\n", key)
 		return nil, nil
 	}
 

@@ -137,9 +137,11 @@ func (sstm *SSTableManager) multipleFilesMerge(ssts []*SSTable, level int, table
 			}
 		}
 
-		if currentRec.Tombstone {
-			continue
-		}
+		/*
+			if currentRec.Tombstone {
+				continue
+			}
+		*/
 
 		shouldWriteSummary := numRecs%sstm.config.SummaryInterval == 0
 		sstm.multipleFilesFlushRecord(currentRec, state, shouldWriteSummary)

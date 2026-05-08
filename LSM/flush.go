@@ -141,7 +141,6 @@ func (sstm *SSTableManager) multipleFilesFlushInit(level int, tableNum int, numR
 }
 
 func (sstm *SSTableManager) multipleFilesFlushRecord(record *Record, state *multipleFilesFlushState, shouldWriteSummary bool) {
-	fmt.Printf("Flushing record %s, %v\n", record.Key, record.Tombstone)
 	state.bf.Set([]byte(record.Key)) // dodaj kljuc u filter
 	state.merkleData = append(state.merkleData, record)
 	offset := writeData(state.dataWriter, record)
@@ -241,7 +240,6 @@ func (sstm *SSTableManager) oneFileFlushInit(level int, tableNum int, numRecs ui
 }
 
 func (sstm *SSTableManager) oneFileFlushRecord(entry *Record, state *oneFileFlushState) {
-	fmt.Printf("Flushing record %s, %v\n", entry.Key, entry.Tombstone)
 	state.bf.Set([]byte(entry.Key)) // dodaj kljuc u filter
 	state.merkleData = append(state.merkleData, entry)
 	offset := writeData(state.writer, entry)

@@ -10,6 +10,21 @@ import (
 	"testing"
 )
 
+func cleanupTestData(walPath, sstPath string, t *testing.T) {
+	err := os.RemoveAll(walPath)
+	if err != nil {
+		fmt.Print("Deleting WAL directory failed!")
+		fmt.Print(err)
+		t.FailNow()
+	}
+	err = os.RemoveAll(sstPath)
+	if err != nil {
+		fmt.Print("Deleting SSTable directory failed!")
+		fmt.Print(err)
+		t.FailNow()
+	}
+}
+
 func TestEngineBasicFunctions(t *testing.T) {
 	configPath := "engineConfig_test.yaml"
 	walPath := "TestDataBase/walDATA"
@@ -125,18 +140,7 @@ func TestEngineBasicFunctions(t *testing.T) {
 
 	engine2.ShutDown()
 
-	err = os.RemoveAll(walPath)
-	if err != nil {
-		fmt.Print("Deleting WAL directory failed!")
-		fmt.Print(err)
-		t.FailNow()
-	}
-	err = os.RemoveAll(sstPath)
-	if err != nil {
-		fmt.Print("Deleting SSTable directory failed!")
-		fmt.Print(err)
-		t.FailNow()
-	}
+	cleanupTestData(walPath, sstPath, t)
 }
 
 func TestStressEngineFunction(t *testing.T) {
@@ -204,6 +208,8 @@ func TestStressEngineFunction(t *testing.T) {
 	}
 
 	engine2.ShutDown()
+
+	cleanupTestData(walPath, sstPath, t)
 }
 
 func TestEngineDelete(t *testing.T) {
@@ -290,6 +296,8 @@ func TestEngineDelete(t *testing.T) {
 	}
 
 	engine2.ShutDown()
+
+	cleanupTestData(walPath, sstPath, t)
 }
 
 func TestStressEngineDelete(t *testing.T) {
@@ -304,7 +312,7 @@ func TestStressEngineDelete(t *testing.T) {
 		t.FailNow()
 	}
 
-	n := 250
+	n := 5000
 
 	dataArray := make([][]byte, int(n))
 
@@ -371,4 +379,6 @@ func TestStressEngineDelete(t *testing.T) {
 	}
 
 	engine2.ShutDown()
+
+	cleanupTestData(walPath, sstPath, t)
 }
