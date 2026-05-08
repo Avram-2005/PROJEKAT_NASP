@@ -549,3 +549,169 @@ func TestPrefixScanWithUpdate(t *testing.T) {
 		t.Fatalf("Expected 'new_value', got '%s'", result.Records[0].Value)
 	}
 }
+
+func TestPrefixScanWithSSTable(t *testing.T) {
+	scanner, cleanup := setupTestScanner(t)
+	defer cleanup()
+	sstRecords := []*record.Record{
+		makeRecord("apple", "fruit1"),
+		makeRecord("apricot", "fruit2"),
+		makeRecord("banana", "fruit3"),
+		makeRecord("berry", "fruit4"),
+	}
+	if err := scanner.lsm.Flush(sstRecords); err != nil {
+		t.Fatalf("Failed to flush to SSTable: %v", err)
+	}
+	result, err := scanner.PrefixScan("ap", 1, 10)
+	if err != nil {
+		t.Fatalf("PrefixScan failed: %v", err)
+	}
+	expectedKeys := []string{"apple", "apricot"}
+	if len(result.Records) != 2 {
+		t.Fatalf("Expected 2 records from SSTable, got %d", len(result.Records))
+	}
+	for i, rec := range result.Records {
+		if rec.Key != expectedKeys[i] {
+			t.Fatalf("Expected %s, got %s", expectedKeys[i], rec.Key)
+		}
+	}
+}
+
+func TestPrefixScanMixedSources(t *testing.T) {
+	scanner, cleanup := setupTestScanner(t)
+	defer cleanup()
+
+	sstRecords := []*record.Record{
+		makeRecord("apple", "sst_value"),
+		makeRecord("apricot", "sst_apricot"),
+	}
+	if err := scanner.lsm.Flush(sstRecords); err != nil {
+		t.Fatalf("Failed to flush to SSTable: %v", err)
+	}
+	time.Sleep(1 * time.Millisecond)
+	scanner.memtable.Put("apple", []byte("mem_value"))
+	scanner.memtable.Put("banana", []byte("mem_banana"))
+	result, err := scanner.PrefixScan("ap", 1, 10)
+	if err != nil {
+		t.Fatalf("PrefixScan failed: %v", err)
+	}
+	if len(result.Records) != 2 {
+		t.Fatalf("Expected 2 records, got %d", len(result.Records))
+	}
+	for _, rec := range result.Records {
+		if rec.Key == "apple" && string(rec.Value) != "mem_value" {
+			t.Fatalf("Apple should be from Memtable with 'mem_value', got '%s'", rec.Value)
+		}
+	}
+	result, err = scanner.PrefixScan("b", 1, 10)
+	if err != nil {
+		t.Fatalf("PrefixScan failed: %v", err)
+	}
+	if len(result.Records) != 1 || result.Records[0].Key != "banana" {
+		t.Fatalf("Expected 'banana' only, got %v", result.Records)
+	}
+}
+
+func TestPrefixScanWithTombstoneInSSTable(t *testing.T) {
+	scanner, cleanup := setupTestScanner(t)
+	defer cleanup()
+	records1 := []*record.Record{
+		makeRecord("apple", "fruit"),
+	}
+	if err := scanner.lsm.Flush(records1); err != nil {
+		t.Fatalf("Failed first flush: %v", err)
+	}
+	time.Sleep(1 * time.Millisecond)
+	records2 := []*record.Record{
+		&record.Record{Key: "apple", Value: nil, Tombstone: true, Timestamp: time.Now()},
+	}
+	if err := scanner.lsm.Flush(records2); err != nil {
+		t.Fatalf("Failed tombstone flush: %v", err)
+	}
+	result, err := scanner.PrefixScan("ap", 1, 10)
+	if err != nil {
+		t.Fatalf("PrefixScan failed: %v", err)
+	}
+	for _, rec := range result.Records {
+		if rec.Key == "apple" {
+			t.Fatal("Apple should be deleted (tombstone)")
+		}
+	}
+}
+
+func TestPrefixScanWithMultipleSSTables(t *testing.T) {
+	scanner, cleanup := setupTestScanner(t)
+	defer cleanup()
+	records1 := []*record.Record{
+		makeRecord("apple", "v1"),
+		makeRecord("apricot", "v1"),
+	}
+	if err := scanner.lsm.Flush(records1); err != nil {
+		t.Fatalf("Failed first flush: %v", err)
+	}
+	time.Sleep(1 * time.Millisecond)
+	records2 := []*record.Record{
+		makeRecord("apple", "v2"),
+		makeRecord("banana", "v2"),
+	}
+	if err := scanner.lsm.Flush(records2); err != nil {
+		t.Fatalf("Failed second flush: %v", err)
+	}
+	result, err := scanner.PrefixScan("ap", 1, 10)
+	if err != nil {
+		t.Fatalf("PrefixScan failed: %v", err)
+	}
+	for _, rec := range result.Records {
+		if rec.Key == "apple" && string(rec.Value) != "v2" {
+			t.Fatalf("Apple should have value 'v2', got '%s'", rec.Value)
+		}
+		if rec.Key == "apricot" && string(rec.Value) != "v1" {
+			t.Fatalf("Apricot should have value 'v1', got '%s'", rec.Value)
+		}
+	}
+}
+
+func TestPrefixScanMemtableHasNewerDataThanSSTable(t *testing.T) {
+	scanner, cleanup := setupTestScanner(t)
+	defer cleanup()
+	sstRecords := []*record.Record{
+		makeRecord("apple", "sst_value"),
+	}
+	if err := scanner.lsm.Flush(sstRecords); err != nil {
+		t.Fatalf("Failed flush to SSTable: %v", err)
+	}
+	time.Sleep(1 * time.Millisecond)
+	scanner.memtable.Put("apple", []byte("mem_value"))
+
+	result, err := scanner.PrefixScan("ap", 1, 10)
+	if err != nil {
+		t.Fatalf("PrefixScan failed: %v", err)
+	}
+	if len(result.Records) != 1 {
+		t.Fatalf("Expected 1 record, got %d", len(result.Records))
+	}
+	if string(result.Records[0].Value) != "mem_value" {
+		t.Fatalf("Apple should be from Memtable with 'mem_value', got '%s'", result.Records[0].Value)
+	}
+}
+
+func TestPrefixScanDefaultPageValues(t *testing.T) {
+	scanner, cleanup := setupTestScanner(t)
+	defer cleanup()
+	for i := 0; i < 5; i++ {
+		scanner.memtable.Put("test_key_"+string(rune('a'+i)), []byte("value"))
+	}
+	result, err := scanner.PrefixScan("test", 0, 0)
+	if err != nil {
+		t.Fatalf("PrefixScan failed: %v", err)
+	}
+	if len(result.Records) != 5 {
+		t.Fatalf("Expected 5 records with default values, got %d", len(result.Records))
+	}
+	if result.PageNumber != 1 {
+		t.Fatalf("Expected PageNumber=1, got %d", result.PageNumber)
+	}
+	if result.PageSize != 10 {
+		t.Fatalf("Expected PageSize=10, got %d", result.PageSize)
+	}
+}
