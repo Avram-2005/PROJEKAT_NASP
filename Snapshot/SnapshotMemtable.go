@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"fmt"
 	"time"
 
 	memtable "github.com/Avram-2005/PROJEKAT_NASP/Memtable"
@@ -17,7 +18,9 @@ func NewSnapshotMemtable(key string, memtableInstance *memtable.MemtableAdapter)
 	if err != nil {
 		return nil, err
 	}
-
+	if rec == nil {
+		return nil, fmt.Errorf("memtable does not contain key")
+	}
 	return &SnapshotMemtable{
 		key:              key,
 		memtableInstance: memtableInstance,
