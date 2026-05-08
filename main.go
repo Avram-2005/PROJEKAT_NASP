@@ -1,3 +1,352 @@
 package main
 
-func main() {}
+import (
+	"fmt"
+	"strings"
+
+	checkpoint "github.com/Avram-2005/PROJEKAT_NASP/Checkpoint"
+	eng "github.com/Avram-2005/PROJEKAT_NASP/Engine"
+	engine "github.com/Avram-2005/PROJEKAT_NASP/Engine"
+	record "github.com/Avram-2005/PROJEKAT_NASP/Record"
+)
+
+func main() {
+	mainMenu()
+}
+
+func mainMenu() {
+	configPath := "config/config.yaml"
+	walPath := "DataBase/walDATA"
+	sstablePath := "DataBase/sstable"
+
+	engine, err := eng.NewEngine(configPath, walPath, sstablePath)
+	if err != nil {
+		fmt.Println("Error during system initialization:", err)
+		return
+	}
+
+	for {
+		fmt.Println()
+		fmt.Print("Enter command: ")
+		fmt.Println("0  - SHUT DOWN SYSTEM")
+		fmt.Println("1  - PUT")
+		fmt.Println("2  - DELETE")
+		fmt.Println("3  - GET")
+		fmt.Println("4  - PREFIX_SCAN")
+		fmt.Println("5  - RANGE_SCAN")
+		fmt.Println("6  - PREFIX_ITERATE")
+		fmt.Println("7  - RANGE_ITERATE")
+		fmt.Println("8  - SNAPSHOT")
+		fmt.Println("9  - CHECKPOINT")
+		fmt.Println("10 - MERKLE TREE VALIDATION")
+		fmt.Println("----------------------------------------------")
+
+		var command int
+		_, err := fmt.Scanln(&command)
+		if err != nil {
+			fmt.Println("Invalid command input")
+			continue
+		}
+
+		if command == 0 {
+			engine.ShutDown()
+			fmt.Println("System is shut down.")
+			break
+		}
+
+		switch command {
+		case 1:
+			key := readLine("Enter key: ")
+			value := readLine("Enter value: ")
+
+			if key == "" || value == "" {
+				fmt.Println("Key and value must not be empty.")
+				continue
+			}
+
+			err := engine.Put(key, []byte(value))
+			if err != nil {
+				fmt.Println("Error during write:", err)
+				continue
+			}
+
+		case 2:
+			key := readLine("Enter key for deletion: ")
+			if key == "" {
+				fmt.Println("Key must not be empty.")
+				continue
+			}
+
+			err := engine.Delete(key)
+			if err != nil {
+				fmt.Println("Error during deletion:", err)
+				continue
+			}
+
+		case 3:
+			key := readLine("Unesite kljuc za pretragu: ")
+			if key == "" {
+				fmt.Println("Key must not be empty.")
+				continue
+			}
+
+			value, err := engine.Get(key)
+			if err != nil {
+				fmt.Println("Error during reading: " + err.Error())
+				continue
+			}
+			if len(value) == 0 {
+				fmt.Println("Value not found.")
+				continue
+			}
+
+			fmt.Println("Value:", string(value))
+
+		case 4:
+			prefix := readLine("Unesite prefix: ")
+			if prefix == "" {
+				fmt.Println("Prefix must not be empty.")
+				continue
+			}
+
+			records := engine.PrefixScan(prefix)
+			printRecords(records)
+
+		case 5:
+			startKey := readLine("Enter start key: ")
+			endKey := readLine("Enter end key: ")
+
+			if startKey == "" || endKey == "" {
+				fmt.Println("Start and end keys must not be empty.")
+				continue
+			}
+			if startKey > endKey {
+				fmt.Println("Start key must not be greater than end key.")
+				continue
+			}
+
+			records := engine.RangeScan(startKey, endKey)
+			printRecords(records)
+
+		case 6:
+			fmt.Println("PREFIX_ITERATE is not implemented!")
+
+		case 7:
+			fmt.Println("RANGE_ITERATE is not implemented!")
+
+		case 8:
+			fmt.Println("SNAPSHOT is not implemented!")
+
+		case 9:
+			checkPointMenu(engine)
+
+		case 10:
+			fmt.Println("MERKLE TREE VALIDATION is not implemented!")
+
+		default:
+			fmt.Println("ERROR UNKNOWN COMMAND")
+		}
+	}
+}
+
+func checkPointMenu(engine *engine.Engine) {
+	checkPointManager, err := checkpoint.NewCheckpointManager()
+	if err != nil {
+		fmt.Print(err)
+		return
+	}
+	for {
+		fmt.Println()
+		fmt.Print("Enter command: ")
+		fmt.Println("0  - GO BACK")
+		fmt.Println("1  - CREATE SYSTEM CHECKPOINT")
+		fmt.Println("2  - OPEN CHECKPOINT")
+
+		var command int
+		_, err := fmt.Scanln(&command)
+		if err != nil {
+			fmt.Println("Invalid command input")
+			continue
+		}
+
+		if command == 0 {
+			break
+		}
+
+		if command == 1 {
+			fmt.Println()
+			fmt.Print("Enter checkpoint name: ")
+			var command string
+			_, err := fmt.Scanln(&command)
+			if err != nil {
+				fmt.Println("Invalid command input")
+				continue
+			}
+			checkPointManager.AddCheckpoint(engine.GetRoot(), command)
+			fmt.Print("Checkpoint successfully added: ")
+		}
+		if command == 2 {
+			checkPointOpen(checkPointManager, engine)
+		}
+	}
+}
+
+func checkPointOpen(checkPointManager *checkpoint.CheckpointManager, engine *eng.Engine) {
+	checkpointList := checkPointManager.GetCheckpointList()
+	for elem := checkpointList.Front(); elem != nil; elem = elem.Next() {
+		fmt.Println(elem.Value.(string))
+	}
+	fmt.Println()
+	fmt.Print("Enter the name of the checkpoint you want to open: ")
+	var command string
+	_, err := fmt.Scanln(&command)
+	if err != nil {
+		fmt.Println("Invalid command input")
+		checkPointOpen(checkPointManager, engine)
+	}
+	isFound := false
+	for elem := checkpointList.Front(); elem != nil; elem = elem.Next() {
+		fmt.Print(elem.Value.(string))
+		if elem.Value == command {
+			checkpoint, err := checkPointManager.GetCheckpoint(elem.Value.(string))
+			if err != nil {
+				fmt.Println("Something went wrong")
+				return
+			}
+			isFound = true
+			openedCheckpoint(checkpoint)
+		}
+	}
+	if !isFound {
+		fmt.Println("Non-existent checkpoint")
+	}
+
+}
+
+func openedCheckpoint(ch *checkpoint.Checkpoint) {
+	configPath := "config/config.yaml"
+
+	walPath := "checkpoints/" + ch.GetName() + "/walDATA"
+	sstablePath := "checkpoints/" + ch.GetName() + "/sstable"
+
+	engine, err := eng.NewEngine(configPath, walPath, sstablePath)
+	if err != nil {
+		fmt.Println("Error during system initialization:", err)
+		return
+	}
+
+	for {
+		fmt.Println()
+		fmt.Print("Enter command: ")
+		fmt.Println("0  - SHUT DOWN SYSTEM")
+		fmt.Println("1  - GET")
+		fmt.Println("2  - PREFIX_SCAN")
+		fmt.Println("3  - RANGE_SCAN")
+		fmt.Println("4  - PREFIX_ITERATE")
+		fmt.Println("5  - RANGE_ITERATE")
+		fmt.Println("6 - MERKLE TREE VALIDATION")
+		fmt.Println("7 - DELETE CHECKPOINT")
+		fmt.Println("----------------------------------------------")
+
+		var command int
+		_, err := fmt.Scanln(&command)
+		if err != nil {
+			fmt.Println("Invalid command input")
+			continue
+		}
+
+		if command == 0 {
+			engine.ShutDown()
+			fmt.Println("System is shut down.")
+			break
+		}
+		switch command {
+		case 1:
+			key := readLine("Enter key for search: ")
+			if key == "" {
+				fmt.Println("Key must not be empty.")
+				continue
+			}
+
+			value, err := engine.Get(key)
+			if err != nil {
+				fmt.Println("Error during reading: " + err.Error())
+				continue
+			}
+			if len(value) == 0 {
+				fmt.Println("Value not found.")
+				continue
+			}
+
+			fmt.Println("Value:", string(value))
+
+		case 2:
+			prefix := readLine("Enter prefix: ")
+			if prefix == "" {
+				fmt.Println("Prefix must not be empty.")
+				continue
+			}
+
+			records := engine.PrefixScan(prefix)
+			printRecords(records)
+
+		case 3:
+			startKey := readLine("Enter start key: ")
+			endKey := readLine("Enter end key: ")
+
+			if startKey == "" || endKey == "" {
+				fmt.Println("Start and end keys must not be empty.")
+				continue
+			}
+			if startKey > endKey {
+				fmt.Println("Start key must not be greater than end key.")
+				continue
+			}
+
+			records := engine.RangeScan(startKey, endKey)
+			printRecords(records)
+
+		case 4:
+			fmt.Println("PREFIX_ITERATE is not implemented!")
+
+		case 5:
+			fmt.Println("RANGE_ITERATE is not implemented!")
+
+		case 6:
+			fmt.Println("MERKLE TREE VALIDATION is not implemented!")
+
+		case 7:
+			engine.ShutDown()
+			err := ch.Delete()
+			if err != nil {
+				fmt.Print(err)
+			}
+			fmt.Print("Checkpoint successfully deleted")
+			return
+
+		default:
+			fmt.Println("ERROR UNKNOWN COMMAND")
+		}
+	}
+}
+
+func readLine(prompt string) string {
+	fmt.Print(prompt)
+	var text string
+	fmt.Scanln(&text)
+	return strings.TrimSpace(text)
+}
+
+func printRecords(records *[]record.Record) {
+	if records == nil || len(*records) == 0 {
+		fmt.Println("No results.")
+		return
+	}
+
+	fmt.Println("Results:")
+	fmt.Println("----------------------------------------------")
+	for i, r := range *records {
+		fmt.Printf("%d. Key: %s, Value: %s\n", i+1, r.Key, string(r.Value))
+	}
+	fmt.Println("----------------------------------------------")
+}

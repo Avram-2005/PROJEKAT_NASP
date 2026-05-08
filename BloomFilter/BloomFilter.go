@@ -23,18 +23,28 @@ func (bf *BloomFilter) IsFound(data []byte) bool {
 	for _, hashFunc := range bf.hashFuncs {
 		i := hashFunc.hash(data) % bf.numBits
 		target := bf.bitset[i/8]
-		if target&(1<<i%8) == 0 {
+		if target&(1<<(i%8)) == 0 {
 			return false
 		}
 	}
 	return true
 }
 
+func CalculateBloomFilterSize(expectedElements uint, falsePositiveRate float64) uint32 {
+	numBits := calculateM(expectedElements, falsePositiveRate)
+	numHashFuncs := calculateK(expectedElements, numBits)
+	return sizeOfMetadata + uint32(sizeOfSeed)*uint32(numHashFuncs) + uint32(numBits/8+1)
+}
+
+func (bf *BloomFilter) GetSize() uint32 {
+	return sizeOfMetadata + uint32(sizeOfSeed)*uint32(bf.numHashFuncs) + uint32(bf.numBits/8+1)
+}
+
 func (bf *BloomFilter) Set(data []byte) {
 	for _, hashFunc := range bf.hashFuncs {
 		i := hashFunc.hash(data) % bf.numBits
 		target := bf.bitset[i/8]
-		bf.bitset[i/8] = target | (1 << i % 8)
+		bf.bitset[i/8] = target | (1 << (i % 8))
 	}
 }
 
