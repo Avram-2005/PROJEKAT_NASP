@@ -126,6 +126,62 @@ func (lsm *LSM) Get(key string) ([]byte, error) {
 	return nil, fmt.Errorf("key %s not found in any SSTable", key)
 }
 
+// skenira sve nivoe LSM stabla za zadati prefix
+func (lsm *LSM) PrefixScan(prefix string) ([]*Record, error) {
+	results := make([]*Record, 0)
+	for _, level := range lsm.levels {
+		for _, sstab := range level.tables {
+			if sstab.summary == nil || len(sstab.summary.entries) == 0 {
+				continue
+			}
+			if sstab.filter == nil {
+				continue
+			}
+			if sstab.summary.lastKey < prefix { //ako je poslednji kljuc manji od prefixa, sigurno ga nema u datom nivou
+				continue
+			}
+			if sstab.summary.firstKey > prefix && !hasPrefix(sstab.summary.firstKey, prefix) {
+				continue
+			}
+			sstabRecords, err := lsm.sstm.PrefixScan(sstab, prefix)
+			if err != nil {
+				return nil, err
+			}
+			for i := range sstabRecords {
+				results = append(results, &sstabRecords[i])
+			}
+		}
+	}
+	return results, nil
+}
+
+// helper funkcija
+func hasPrefix(key, prefix string) bool {
+	if len(key) < len(prefix) {
+		return false
+	}
+	return key[:len(prefix)] == prefix
+}
+
+// skenira sve nivoe LSM stala za zadati opseg
+func (lsm *LSM) RangeScan(startKey, endKey string) ([]*Record, error) {
+	results := make([]*Record, 0)
+	for _, level := range lsm.levels {
+		for _, sstab := range level.tables {
+			if sstab.summary.lastKey < startKey || sstab.summary.firstKey > endKey { //provera preklapanja opsega, ako se ne preklapaju preskace
+				continue
+			}
+			sstabRecords, err := lsm.sstm.RangeScan(sstab, startKey, endKey)
+			if err != nil {
+				return nil, err
+			}
+			for i := range sstabRecords {
+				results = append(results, &sstabRecords[i])
+			}
+		}
+	}
+	return results, nil
+  
 type SSTableInfo struct {
 	Level int
 	Path  string
