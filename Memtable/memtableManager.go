@@ -41,7 +41,6 @@ func (mm *MemtableManager) activeTable() *MemtableAdapter {
 // rotira tabele kada se jedna napuni
 // ako su sve pune, najstarija se flushuje i aktivira novu
 func (mm *MemtableManager) rotateAndFlushIfNecessary() error {
-	fmt.Printf("Rotating memtable, current instance count: %d\n", len(mm.instances))
 	if len(mm.instances) >= mm.maxCount {
 		oldest := mm.instances[0]
 		if mm.Flush != nil {
@@ -88,32 +87,13 @@ func (mm *MemtableManager) PutRecord(rec *record.Record) error {
 
 // Upisuje tombstone u aktivnu tabelu
 func (mm *MemtableManager) Delete(key string, recTimestamp time.Time) error {
-	for i := len(mm.instances) - 1; i >= 0; i-- {
-		rec, found, err := mm.instances[i].GetRecord(key)
-		if err != nil {
-			return err
-		}
-		if found {
-			if rec.Tombstone {
-				return nil
-			}
-			tombstoneRec := &record.Record{
-				Key:       rec.Key,
-				Value:     rec.Value,
-				Tombstone: true,
-				Timestamp: recTimestamp,
-			}
-			active := mm.activeTable()
-			if err := active.PutRecord(tombstoneRec); err != nil {
-				return err
-			}
-			if active.IsFull() {
-				return mm.rotateAndFlushIfNecessary()
-			}
-			return nil
-		}
+	tombstoneRec := &record.Record{
+		Key:       key,
+		Value:     nil,
+		Tombstone: true,
+		Timestamp: recTimestamp,
 	}
-	return nil
+	return mm.PutRecord(tombstoneRec)
 }
 
 // pretrazuje od najnovije ka najstarijoj tabeli, LRU princip

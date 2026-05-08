@@ -53,7 +53,6 @@ func NewLSM(lsmConfig LSMConfig, tablesRoot string, sstConfig SSTableConfig, bm 
 		if err != nil {
 			return nil, fmt.Errorf("failed to startup LSM: %v", err)
 		}
-		fmt.Printf("Loaded SSTable %s into level %d\n", file.Name(), levelNum)
 		lsm.levels[levelNum].tables = append(lsm.levels[levelNum].tables, sstable)
 		lsm.levels[levelNum].size += sstable.size
 		lsm.levels[levelNum].levelNum = levelNum
@@ -67,7 +66,6 @@ func (l *Level) ShouldCompact(compFactor int) bool {
 }
 
 func (lsm *LSM) Compact(levelNum int) error {
-	fmt.Printf("Compacting level %d with %d SSTables\n", levelNum, len(lsm.levels[levelNum].tables))
 	newSST, err := lsm.sstm.Merge(lsm.levels[levelNum].tables, levelNum+1)
 	if err != nil {
 		return fmt.Errorf("failed to merge SSTables for compaction: %v", err)
@@ -99,7 +97,6 @@ func (l *Level) delete() error {
 }
 
 func (lsm *LSM) Flush(records []*Record) error {
-	fmt.Printf("Flushing memtable with %d records to level 0\n", len(records))
 	sst, err := lsm.sstm.Flush(records)
 	if err != nil {
 		return fmt.Errorf("failed to flush memtable: %v", err)
