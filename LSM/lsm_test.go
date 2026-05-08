@@ -151,3 +151,21 @@ func TestLSMGetLargeDatasetNewestWins(t *testing.T) {
 		}
 	}
 }
+
+func TestLSMGetNewestRecord(t *testing.T) {
+	lsm := testLSM(t, [][]*Record{
+		{
+			&Record{Key: "value1", Value: []byte("value1"), Timestamp: time.Unix(1000, 0)},
+			&Record{Key: "value2", Value: []byte("value2"), Timestamp: time.Unix(2000, 0)},
+			&Record{Key: "value3", Value: []byte("value3"), Timestamp: time.Unix(3000, 0)},
+		},
+	})
+
+	newest, err := lsm.GetNewestRecord()
+	if err != nil {
+		t.Fatalf("GetNewestRecord failed: %v", err)
+	}
+	if string(newest.Key) != "value3" || string(newest.Value) != "value3" {
+		t.Fatalf("Expected newest record to be key 'value3' with value 'value3', got key '%s' with value '%s'", string(newest.Key), string(newest.Value))
+	}
+}
