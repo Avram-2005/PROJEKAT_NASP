@@ -370,3 +370,28 @@ func TestRangeScanWithTombstoneInSSTable(t *testing.T) {
 		}
 	}
 }
+
+func TestRangeScanMemtableHasNewerDataThanSSTable(t *testing.T) {
+	scanner, cleanup := setupTestScanner(t)
+	defer cleanup()
+	sstRecords := []*record.Record{
+		makeRecord("apple", "sst_value"),
+	}
+	if err := scanner.lsm.Flush(sstRecords); err != nil { // Flush u sstable sa starom vrednoscu
+		t.Fatalf("Failed flush to SSTable: %v", err)
+	}
+	time.Sleep(1 * time.Millisecond)
+	scanner.memtable.Put("apple", []byte("mem_value")) // Memtable dobija noviju vrednost
+
+	result, err := scanner.RangeScan("a", "z", 1, 10)
+	if err != nil {
+		t.Fatalf("RangeScan failed: %v", err)
+	}
+
+	if len(result.Records) != 1 {
+		t.Fatalf("Expected 1 record, got %d", len(result.Records))
+	}
+	if string(result.Records[0].Value) != "mem_value" {
+		t.Fatalf("Apple should be from Memtable with 'mem_value', got '%s'", result.Records[0].Value)
+	}
+}
