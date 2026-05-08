@@ -291,3 +291,76 @@ func TestEngineDelete(t *testing.T) {
 
 	engine2.ShutDown()
 }
+
+func TestStressEngineDelete(t *testing.T) {
+	configPath := "engineConfig_test.yaml"
+	walPath := "TestDataBase/walDATA"
+	sstPath := "TestDataBase/sstable"
+
+	engine, err := NewEngine(configPath, walPath, sstPath)
+	if err != nil {
+		fmt.Print("Engine initialization failed!\n")
+		fmt.Print(err)
+		t.FailNow()
+	}
+
+	n := 200
+
+	dataArray := make([][]byte, int(n))
+
+	for i := 0; i < n; i++ {
+		temp := make([]byte, 100)
+		random := uint32(rand.Intn(100))
+		binary.BigEndian.PutUint32(temp, random)
+		dataArray[i] = temp
+		key := "key" + strconv.Itoa(i)
+		engine.Put(key, temp)
+	}
+
+	for i := 0; i < n; i += 2 {
+		dataArray[i] = nil
+		key := "key" + strconv.Itoa(i)
+		engine.Delete(key)
+	}
+
+	for i := n - 1; i >= 0; i-- {
+		key := "key" + strconv.Itoa(i)
+		temp, err := engine.Get(key)
+		if err != nil {
+			fmt.Print("error getting key: " + key + "\n")
+			fmt.Print(err)
+			t.FailNow()
+		}
+		if !reflect.DeepEqual(dataArray[i], temp) {
+			fmt.Print("key: " + key + " not the same after put and get" + "\n")
+			fmt.Print(dataArray[i], temp)
+			t.FailNow()
+		}
+	}
+
+	engine.ShutDown()
+
+	engine2, err := NewEngine(configPath, walPath, sstPath)
+	if err != nil {
+		fmt.Print("Error after booting up engine again")
+		fmt.Print(err)
+		t.FailNow()
+	}
+
+	for i := n - 1; i >= 0; i-- {
+		key := "key" + strconv.Itoa(i)
+		temp, err := engine2.Get(key)
+		if err != nil {
+			fmt.Print("error getting key after second boot up: " + key + "\n")
+			fmt.Print(err)
+			t.FailNow()
+		}
+		if !reflect.DeepEqual(dataArray[i], temp) {
+			fmt.Print("key: " + key + " not the same after put and get after second boot up" + "\n")
+			fmt.Print(dataArray[i], temp)
+			t.FailNow()
+		}
+	}
+
+	engine2.ShutDown()
+}
