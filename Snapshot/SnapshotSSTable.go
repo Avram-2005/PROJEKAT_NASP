@@ -1,36 +1,28 @@
 package snapshot
 
 import (
-	"os"
 	"time"
 
-	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
+	sstable "github.com/Avram-2005/PROJEKAT_NASP/LSM"
 )
 
 type SnapshotSSTable struct {
-	filepath    string
-	blockNumber int
-	offset      int
-	size        int
-	timestamp   time.Time
+	key            string
+	sstable        *sstable.SSTable
+	sstableManager *sstable.SSTableManager
+	timestamp      time.Time
 }
 
-func NewSnapshotSSTable(filepath string, blockNumber int, offset int, size int, timestamp time.Time, bm *BlockManager.BlockManager) (*SnapshotSSTable, error) {
-	file, err := os.Open(filepath)
-	if err != nil {
-		return nil, err
-	}
-	_, err = bm.GetSpecific(file, blockNumber, offset, size)
-	file.Close()
+func NewSnapshotSSTable(key string, sstable *sstable.SSTable, sstableManager *sstable.SSTableManager) (*SnapshotSSTable, error) {
+	rec, err := sstableManager.Get(key, sstable)
 	if err != nil {
 		return nil, err
 	}
 	return &SnapshotSSTable{
-		filepath:    filepath,
-		blockNumber: blockNumber,
-		offset:      offset,
-		size:        size,
-		timestamp:   timestamp,
+		key:            key,
+		sstableManager: sstableManager,
+		sstable:        sstable,
+		timestamp:      rec.Timestamp,
 	}, nil
 }
 
@@ -38,18 +30,12 @@ func (sp *SnapshotSSTable) GetTimestamp() time.Time {
 	return sp.timestamp
 }
 
-func (sp *SnapshotSSTable) GetValue(bm *BlockManager.BlockManager) (*[]byte, error) {
-	file, err := os.Open(sp.filepath)
-	if err != nil {
-
-		return nil, err
-	}
-	returnValue, err := bm.GetSpecific(file, sp.blockNumber, sp.offset, sp.size)
-	file.Close()
+func (sp *SnapshotSSTable) GetValue() (*[]byte, error) {
+	value, err := sp.sstableManager.Get(sp.key, sp.sstable)
 	if err != nil {
 		return nil, err
 	}
-	return returnValue, nil
+	return &value.Value, nil
 }
 
 func (sp *SnapshotSSTable) GetType() string {

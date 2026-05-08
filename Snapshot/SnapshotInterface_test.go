@@ -1,126 +1,88 @@
 package snapshot
 
 import (
-	"container/list"
 	"encoding/binary"
 	"fmt"
-	"os"
 	"reflect"
 	"testing"
-	"time"
 
-	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
+	memtable "github.com/Avram-2005/PROJEKAT_NASP/Memtable"
 )
 
-func TestSnapshotSSTable(t *testing.T) {
-	filepath := "test.bin"
-	file, err := os.Create(filepath)
-	if err != nil {
-		fmt.Print(err)
-		t.Errorf("greska tokom stvaranja fajla")
-		t.FailNow()
+func TestSnapshotMemtable(t *testing.T) {
+	conf := memtable.MemtableConfig{
+		Type:              "hashmap",
+		MaxSizeEntries:    10,
+		SkipListMaxHeight: 8,
+		BPlusTreeDegree:   2,
 	}
-	bm, err := BlockManager.NewBlockManager(4, 4)
+	memtableInstance, err := memtable.NewMemtableAdapter(conf)
 	if err != nil {
-		fmt.Print(err)
-		t.Errorf("treba da se prijavi greska, ali nije prijavljena")
+		fmt.Print("Error initializing memtable instance")
 		t.FailNow()
 	}
 	data1 := make([]byte, 100)
 	binary.BigEndian.PutUint64(data1, 78)
-	data2 := make([]byte, 100)
+	data2 := make([]byte, 120)
 	binary.BigEndian.PutUint32(data2, 56)
-	data3 := make([]byte, 100)
+	data3 := make([]byte, 80)
 	binary.BigEndian.PutUint16(data3, 67)
-	bm.PutSpecific(file, 0, 0, 100, &data1)
-	bm.PutSpecific(file, 0, 100, 100, &data2)
-	bm.PutSpecific(file, 0, 200, 100, &data3)
-	SnapshotSSTable1, err := NewSnapshotSSTable(filepath, 0, 0, 100, time.Now(), bm)
+	memtableInstance.Put("key1", data1)
+	memtableInstance.Put("key2", data2)
+	memtableInstance.Put("key3", data3)
+	secondMemtableInstance, err := memtable.NewMemtableAdapter(conf)
+	if err != nil {
+		fmt.Print("Error initializing second memtable instance")
+		t.FailNow()
+	}
+	data4 := make([]byte, 90)
+	secondMemtableInstance.Put("key3", data4)
+	snapshot1, err := NewSnapshotMemtable("key1", memtableInstance)
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("greska tokom incijalizacije SnapshotSSTablea broj 1")
+		fmt.Print("Error creating snapshot1")
 		t.FailNow()
 	}
-	SnapshotSSTable2, err := NewSnapshotSSTable(filepath, 0, 100, 100, time.Now(), bm)
-	if err != nil {
-		fmt.Print(err)
-		t.Errorf("greska tokom incijalizacije SnapshotSSTablea broj 2")
-		t.FailNow()
-	}
-	SnapshotSSTable3, err := NewSnapshotSSTable(filepath, 0, 200, 100, time.Now(), bm)
-	if err != nil {
-		fmt.Print(err)
-		t.Errorf("greska tokom incijalizacije SnapshotSSTablea broj 3")
-		t.FailNow()
-	}
-	readData1, err := SnapshotSSTable1.GetValue(bm)
-	if err != nil {
-		fmt.Print(err)
-		t.Errorf("greska tokom dobavljanja vrednosti")
-		t.FailNow()
-	}
-	if reflect.DeepEqual(data1, (*readData1)) != true {
-		fmt.Print(data1)
-		fmt.Print(*readData1)
-		t.Errorf("neocekivana vrednost podataka prvog SnapshotSSTable-a")
-		t.FailNow()
-	}
-	readData2, err := SnapshotSSTable2.GetValue(bm)
-	if err != nil {
-		fmt.Print(err)
-		t.Errorf("greska tokom dobavljanja vrednosti")
-		t.FailNow()
-	}
-	if reflect.DeepEqual(data2, (*readData2)) != true {
-		t.Errorf("neocekivana vrednost podataka drugog SnapshotSSTable-a")
-		t.FailNow()
-	}
-	readData3, err := SnapshotSSTable3.GetValue(bm)
-	if err != nil {
-		fmt.Print(err)
-		t.Errorf("greska tokom dobavljanja vrednosti")
-		t.FailNow()
-	}
-	if reflect.DeepEqual(data3, (*readData3)) != true {
-		t.Errorf("neocekivana vrednost podataka treceg SnapshotSSTable-a")
-		t.FailNow()
-	}
-	file.Close()
-	err = os.Remove(filepath)
-	if err != nil {
-		fmt.Print(err)
-		t.Errorf("zatvaranje fajla onemoguceno")
-		t.FailNow()
-	}
-}
-
-func TestSnapshotInterface(t *testing.T) {
-	bm, err := BlockManager.NewBlockManager(4, 4)
-	if err != nil {
-		fmt.Print(err)
-		t.Errorf("treba da se prijavi greska, ali nije prijavljena")
-		t.FailNow()
-	}
-	snapshotList := list.New()
-	data1 := make([]byte, 100)
-	binary.BigEndian.PutUint64(data1, 78)
-	data2 := make([]byte, 100)
-	binary.BigEndian.PutUint32(data2, 56)
-	data3 := make([]byte, 100)
-	binary.BigEndian.PutUint16(data3, 67)
-	memSnapshot1 := NewSnapshotMemtable(&data1, time.Now())
-	memSnapshot2 := NewSnapshotMemtable(&data2, time.Now())
-	memSnapshot3 := NewSnapshotMemtable(&data3, time.Now())
-	snapshotList.PushBack(memSnapshot1)
-	snapshotList.PushBack(memSnapshot2)
-	snapshotList.PushBack(memSnapshot3)
-	compare1, err := snapshotList.Front().Value.(SnapshotInterface).GetValue(bm)
-	if err != nil {
-		t.FailNow()
-		fmt.Print("something went wrong")
-	}
+	compare1, err := snapshot1.GetValue()
 	if !reflect.DeepEqual(data1, (*compare1)) {
+		fmt.Print(err)
+		fmt.Print("Snapshot1 different between read and write")
 		t.FailNow()
-		fmt.Print(data1, (*compare1))
+	}
+	snapshot2, err := NewSnapshotMemtable("key2", memtableInstance)
+	if err != nil {
+		fmt.Print(err)
+		fmt.Print("Error creating snapshot2")
+		t.FailNow()
+	}
+	compare2, err := snapshot2.GetValue()
+	if !reflect.DeepEqual(data2, (*compare2)) {
+		fmt.Print(err)
+		fmt.Print("Snapshot2 different between read and write")
+		t.FailNow()
+	}
+	snapshot3, err := NewSnapshotMemtable("key3", memtableInstance)
+	if err != nil {
+		fmt.Print(err)
+		fmt.Print("Error creating snapshot3")
+		t.FailNow()
+	}
+	compare3, err := snapshot3.GetValue()
+	if !reflect.DeepEqual(data3, (*compare3)) {
+		fmt.Print(err)
+		fmt.Print("Snapshot3 different between read and write")
+		t.FailNow()
+	}
+	snapshot4, err := NewSnapshotMemtable("key3", secondMemtableInstance)
+	if err != nil {
+		fmt.Print(err)
+		fmt.Print("Error creating snapshot3")
+		t.FailNow()
+	}
+	compare4, err := snapshot4.GetValue()
+	if !reflect.DeepEqual(data4, (*compare4)) {
+		fmt.Print(err)
+		fmt.Print("Snapshot4 different between read and write")
+		t.FailNow()
 	}
 }
