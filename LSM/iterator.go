@@ -130,19 +130,10 @@ func (sstm *SSTableManager) NewSSTableIterator(sst *SSTable, startKey string, ch
 			}
 		}
 
-		// one-file summary stores absolute offsets into the same file
-		it.indexIterator, err = openRangedSectionIterator(sst.path, sstm.bm, indexOffset, sst.footer.SummaryStart)
-		if err != nil {
-			it.Close()
-			return nil, err
-		}
+		it.indexIterator = newSectionIterator(file, sstm.bm, indexOffset, sst.footer.SummaryStart)
 		it.indexReader = newIndexReader(it.indexIterator.br.file, sstm.bm, indexOffset)
 
-		it.dataIterator, err = openRangedSectionIterator(sst.path, sstm.bm, dataOffset, sst.footer.IndexStart)
-		if err != nil {
-			it.Close()
-			return nil, err
-		}
+		it.dataIterator = newSectionIterator(file, sstm.bm, dataOffset, sst.footer.IndexStart)
 	}
 
 	_, err = it.Next()
@@ -192,11 +183,17 @@ func (it *SSTableIterator) Next() (bool, error) {
 
 func (it *SSTableIterator) Close() error {
 	var closeErr error
-	if err := it.dataIterator.Close(); err != nil {
-		closeErr = fmt.Errorf("failed to close data iterator: %v", err)
-	}
-	if err := it.indexIterator.Close(); err != nil && closeErr == nil {
-		closeErr = fmt.Errorf("failed to close index iterator: %v", err)
+	if it.dataIterator.br.file == it.indexIterator.br.file {
+		if err := it.dataIterator.Close(); err != nil {
+			closeErr = fmt.Errorf("failed to close data iterator: %v", err)
+		}
+	} else {
+		if err := it.dataIterator.Close(); err != nil {
+			closeErr = fmt.Errorf("failed to close data iterator: %v", err)
+		}
+		if err := it.indexIterator.Close(); err != nil && closeErr == nil {
+			closeErr = fmt.Errorf("failed to close index iterator: %v", err)
+		}
 	}
 	return closeErr
 }
