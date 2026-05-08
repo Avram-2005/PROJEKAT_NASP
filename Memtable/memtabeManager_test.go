@@ -300,3 +300,146 @@ func TestGetRecordAfterRotation(t *testing.T) {
 		})
 	}
 }
+
+func TestMemtablePrefixScan(t *testing.T) {
+	for _, typ := range allStructTypes {
+		t.Run(typ, func(t *testing.T) {
+			m := makeManager(t, typ, 3, 10)
+			m.Put("apple", []byte("fruit1"))
+			m.Put("apricot", []byte("fruit2"))
+			m.Put("banana", []byte("fruit3"))
+
+			m.Put("berry", []byte("fruit4"))
+			m.Put("blueberry", []byte("fruit5"))
+
+			results := m.PrefixScan("ap")
+			if len(results) != 2 {
+				t.Fatalf("Expected 2 results for prefix 'ap', got %d", len(results))
+			}
+			if results[0].Key != "apple" || results[1].Key != "apricot" {
+				t.Fatalf("Wrong results for prefix 'ap': %v", results)
+			}
+
+			results = m.PrefixScan("b")
+			if len(results) != 3 {
+				t.Fatalf("Expected 3 results for prefix 'b', got %d", len(results))
+			}
+
+			// Prefix scan za nepostojeci prefix
+			results = m.PrefixScan("xyz")
+			if len(results) != 0 {
+				t.Fatalf("Expected 0 results for prefix 'xyz', got %d", len(results))
+			}
+		})
+	}
+}
+
+func TestMemtablePrefixScanAfterDelete(t *testing.T) {
+	for _, typ := range allStructTypes {
+		t.Run(typ, func(t *testing.T) {
+			m := makeManager(t, typ, 3, 10)
+
+			m.Put("test_key1", []byte("value1"))
+			m.Put("test_key2", []byte("value2"))
+			m.Delete("test_key1", time.Now())
+
+			results := m.PrefixScan("test")
+			if len(results) != 1 {
+				t.Fatalf("Expected 1 result after delete, got %d", len(results))
+			}
+			if results[0].Key != "test_key2" {
+				t.Fatalf("Expected test_key2, got %s", results[0].Key)
+			}
+		})
+	}
+}
+func TestMemtableRangeScan(t *testing.T) {
+	for _, typ := range allStructTypes {
+		t.Run(typ, func(t *testing.T) {
+			m := makeManager(t, typ, 3, 10)
+			m.Put("a", []byte("1"))
+			m.Put("b", []byte("2"))
+			m.Put("c", []byte("3"))
+			m.Put("d", []byte("4"))
+			m.Put("e", []byte("5"))
+
+			results := m.RangeScan("b", "d")
+			if len(results) != 3 {
+				t.Fatalf("Expected 3 results for range 'b'-'d', got %d", len(results))
+			}
+			expected := []string{"b", "c", "d"}
+			for i, r := range results {
+				if r.Key != expected[i] {
+					t.Fatalf("Expected %s, got %s", expected[i], r.Key)
+				}
+			}
+
+			results = m.RangeScan("a", "b")
+			if len(results) != 2 {
+				t.Fatalf("Expected 2 results for range ''-'b', got %d", len(results))
+			}
+
+			results = m.RangeScan("x", "z")
+			if len(results) != 0 {
+				t.Fatalf("Expected 0 results for range 'x'-'z', got %d", len(results))
+			}
+		})
+	}
+}
+
+func TestManagerPrefixIterator(t *testing.T) {
+	for _, typ := range allStructTypes {
+		t.Run(typ, func(t *testing.T) {
+			m := makeManager(t, typ, 3, 10)
+
+			m.Put("apple", []byte("fruit1"))
+			m.Put("apricot", []byte("fruit2"))
+			m.Put("banana", []byte("fruit3"))
+			m.Put("blueberry", []byte("fruit4"))
+
+			iter := m.PrefixIterator("ap")
+			defer iter.Stop()
+
+			expectedKeys := []string{"apple", "apricot"}
+			count := 0
+			for iter.Next() {
+				if iter.Key() != expectedKeys[count] {
+					t.Fatalf("Expected %s, got %s", expectedKeys[count], iter.Key())
+				}
+				count++
+			}
+			if count != 2 {
+				t.Fatalf("Expected 2 records, got %d", count)
+			}
+		})
+	}
+}
+
+func TestManagerRangeIterator(t *testing.T) {
+	for _, typ := range allStructTypes {
+		t.Run(typ, func(t *testing.T) {
+			m := makeManager(t, typ, 3, 10)
+
+			m.Put("a", []byte("1"))
+			m.Put("b", []byte("2"))
+			m.Put("c", []byte("3"))
+			m.Put("d", []byte("4"))
+			m.Put("e", []byte("5"))
+
+			iter := m.RangeIterator("b", "d")
+			defer iter.Stop()
+
+			expectedKeys := []string{"b", "c", "d"}
+			count := 0
+			for iter.Next() {
+				if iter.Key() != expectedKeys[count] {
+					t.Fatalf("Expected %s, got %s", expectedKeys[count], iter.Key())
+				}
+				count++
+			}
+			if count != 3 {
+				t.Fatalf("Expected 3 records, got %d", count)
+			}
+		})
+	}
+}
