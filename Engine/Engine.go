@@ -135,7 +135,7 @@ func (engine *Engine) ReadPath(key string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if ok {
+	if ok && !foundRecord.Tombstone {
 		retVal := foundRecord.Value
 		//dodajemo pronadjenu vrednost u cache
 		engine.cache.Put(key, &retVal)
@@ -167,7 +167,7 @@ func (engine *Engine) Delete(key string) error {
 	if err != nil {
 		return err
 	}
-	err = engine.cache.Put(key, nil)
+	err = engine.cache.Delete(key)
 	if err != nil {
 		return err
 	}
