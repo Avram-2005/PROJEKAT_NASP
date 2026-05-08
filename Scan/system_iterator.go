@@ -8,9 +8,22 @@ type SystemIterator struct {
 	stopped bool
 }
 
-// kreira iterator za dati prefiks
+// kreira iterator za zadati prefiks
 func (s *SystemScanner) NewSystemPrefixIterator(prefix string) (*SystemIterator, error) {
 	result, err := s.PrefixScan(prefix, 1, 1000000)
+	if err != nil {
+		return nil, err
+	}
+	return &SystemIterator{
+		records: result.Records,
+		index:   -1,
+		stopped: false,
+	}, nil
+}
+
+//kreira iterator za zadati opseg
+func (s *SystemScanner) NewSystemRangeIterator(startKey, endKey string) (*SystemIterator, error) {
+	result, err := s.RangeScan(startKey, endKey, 1, 1000000)
 	if err != nil {
 		return nil, err
 	}
