@@ -125,3 +125,27 @@ func (lsm *LSM) Get(key string) ([]byte, error) {
 
 	return nil, fmt.Errorf("key %s not found in any SSTable", key)
 }
+
+type SSTableInfo struct {
+	level int
+	path  string
+	table *SSTable
+}
+
+func (lsm *LSM) GetAllSSTables() []SSTableInfo {
+	var result []SSTableInfo
+	for _, level := range lsm.levels {
+		for _, sst := range level.tables {
+			result = append(result, SSTableInfo{
+				level: level.levelNum,
+				path:  sst.path,
+				table: sst,
+			})
+		}
+	}
+	return result
+}
+
+func (lsm *LSM) ValidateSSTable(sst *SSTable) (bool, []Record, error) {
+	return lsm.sstm.ValidateSSTable(sst)
+}
