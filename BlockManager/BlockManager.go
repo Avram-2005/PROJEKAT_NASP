@@ -24,11 +24,11 @@ type BlockManager struct {
 // Konverzija iz kilobajta u bajtove desava se unutar konstruktora za BufferPool, vi se oko toga ne brinete.
 func NewBlockManager(maxSize int, blockSize int) (*BlockManager, error) {
 	if blockSize != 4 && blockSize != 8 && blockSize != 16 {
-		return nil, fmt.Errorf("dozvoljene vrednosti za blockSize su 4, 8, ili 16")
+		return nil, fmt.Errorf("allowed values for blockSize are 4, 8, or 16")
 	}
 	cache, err := BufferPool.NewBufferPool(maxSize, blockSize)
 	if err != nil {
-		return nil, fmt.Errorf("error pri inicijalizaciji block cache-a")
+		return nil, fmt.Errorf("error during block cache initialization")
 	}
 	return &BlockManager{
 		blockCache: cache,
@@ -66,10 +66,10 @@ func (bm *BlockManager) GetSpecific(file *os.File, blockNumber int, offset int, 
 		return nil, err
 	}
 	if offset < 0 {
-		return nil, fmt.Errorf("offset ne sme biti negativan")
+		return nil, fmt.Errorf("offset must not be negative")
 	}
 	if offset+size > len(*valueFound) {
-		return nil, fmt.Errorf("offset i size su takvi da se traze bajtovi van opsega jednog bloka, toest njegovog sadrzaja")
+		return nil, fmt.Errorf("offset and size are such that bytes outside the scope of one block, i.e. its content, are requested")
 	}
 	//iz celokupnog bloka uzima bajtove koje je korisnik zatrazio-od offseta, do trazene kolicine
 	specific := (*valueFound)[offset : offset+size]
@@ -101,7 +101,7 @@ func (bm *BlockManager) Put(file *os.File, blockNumber int, writeValue *[]byte) 
 // opsega samog bloka
 func (bm *BlockManager) PutSpecific(file *os.File, blockNumber int, offset int, size int, writeValue *[]byte) error {
 	if offset < 0 {
-		return fmt.Errorf("offset ne sme biti negativan")
+		return fmt.Errorf("offset must not be negative")
 	}
 	valueFound, err := bm.blockCache.Get(file, blockNumber)
 	if err != nil {
@@ -113,7 +113,7 @@ func (bm *BlockManager) PutSpecific(file *os.File, blockNumber int, offset int, 
 		}
 	}
 	if offset+size > bm.blockCache.GetBlockSize() {
-		return fmt.Errorf("offset i size su takvi da se traze bajtovi van opsega jednog bloka")
+		return fmt.Errorf("offset and size are such that bytes outside the scope of one block are requested")
 	}
 	i := 0
 	//Za svaki bajt, krecuci od offseta, menjamo bajt unutar vrednosti koja je pronadjena na bloku

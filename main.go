@@ -21,14 +21,14 @@ func mainMenu() {
 
 	engine, err := eng.NewEngine(configPath, walPath, sstablePath)
 	if err != nil {
-		fmt.Println("Greska pri inicijalizaciji sistema:", err)
+		fmt.Println("Error during system initialization:", err)
 		return
 	}
 
 	for {
 		fmt.Println()
-		fmt.Print("Unesite komandu: ")
-		fmt.Println("0  - UGASI SISTEM")
+		fmt.Print("Enter command: ")
+		fmt.Println("0  - SHUT DOWN SYSTEM")
 		fmt.Println("1  - PUT")
 		fmt.Println("2  - DELETE")
 		fmt.Println("3  - GET")
@@ -38,74 +38,74 @@ func mainMenu() {
 		fmt.Println("7  - RANGE_ITERATE")
 		fmt.Println("8  - SNAPSHOT")
 		fmt.Println("9  - CHECKPOINT")
-		fmt.Println("10 - VALIDACIJA_MERKLE_STABLA")
+		fmt.Println("10 - MERKLE TREE VALIDATION")
 		fmt.Println("----------------------------------------------")
 
 		var command int
 		_, err := fmt.Scanln(&command)
 		if err != nil {
-			fmt.Println("Neispravan unos komande")
+			fmt.Println("Invalid command input")
 			continue
 		}
 
 		if command == 0 {
 			engine.ShutDown()
-			fmt.Println("Sistem je ugasen.")
+			fmt.Println("System is shut down.")
 			break
 		}
 
 		switch command {
 		case 1:
-			key := readLine("Unesite kljuc: ")
-			value := readLine("Unesite vrednost: ")
+			key := readLine("Enter key: ")
+			value := readLine("Enter value: ")
 
 			if key == "" || value == "" {
-				fmt.Println("Kljuc i vrednost ne smeju biti prazni.")
+				fmt.Println("Key and value must not be empty.")
 				continue
 			}
 
 			err := engine.Put(key, []byte(value))
 			if err != nil {
-				fmt.Println("Greska pri upisu:", err)
+				fmt.Println("Error during write:", err)
 				continue
 			}
 
 		case 2:
-			key := readLine("Unesite kljuc za brisanje: ")
+			key := readLine("Enter key for deletion: ")
 			if key == "" {
-				fmt.Println("Kljuc ne sme biti prazan.")
+				fmt.Println("Key must not be empty.")
 				continue
 			}
 
 			err := engine.Delete(key)
 			if err != nil {
-				fmt.Println("Greska pri brisanju:", err)
+				fmt.Println("Error during deletion:", err)
 				continue
 			}
 
 		case 3:
 			key := readLine("Unesite kljuc za pretragu: ")
 			if key == "" {
-				fmt.Println("Kljuc ne sme biti prazan.")
+				fmt.Println("Key must not be empty.")
 				continue
 			}
 
 			value, err := engine.Get(key)
 			if err != nil {
-				fmt.Println("Greska pri citanju: " + err.Error())
+				fmt.Println("Error during reading: " + err.Error())
 				continue
 			}
 			if len(value) == 0 {
-				fmt.Println("Nije pronadjena vrednost.")
+				fmt.Println("Value not found.")
 				continue
 			}
 
-			fmt.Println("Vrednost:", string(value))
+			fmt.Println("Value:", string(value))
 
 		case 4:
 			prefix := readLine("Unesite prefix: ")
 			if prefix == "" {
-				fmt.Println("Prefix ne sme biti prazan.")
+				fmt.Println("Prefix must not be empty.")
 				continue
 			}
 
@@ -113,15 +113,15 @@ func mainMenu() {
 			printRecords(records)
 
 		case 5:
-			startKey := readLine("Unesite pocetni key: ")
-			endKey := readLine("Unesite krajnji key: ")
+			startKey := readLine("Enter start key: ")
+			endKey := readLine("Enter end key: ")
 
 			if startKey == "" || endKey == "" {
-				fmt.Println("Pocetni i krajnji kljucevi ne smeju biti prazni.")
+				fmt.Println("Start and end keys must not be empty.")
 				continue
 			}
 			if startKey > endKey {
-				fmt.Println("Pocetni kljuc ne sme biti veci od krajnjeg kljuca.")
+				fmt.Println("Start key must not be greater than end key.")
 				continue
 			}
 
@@ -129,22 +129,22 @@ func mainMenu() {
 			printRecords(records)
 
 		case 6:
-			fmt.Println("PREFIX_ITERATE nije implementiran!")
+			fmt.Println("PREFIX_ITERATE is not implemented!")
 
 		case 7:
-			fmt.Println("RANGE_ITERATE nije implementiran!")
+			fmt.Println("RANGE_ITERATE is not implemented!")
 
 		case 8:
-			fmt.Println("SNAPSHOT nije implementiran!")
+			fmt.Println("SNAPSHOT is not implemented!")
 
 		case 9:
 			checkPointMenu(engine)
 
 		case 10:
-			fmt.Println("VALIDACIJA_MERKLE_STABLA nije implementirana!")
+			fmt.Println("MERKLE TREE VALIDATION is not implemented!")
 
 		default:
-			fmt.Println("GRESKA NEPOZNATA KOMANDA")
+			fmt.Println("ERROR UNKNOWN COMMAND")
 		}
 	}
 }
@@ -157,15 +157,15 @@ func checkPointMenu(engine *engine.Engine) {
 	}
 	for {
 		fmt.Println()
-		fmt.Print("Unesite komandu: ")
-		fmt.Println("0  - IDI NAZAD")
-		fmt.Println("1  - STVORI CHECKPOINT SISTEMA")
-		fmt.Println("2  - OTVORI CHECKPOINT")
+		fmt.Print("Enter command: ")
+		fmt.Println("0  - GO BACK")
+		fmt.Println("1  - CREATE SYSTEM CHECKPOINT")
+		fmt.Println("2  - OPEN CHECKPOINT")
 
 		var command int
 		_, err := fmt.Scanln(&command)
 		if err != nil {
-			fmt.Println("Neispravan unos komande")
+			fmt.Println("Invalid command input")
 			continue
 		}
 
@@ -175,15 +175,15 @@ func checkPointMenu(engine *engine.Engine) {
 
 		if command == 1 {
 			fmt.Println()
-			fmt.Print("Unesite ime checkpoint-a: ")
+			fmt.Print("Enter checkpoint name: ")
 			var command string
 			_, err := fmt.Scanln(&command)
 			if err != nil {
-				fmt.Println("Neispravan unos komande")
+				fmt.Println("Invalid command input")
 				continue
 			}
 			checkPointManager.AddCheckpoint(engine.GetRoot(), command)
-			fmt.Print("Checkpoint uspesno dodat: ")
+			fmt.Print("Checkpoint successfully added: ")
 		}
 		if command == 2 {
 			checkPointOpen(checkPointManager, engine)
@@ -197,11 +197,11 @@ func checkPointOpen(checkPointManager *checkpoint.CheckpointManager, engine *eng
 		fmt.Println(elem.Value.(string))
 	}
 	fmt.Println()
-	fmt.Print("Unesite ime checkpoint-a koji zelite da otvorite: ")
+	fmt.Print("Enter the name of the checkpoint you want to open: ")
 	var command string
 	_, err := fmt.Scanln(&command)
 	if err != nil {
-		fmt.Println("Neispravan unos komande")
+		fmt.Println("Invalid command input")
 		checkPointOpen(checkPointManager, engine)
 	}
 	isFound := false
@@ -210,7 +210,7 @@ func checkPointOpen(checkPointManager *checkpoint.CheckpointManager, engine *eng
 		if elem.Value == command {
 			checkpoint, err := checkPointManager.GetCheckpoint(elem.Value.(string))
 			if err != nil {
-				fmt.Println("Nesto je poslo po zlu")
+				fmt.Println("Something went wrong")
 				return
 			}
 			isFound = true
@@ -218,7 +218,7 @@ func checkPointOpen(checkPointManager *checkpoint.CheckpointManager, engine *eng
 		}
 	}
 	if !isFound {
-		fmt.Println("Nepostojeci checkpoint")
+		fmt.Println("Non-existent checkpoint")
 	}
 
 }
@@ -231,59 +231,59 @@ func openedCheckpoint(ch *checkpoint.Checkpoint) {
 
 	engine, err := eng.NewEngine(configPath, walPath, sstablePath)
 	if err != nil {
-		fmt.Println("Greska pri inicijalizaciji sistema:", err)
+		fmt.Println("Error during system initialization:", err)
 		return
 	}
 
 	for {
 		fmt.Println()
-		fmt.Print("Unesite komandu: ")
-		fmt.Println("0  - UGASI SISTEM")
+		fmt.Print("Enter command: ")
+		fmt.Println("0  - SHUT DOWN SYSTEM")
 		fmt.Println("1  - GET")
 		fmt.Println("2  - PREFIX_SCAN")
 		fmt.Println("3  - RANGE_SCAN")
 		fmt.Println("4  - PREFIX_ITERATE")
 		fmt.Println("5  - RANGE_ITERATE")
-		fmt.Println("6 - VALIDACIJA_MERKLE_STABLA")
-		fmt.Println("7 - OBRISI CHECKPOINT")
+		fmt.Println("6 - MERKLE TREE VALIDATION")
+		fmt.Println("7 - DELETE CHECKPOINT")
 		fmt.Println("----------------------------------------------")
 
 		var command int
 		_, err := fmt.Scanln(&command)
 		if err != nil {
-			fmt.Println("Neispravan unos komande")
+			fmt.Println("Invalid command input")
 			continue
 		}
 
 		if command == 0 {
 			engine.ShutDown()
-			fmt.Println("Sistem je ugasen.")
+			fmt.Println("System is shut down.")
 			break
 		}
 		switch command {
 		case 1:
-			key := readLine("Unesite kljuc za pretragu: ")
+			key := readLine("Enter key for search: ")
 			if key == "" {
-				fmt.Println("Kljuc ne sme biti prazan.")
+				fmt.Println("Key must not be empty.")
 				continue
 			}
 
 			value, err := engine.Get(key)
 			if err != nil {
-				fmt.Println("Greska pri citanju: " + err.Error())
+				fmt.Println("Error during reading: " + err.Error())
 				continue
 			}
 			if len(value) == 0 {
-				fmt.Println("Nije pronadjena vrednost.")
+				fmt.Println("Value not found.")
 				continue
 			}
 
-			fmt.Println("Vrednost:", string(value))
+			fmt.Println("Value:", string(value))
 
 		case 2:
-			prefix := readLine("Unesite prefix: ")
+			prefix := readLine("Enter prefix: ")
 			if prefix == "" {
-				fmt.Println("Prefix ne sme biti prazan.")
+				fmt.Println("Prefix must not be empty.")
 				continue
 			}
 
@@ -291,15 +291,15 @@ func openedCheckpoint(ch *checkpoint.Checkpoint) {
 			printRecords(records)
 
 		case 3:
-			startKey := readLine("Unesite pocetni key: ")
-			endKey := readLine("Unesite krajnji key: ")
+			startKey := readLine("Enter start key: ")
+			endKey := readLine("Enter end key: ")
 
 			if startKey == "" || endKey == "" {
-				fmt.Println("Pocetni i krajnji kljucevi ne smeju biti prazni.")
+				fmt.Println("Start and end keys must not be empty.")
 				continue
 			}
 			if startKey > endKey {
-				fmt.Println("Pocetni kljuc ne sme biti veci od krajnjeg kljuca.")
+				fmt.Println("Start key must not be greater than end key.")
 				continue
 			}
 
@@ -307,13 +307,13 @@ func openedCheckpoint(ch *checkpoint.Checkpoint) {
 			printRecords(records)
 
 		case 4:
-			fmt.Println("PREFIX_ITERATE nije implementiran!")
+			fmt.Println("PREFIX_ITERATE is not implemented!")
 
 		case 5:
-			fmt.Println("RANGE_ITERATE nije implementiran!")
+			fmt.Println("RANGE_ITERATE is not implemented!")
 
 		case 6:
-			fmt.Println("VALIDACIJA_MERKLE_STABLA nije implementirana!")
+			fmt.Println("MERKLE TREE VALIDATION is not implemented!")
 
 		case 7:
 			engine.ShutDown()
@@ -321,11 +321,11 @@ func openedCheckpoint(ch *checkpoint.Checkpoint) {
 			if err != nil {
 				fmt.Print(err)
 			}
-			fmt.Print("Checkpoint uspesno obrisan")
+			fmt.Print("Checkpoint successfully deleted")
 			return
 
 		default:
-			fmt.Println("GRESKA NEPOZNATA KOMANDA")
+			fmt.Println("ERROR UNKNOWN COMMAND")
 		}
 	}
 }
@@ -339,14 +339,14 @@ func readLine(prompt string) string {
 
 func printRecords(records *[]record.Record) {
 	if records == nil || len(*records) == 0 {
-		fmt.Println("Nema rezultata.")
+		fmt.Println("No results.")
 		return
 	}
 
-	fmt.Println("Rezultati:")
+	fmt.Println("Results:")
 	fmt.Println("----------------------------------------------")
 	for i, r := range *records {
-		fmt.Printf("%d. Kljuc: %s, Vrednost: %s\n", i+1, r.Key, string(r.Value))
+		fmt.Printf("%d. Key: %s, Value: %s\n", i+1, r.Key, string(r.Value))
 	}
 	fmt.Println("----------------------------------------------")
 }
