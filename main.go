@@ -170,7 +170,37 @@ func mainMenu() {
 			checkPointMenu(engine)
 
 		case 10:
-			fmt.Println("MERKLE TREE VALIDATION is not implemented!")
+			all := engine.GetAllSSTables()
+			if len(all) == 0 {
+				fmt.Println("There are no SSTables to validate.")
+				continue
+			}
+
+			for i, info := range all {
+				fmt.Printf("%d. Level: %d, Path: %s\n", i+1, info.Level, info.Path)
+			}
+			fmt.Println("Choose SSTable: ")
+			var choice int
+			_, err := fmt.Scanln(&choice)
+			if err != nil || choice > len(all) || choice <= 0 {
+				fmt.Print("Choice doesnt exist!")
+				continue
+			}
+			selected := all[choice-1].Table
+
+			valid, corrupted, err := engine.ValidateSSTable(selected)
+			if err != nil {
+				fmt.Printf("Validation error %v", err)
+				continue
+			}
+			if valid {
+				fmt.Print("SSTable is valid")
+			} else {
+				fmt.Printf("Found corrupted records: %d", len(corrupted))
+				for _, rec := range corrupted {
+					fmt.Printf("\nKey: %s, Value: %s, Timestamp: %s, Tombstone: %t", rec.Key, rec.Value, rec.Timestamp.String(), rec.Tombstone)
+				}
+			}
 
 		default:
 			fmt.Println("ERROR UNKNOWN COMMAND")
@@ -370,9 +400,37 @@ func openedCheckpoint(ch *checkpoint.Checkpoint, originalEngine *eng.Engine) {
 			fmt.Println("RANGE_ITERATE is not implemented!")
 
 		case 6:
-			//TODO: implement token bucket once functionality is implemented
+			all := engine.GetAllSSTables()
+			if len(all) == 0 {
+				fmt.Println("There are no SSTables to validate.")
+				continue
+			}
 
-			fmt.Println("MERKLE TREE VALIDATION is not implemented!")
+			for i, info := range all {
+				fmt.Printf("%d. Level: %d, Path: %s\n", i+1, info.Level, info.Path)
+			}
+			fmt.Println("Choose SSTable: ")
+			var choice int
+			_, err := fmt.Scanln(&choice)
+			if err != nil || choice > len(all) || choice <= 0 {
+				fmt.Print("Choice doesnt exist!")
+				continue
+			}
+			selected := all[choice-1].Table
+
+			valid, corrupted, err := engine.ValidateSSTable(selected)
+			if err != nil {
+				fmt.Printf("Validation error %v", err)
+				continue
+			}
+			if valid {
+				fmt.Print("SSTable is valid")
+			} else {
+				fmt.Printf("Found corrupted records: %d", len(corrupted))
+				for _, rec := range corrupted {
+					fmt.Printf("Key: %s, Value: %s, Timestamp: %s, Tombstone: %t", rec.Key, rec.Value, rec.Timestamp.String(), rec.Tombstone)
+				}
+			}
 
 		case 7:
 			engine.ShutDown()
