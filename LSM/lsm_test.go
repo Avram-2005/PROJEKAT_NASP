@@ -310,10 +310,9 @@ func TestLSMPrefixScanWithTombstone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PrefixScan error: %v", err)
 	}
-	for _, r := range results {
-		if r.Tombstone {
-			t.Fatalf("Tombstone should not appear in results: %s", r.Key)
-		}
+
+	if len(results) != 2 {
+		t.Fatalf("Expected 2 result after tombstone, got %d", len(results))
 	}
 }
 func TestLSMPrefixScanMultipleLevels(t *testing.T) {

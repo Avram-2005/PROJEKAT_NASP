@@ -66,7 +66,8 @@ func (l *Level) ShouldCompact(compFactor int) bool {
 }
 
 func (lsm *LSM) Compact(levelNum int) error {
-	newSST, err := lsm.sstm.Merge(lsm.levels[levelNum].tables, levelNum+1)
+	shouldDeleteTombstone := levelNum == lsm.config.NumLevels-1
+	newSST, err := lsm.sstm.Merge(lsm.levels[levelNum].tables, levelNum+1, shouldDeleteTombstone)
 	if err != nil {
 		return fmt.Errorf("failed to merge SSTables for compaction: %v", err)
 	}
