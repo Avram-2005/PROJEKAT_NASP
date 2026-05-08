@@ -160,3 +160,27 @@ func (lsm *LSM) GetNewestRecord() (*Record, error) {
 
 	return newest, nil
 }
+
+type SSTableInfo struct {
+	Level int
+	Path  string
+	Table *SSTable
+}
+
+func (lsm *LSM) GetAllSSTables() []SSTableInfo {
+	var result []SSTableInfo
+	for _, level := range lsm.levels {
+		for _, sst := range level.tables {
+			result = append(result, SSTableInfo{
+				Level: level.levelNum,
+				Path:  sst.path,
+				Table: sst,
+			})
+		}
+	}
+	return result
+}
+
+func (lsm *LSM) ValidateSSTable(sst *SSTable) (bool, []Record, error) {
+	return lsm.sstm.ValidateSSTable(sst)
+}

@@ -24,21 +24,21 @@ func TestDetectChange(t *testing.T) {
 
 	m1, err1 := NewMerkleTree(records1)
 	if err1 != nil {
-		t.Fatal("Greska pri kreiranju merkle stabla ", err1)
+		t.Fatal("Error creating merkle tree ", err1)
 	}
 
 	m2, err2 := NewMerkleTree(records2)
 	if err2 != nil {
-		t.Fatal("Greska pri kreiranju merkle stabla ", err2)
+		t.Fatal("Error creating merkle tree ", err2)
 	}
 
 	if m1.Verify(m2.RootHash()) {
-		t.Fatal("Podaci su isti")
+		t.Fatal("Data is the same")
 	}
 
 	diffs := FindDifference(m1.Root(), m2.Root())
 	for _, d := range diffs {
-		t.Logf("Izmenjen podatak pod kljucem: %s, sa podatkom: %s, sa timestamp: %s, sa tombstone: %t", string(d.Key), string(d.Value), d.Timestamp.String(), d.Tombstone)
+		t.Logf("Modified data under key: %s, with data: %s, with timestamp: %s, with tombstone: %t", string(d.Key), string(d.Value), d.Timestamp.String(), d.Tombstone)
 	}
 
 	// test 2 - isti podaci
@@ -56,21 +56,21 @@ func TestDetectChange(t *testing.T) {
 
 	m3, err3 := NewMerkleTree(records3)
 	if err3 != nil {
-		t.Fatal("Greska pri kreiranju merkle stabla ", err3)
+		t.Fatal("Error creating merkle tree ", err3)
 	}
 
 	m4, err4 := NewMerkleTree(records4)
 	if err4 != nil {
-		t.Fatal("Greska pri kreiranju merkle stabla ", err4)
+		t.Fatal("Error creating merkle tree ", err4)
 	}
 
 	if m3.Verify(m4.RootHash()) {
-		t.Log("Podaci su isti")
+		t.Log("Data is the same")
 	}
 
 	diffs2 := FindDifference(m3.Root(), m4.Root())
 	for _, d := range diffs2 {
-		t.Fatalf("Izmenjen podatak pod kljucem: %s, sa podatkom: %s, sa timestamp: %s, sa tombstone: %t", string(d.Key), string(d.Value), d.Timestamp.String(), d.Tombstone)
+		t.Fatalf("Modified data under key: %s, with data: %s, with timestamp: %s, with tombstone: %t", string(d.Key), string(d.Value), d.Timestamp.String(), d.Tombstone)
 	}
 
 	// test 3 - izmenjeni podaci pod kljucevima a i c
@@ -88,21 +88,21 @@ func TestDetectChange(t *testing.T) {
 
 	m5, err5 := NewMerkleTree(records5)
 	if err5 != nil {
-		t.Fatal("Greska pri kreiranju merkle stabla ", err5)
+		t.Fatal("Error creating merkle tree ", err5)
 	}
 
 	m6, err6 := NewMerkleTree(records6)
 	if err6 != nil {
-		t.Fatal("Greska pri kreiranju merkle stabla ", err6)
+		t.Fatal("Error creating merkle tree ", err6)
 	}
 
 	if m5.Verify(m6.RootHash()) {
-		t.Fatal("Podaci su isti")
+		t.Fatal("Data is the same")
 	}
 
 	diffs3 := FindDifference(m5.Root(), m6.Root())
 	for _, d := range diffs3 {
-		t.Logf("Izmenjen podatak pod kljucem: %s, sa podatkom: %s, sa timestamp: %s, sa tombstone: %t", string(d.Key), string(d.Value), d.Timestamp.String(), d.Tombstone)
+		t.Logf("Modified data under key: %s, with data: %s, with timestamp: %s, with tombstone: %t", string(d.Key), string(d.Value), d.Timestamp.String(), d.Tombstone)
 	}
 
 	// test 4 - izmenjen kljuc a i Timestamp pod kljucem c
@@ -120,21 +120,21 @@ func TestDetectChange(t *testing.T) {
 
 	m7, err7 := NewMerkleTree(records7)
 	if err7 != nil {
-		t.Fatal("Greska pri kreiranju merkle stabla ", err7)
+		t.Fatal("Error creating merkle tree ", err7)
 	}
 
 	m8, err8 := NewMerkleTree(records8)
 	if err8 != nil {
-		t.Fatal("Greska pri kreiranju merkle stabla ", err8)
+		t.Fatal("Error creating merkle tree ", err8)
 	}
 
 	if m7.Verify(m8.RootHash()) {
-		t.Fatal("Podaci su isti")
+		t.Fatal("Data is the same")
 	}
 
 	diffs4 := FindDifference(m7.Root(), m8.Root())
 	for _, d := range diffs4 {
-		t.Logf("Izmenjen podatak pod kljucem: %s, sa podatkom: %s, sa timestamp: %s, sa tombstone: %t", string(d.Key), string(d.Value), d.Timestamp.String(), d.Tombstone)
+		t.Logf("Modified data under key: %s, with data: %s, with timestamp: %s, with tombstone: %t", string(d.Key), string(d.Value), d.Timestamp.String(), d.Tombstone)
 	}
 }
 
@@ -149,18 +149,18 @@ func TestSerializeDeserialize(t *testing.T) {
 
 	m1, err1 := NewMerkleTree(records1)
 	if err1 != nil {
-		t.Fatal("Greska pri kreiranju merkle stabla ", err1)
+		t.Fatal("Error creating merkle tree ", err1)
 	}
 
 	data := m1.Serialize()
 	m2 := Deserialize(data)
 
 	if !m1.Verify(m2.RootHash()) {
-		t.Fatal("Podaci su razliciti")
+		t.Fatal("Data mismatch")
 	}
 
 	diffs := FindDifference(m1.Root(), m2.Root())
 	for _, d := range diffs {
-		t.Fatalf("Izmenjen podatak pod kljucem: %s, sa podatkom: %s, sa timestamp: %s, sa tombstone: %t", string(d.Key), string(d.Value), d.Timestamp.String(), d.Tombstone)
+		t.Fatalf("Modified data under key: %s, with data: %s, with timestamp: %s, with tombstone: %t", string(d.Key), string(d.Value), d.Timestamp.String(), d.Tombstone)
 	}
 }
