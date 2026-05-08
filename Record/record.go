@@ -19,7 +19,7 @@ const HEADER_SIZE = CRC_L + TIMESTAMP_L + TOMBSTONE_L + KEY_SIZE_L + VALUE_SIZE_
 
 func NewRecord(key string, value []byte, tombstone bool, timestamp time.Time) (*Record, error) {
 	if tombstone && len(value) != 0 {
-		return nil, fmt.Errorf("Ne moze tombstone da bude false i da value ima vrednost!")
+		return nil, fmt.Errorf("tombstone cannot be true when value is not empty")
 	}
 	if timestamp.IsZero() {
 		timestamp = time.Now()
@@ -57,7 +57,7 @@ func (r *Record) Serialize() []byte {
 
 func DeserializeRecord(data []byte) (*Record, int, error) {
 	if len(data) < HEADER_SIZE {
-		return nil, 0, fmt.Errorf("nedovoljno podataka za zaglavlje")
+		return nil, 0, fmt.Errorf("insufficient data for header")
 	}
 
 	reader := NewBufferReaderReuse(data)
@@ -71,14 +71,14 @@ func DeserializeRecord(data []byte) (*Record, int, error) {
 	totalSize := HEADER_SIZE + kSize + vSize
 
 	if len(data) < totalSize {
-		return nil, 0, fmt.Errorf("manjak podataka: očekivano %d, dobijeno %d", totalSize, len(data))
+		return nil, 0, fmt.Errorf("not enough data: expected %d, got %d", totalSize, len(data))
 	}
 
 	payloadForChecksum := data[4:totalSize]
 	actualCRC := crc32.ChecksumIEEE(payloadForChecksum)
 
 	if crc != actualCRC {
-		return nil, 0, fmt.Errorf("CRC nije validan: očekivano %08x, dobijeno %08x", crc, actualCRC)
+		return nil, 0, fmt.Errorf("CRC invalid: expected %08x, got %08x", crc, actualCRC)
 	}
 
 	key := string(reader.ReadBytes(kSize))

@@ -155,3 +155,31 @@ func (mm *MemtableManager) TotalSize() int {
 	}
 	return total
 }
+
+// skenira sve instance memtable-a za zadati prefix
+func (mm *MemtableManager) PrefixScan(prefix string) []*record.Record {
+	result := make([]*record.Record, 0)
+	for _, instance := range mm.instances {
+		result = append(result, instance.PrefixScan(prefix)...)
+	}
+	return result
+}
+
+// skenira sve instance memtable-a za zadati opseg
+func (mm *MemtableManager) RangeScan(startKey, endKey string) []*record.Record {
+	result := make([]*record.Record, 0)
+	for _, instance := range mm.instances {
+		result = append(result, instance.RangeScan(startKey, endKey)...)
+	}
+	return result
+}
+
+func (mm *MemtableManager) PrefixIterator(prefix string) Iterator {
+	records := mm.PrefixScan(prefix)
+	return NewBaseIterator(records)
+}
+
+func (mm *MemtableManager) RangeIterator(startKey, endKey string) Iterator {
+	records := mm.RangeScan(startKey, endKey)
+	return NewBaseIterator(records)
+}
