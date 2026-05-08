@@ -163,7 +163,7 @@ func (wal *WAL) appendRecord(newRecord *Record.Record) error {
 
 		//Svaki chunk mora imati 1 bajt za tip i barem 20 bajtova za podatke.
 		//Ako nema toliko mesta, ostatak bloka punimo nulama i idemo na sledeći blok
-		if remainingInBlock <= 20 {
+		if remainingInBlock <= 22 {
 			padding := make([]byte, remainingInBlock)
 			wal.blockManager.PutSpecific(wal.writeFile, wal.currentWritePosition/blockSize, blockOffset, remainingInBlock, &padding)
 			wal.currentWritePosition += remainingInBlock
@@ -250,7 +250,7 @@ func (wal *WAL) FlushWAL() error {
 		}
 	}
 
-	if keepIndex <= 0 {
+	if keepIndex < 0 {
 		return nil
 	}
 
@@ -331,6 +331,7 @@ func (wal *WAL) recoverSingleSegment(path string, mm *memtable.MemtableManager, 
 				} else {
 					offset = len(data)
 				}
+				*buffer = (*buffer)[:0]
 
 			case ChunkTypeFirst:
 				//Zapis je isečen na više delova. Ovde je početak, pa ga čuvamo u bafer dok ne nađemo ostatak

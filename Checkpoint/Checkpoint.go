@@ -16,8 +16,16 @@ type Checkpoint struct {
 	checkpointName string
 }
 
+func (ch *Checkpoint) GetName() string {
+	return ch.checkpointName
+}
+
 func NewCheckpointManager() (*CheckpointManager, error) {
 	directoryMap := make(map[string]*Checkpoint)
+	_, err := os.Stat("checkpoints")
+	if os.IsNotExist(err) {
+		os.Mkdir("checkpoints", 0755)
+	}
 	files, err := os.ReadDir("checkpoints")
 	if err != nil {
 		return nil, err

@@ -11,11 +11,13 @@ func iteratorMemtableEntries() []*Record {
 	ts := time.Now()
 	r1, _ := NewRecord("a", []byte("value3"), false, ts)
 	r2, _ := NewRecord("bar", []byte("value3"), false, ts)
+	r7, _ := NewRecord("j", []byte("value3"), false, ts)
+	r71, _ := NewRecord("j", []byte{}, true, ts)
 	r3, _ := NewRecord("v", []byte("value3"), false, ts)
 	r4, _ := NewRecord("value1", []byte("value1"), false, ts)
 	r5, _ := NewRecord("value2", []byte("value2"), false, ts)
 	r6, _ := NewRecord("value3", []byte("value3"), false, ts)
-	return []*Record{r1, r2, r3, r4, r5, r6}
+	return []*Record{r1, r2, r7, r71, r3, r4, r5, r6}
 }
 
 func TestPrefixIterator(t *testing.T) {
@@ -140,6 +142,35 @@ func TestPrefixIterator(t *testing.T) {
 			t.Errorf("Expected key %s, got %s", expected[i], keys3[i])
 		}
 	}
+
+	// prefiks j, treba da vrati 2 kljuca j
+	iter5, err := m.NewPrefixIterator(sst, "j")
+	if err != nil {
+		t.Fatalf("Failed to create prefix iterator: %v", err)
+	}
+	defer iter5.Close()
+
+	var keys4 []string
+	for {
+		ok, err := iter5.Next()
+		if err != nil {
+			t.Fatalf("Next failed: %v", err)
+		}
+		if !ok {
+			break
+		}
+		keys4 = append(keys4, iter5.iterator.Rec.Key)
+	}
+
+	expected = []string{"j", "j"}
+	if len(keys4) != len(expected) {
+		t.Fatalf("Expected %d keys, got %d: %v", len(expected), len(keys4), keys4)
+	}
+	for i := range expected {
+		if keys4[i] != expected[i] {
+			t.Errorf("Expected key %s, got %s", expected[i], keys4[i])
+		}
+	}
 }
 
 func TestRangeIterator(t *testing.T) {
@@ -212,5 +243,35 @@ func TestRangeIterator(t *testing.T) {
 	}
 	if ok {
 		t.Fatal("Expected no results, but got one")
+	}
+
+	// range od j do j, treba da vrati 2 kljuca j
+	iter5, err := m.NewRangeIterator(sst, "j", "j")
+	if err != nil {
+		t.Fatalf("Failed to create prefix iterator: %v", err)
+	}
+	defer iter5.Close()
+
+	var keys4 []string
+
+	for {
+		ok, err := iter5.Next()
+		if err != nil {
+			t.Fatalf("Next failed: %v", err)
+		}
+		if !ok {
+			break
+		}
+		keys4 = append(keys4, iter5.iterator.Rec.Key)
+	}
+
+	expected = []string{"j", "j"}
+	if len(keys4) != len(expected) {
+		t.Fatalf("Expected %d keys, got %d: %v", len(expected), len(keys4), keys4)
+	}
+	for i := range expected {
+		if keys4[i] != expected[i] {
+			t.Errorf("Expected key %s, got %s", expected[i], keys4[i])
+		}
 	}
 }
