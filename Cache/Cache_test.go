@@ -12,7 +12,7 @@ func TestCache(t *testing.T) {
 	ch, err := NewCache(8)
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("greska tokom stvaranja kesa")
+		t.Errorf("error during cache creation")
 		t.FailNow()
 	}
 	data1 := make([]byte, 100)
@@ -41,57 +41,57 @@ func TestCache(t *testing.T) {
 	if err != nil {
 		fmt.Print(err)
 
-		t.Errorf("greska tokom prvog citanja")
+		t.Errorf("error during first read")
 		t.FailNow()
 	}
 	if !reflect.DeepEqual(data1, (*read1)) {
 		fmt.Print(data1, (*read1))
-		t.Errorf("data1 nije isti pri citanju")
+		t.Errorf("data1 is not the same during reading")
 	}
 	read2, err, _ := ch.Get("d2")
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("greska tokom drugog citanja")
+		t.Errorf("error during second read")
 		t.FailNow()
 	}
 	if !reflect.DeepEqual(data2, (*read2)) {
-		t.Errorf("data2 nije isti pri citanju")
+		t.Errorf("data2 is not the same during reading")
 	}
 	read3, err, _ := ch.Get("d3")
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("greska tokom treceg citanja")
+		t.Errorf("error during third read")
 		t.FailNow()
 	}
 	if !reflect.DeepEqual(data3, (*read3)) {
-		t.Errorf("data3 nije isti pri citanju")
+		t.Errorf("data3 is not the same during reading")
 	}
 	read4, err, _ := ch.Get("d4")
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("greska tokom cetvrtog citanja")
+		t.Errorf("error during fourth read")
 		t.FailNow()
 	}
 	if !reflect.DeepEqual(data4, (*read4)) {
-		t.Errorf("data4 nije isti pri citanju")
+		t.Errorf("data4 is not the same during reading")
 	}
 	read5, err, _ := ch.Get("d5")
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("greska tokom petog citanja")
+		t.Errorf("error during fifth read")
 		t.FailNow()
 	}
 	if !reflect.DeepEqual(data5, (*read5)) {
-		t.Errorf("data5 nije isti pri citanju")
+		t.Errorf("data5 is not the same during reading")
 	}
 	read6, err, _ := ch.Get("d6")
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("greska tokom sestog citanja")
+		t.Errorf("error during sixth read")
 		t.FailNow()
 	}
 	if !reflect.DeepEqual(data6, (*read6)) {
-		t.Errorf("data6 nije isti pri citanju")
+		t.Errorf("data6 is not the same during reading")
 	}
 	if ch.currentSize != 6 {
 		fmt.Print(ch.currentSize)
@@ -104,7 +104,7 @@ func TestLru(t *testing.T) {
 	ch, err := NewCache(4)
 	if err != nil {
 		fmt.Print(err)
-		t.Errorf("greska tokom stvaranja kesa")
+		t.Errorf("error during cache creation")
 		t.FailNow()
 	}
 	data1 := make([]byte, 100)
