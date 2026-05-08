@@ -73,9 +73,15 @@ func NewEngine(configPath string, walPath string, sstablePath string) (*Engine, 
 		return nil, err
 	}
 
-	err = engineWriteAheadLog.Recovery(engineMemtable)
+	rec, err := engineLSMTree.GetNewestRecord()
 	if err != nil {
 		return nil, err
+	}
+	if rec != nil {
+		err = engineWriteAheadLog.Recovery(engineMemtable, rec.Timestamp)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &Engine{
