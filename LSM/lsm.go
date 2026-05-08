@@ -135,7 +135,7 @@ func (lsm *LSM) GetNewestRecord() (*Record, error) {
 		}
 	}
 	if newstSST == nil {
-		return nil, fmt.Errorf("no SSTables found in LSM")
+		return nil, nil
 	}
 
 	iter, err := lsm.sstm.NewSSTableIterator(newstSST, "", true)
