@@ -10,23 +10,6 @@ import (
 	"testing"
 )
 
-func initEngine(t *testing.T) Engine {
-	root := t.TempDir()
-	configPath := root + "/config.json"
-	walPath := root + "/wal"
-	sstablePath := root + "/sstables"
-
-	engine, err := NewEngine(configPath, walPath, sstablePath)
-	if err != nil {
-		t.Fatalf("Failed to initialize engine: %v", err)
-	}
-	return *engine
-}
-
-func TestEngineOnePutGet(t *testing.T) {
-
-}
-
 func TestEngineBasicFunctions(t *testing.T) {
 	configPath := "engineConfig_test.yaml"
 	walPath := "TestDataBase/walDATA"
@@ -221,17 +204,89 @@ func TestStressEngineFunction(t *testing.T) {
 	}
 
 	engine2.ShutDown()
+}
 
-	err = os.RemoveAll(walPath)
+func TestEngineDelete(t *testing.T) {
+	configPath := "engineConfig_test.yaml"
+	walPath := "TestDataBase/walDATA"
+	sstPath := "TestDataBase/sstable"
+
+	engine, err := NewEngine(configPath, walPath, sstPath)
 	if err != nil {
-		fmt.Print("Deleting WAL directory failed!")
+		fmt.Print("Engine initialization failed!\n")
 		fmt.Print(err)
 		t.FailNow()
 	}
-	err = os.RemoveAll(sstPath)
+
+	engine.Put("delete-key", []byte("value1"))
+	value, err := engine.Get("delete-key")
+	if err != nil || len(value) == 0 {
+		t.Fatal("Failed to get key after put")
+	}
+
+	err = engine.Delete("delete-key")
 	if err != nil {
-		fmt.Print("Deleting SSTable directory failed!")
+		t.Fatalf("Delete failed: %v", err)
+	}
+
+	value, err = engine.Get("delete-key")
+	if err != nil || len(value) > 0 {
+		t.Fatal("Key should be deleted but was found")
+	}
+
+	err = engine.Delete("non-existent-key")
+	if err != nil {
+		t.Fatalf("Delete of non-existent key should not error: %v", err)
+	}
+
+	engine.Put("keep1", []byte("value1"))
+	engine.Put("delete2", []byte("value2"))
+	engine.Put("keep2", []byte("value3"))
+
+	err = engine.Delete("delete2")
+	if err != nil {
+		t.Fatalf("Delete failed: %v", err)
+	}
+
+	val1, _ := engine.Get("keep1")
+	if !reflect.DeepEqual(val1, []byte("value1")) {
+		t.Fatal("keep1 should still exist")
+	}
+
+	val2, _ := engine.Get("keep2")
+	if !reflect.DeepEqual(val2, []byte("value3")) {
+		t.Fatal("keep2 should still exist")
+	}
+
+	deletedVal, _ := engine.Get("delete2")
+	if len(deletedVal) > 0 {
+		t.Fatal("delete2 should be deleted")
+	}
+
+	engine.ShutDown()
+
+	engine2, err := NewEngine(configPath, walPath, sstPath)
+	if err != nil {
+		fmt.Print("Engine initialization failed!\n")
 		fmt.Print(err)
 		t.FailNow()
 	}
+
+	val1, _ = engine2.Get("keep1")
+	if !reflect.DeepEqual(val1, []byte("value1")) {
+		t.Fatal("keep1 should still exist after restart")
+	}
+
+	deletedVal, _ = engine2.Get("delete2")
+	if len(deletedVal) > 0 {
+		t.Fatal("delete2 should still be deleted after restart")
+	}
+
+	engine2.Put("delete2", []byte("new-value"))
+	val, _ := engine2.Get("delete2")
+	if !reflect.DeepEqual(val, []byte("new-value")) {
+		t.Fatal("Re-put after delete failed")
+	}
+
+	engine2.ShutDown()
 }
