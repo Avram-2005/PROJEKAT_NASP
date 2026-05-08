@@ -125,3 +125,38 @@ func (lsm *LSM) Get(key string) ([]byte, error) {
 
 	return nil, fmt.Errorf("key %s not found in any SSTable", key)
 }
+
+func (lsm *LSM) GetNewestRecord() (*Record, error) {
+	var newstSST *SSTable
+	for _, level := range lsm.levels {
+		if len(level.tables) > 0 {
+			newstSST = level.tables[len(level.tables)-1]
+			break
+		}
+	}
+	if newstSST == nil {
+		return nil, fmt.Errorf("no SSTables found in LSM")
+	}
+
+	iter, err := lsm.sstm.NewSSTableIterator(newstSST, "", true)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create SSTable iterator: %v", err)
+	}
+	defer iter.Close()
+
+	var newest *Record
+	for {
+		ok, err := iter.Next()
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			break
+		}
+		if newest == nil || iter.Rec.Timestamp.After(newest.Timestamp) {
+			newest = iter.Rec
+		}
+	}
+
+	return newest, nil
+}
