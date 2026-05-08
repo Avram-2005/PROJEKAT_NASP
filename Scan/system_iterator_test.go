@@ -92,3 +92,39 @@ func TestSystemRangeIterator(t *testing.T) {
 		t.Fatalf("Expected 3 records, got %d", count)
 	}
 }
+
+func TestSystemIteratorEmpty(t *testing.T) {
+	scanner, cleanup := setupTestScanner(t)
+	defer cleanup()
+
+	iter, err := scanner.NewSystemPrefixIterator("xyz")
+	if err != nil {
+		t.Fatalf("Failed to create iterator: %v", err)
+	}
+	defer iter.Stop()
+
+	if iter.Next() {
+		t.Fatal("Iterator should be empty")
+	}
+}
+
+func TestSystemIteratorStop(t *testing.T) {
+	scanner, cleanup := setupTestScanner(t)
+	defer cleanup()
+
+	scanner.memtable.Put("apple", []byte("fruit"))
+
+	iter, err := scanner.NewSystemPrefixIterator("ap")
+	if err != nil {
+		t.Fatalf("Failed to create iterator: %v", err)
+	}
+
+	iter.Stop()
+
+	if iter.Next() {
+		t.Fatal("Next should return false after Stop")
+	}
+	if iter.Key() != "" {
+		t.Fatal("Key should be empty after Stop")
+	}
+}
