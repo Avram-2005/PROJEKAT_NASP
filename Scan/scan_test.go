@@ -395,3 +395,116 @@ func TestRangeScanMemtableHasNewerDataThanSSTable(t *testing.T) {
 		t.Fatalf("Apple should be from Memtable with 'mem_value', got '%s'", result.Records[0].Value)
 	}
 }
+
+func TestPrefixScanEmptySystem(t *testing.T) {
+	scanner, cleanup := setupTestScanner(t)
+	defer cleanup()
+
+	result, err := scanner.PrefixScan("a", 1, 10)
+	if err != nil {
+		t.Fatalf("PrefixScan failed: %v", err)
+	}
+
+	if len(result.Records) != 0 {
+		t.Fatalf("Expected 0 records, got %d", len(result.Records))
+	}
+	if result.TotalCount != 0 {
+		t.Fatalf("Expected TotalCount=0, got %d", result.TotalCount)
+	}
+	if result.HasMore {
+		t.Fatal("HasMore should be false for empty result")
+	}
+}
+
+func TestPrefixScanOnlyMemtable(t *testing.T) {
+	scanner, cleanup := setupTestScanner(t)
+	defer cleanup()
+	scanner.memtable.Put("apple", []byte("fruit1"))
+	scanner.memtable.Put("apricot", []byte("fruit2"))
+	scanner.memtable.Put("banana", []byte("fruit3"))
+	scanner.memtable.Put("berry", []byte("fruit4"))
+	scanner.memtable.Put("blueberry", []byte("fruit5"))
+	scanner.memtable.Put("cherry", []byte("fruit6"))
+
+	result, err := scanner.PrefixScan("ap", 1, 10)
+	if err != nil {
+		t.Fatalf("PrefixScan failed: %v", err)
+	}
+	expectedKeys := []string{"apple", "apricot"}
+	if len(result.Records) != 2 {
+		t.Fatalf("Expected 2 records for prefix 'ap', got %d", len(result.Records))
+	}
+	for i, rec := range result.Records {
+		if rec.Key != expectedKeys[i] {
+			t.Fatalf("Expected %s, got %s", expectedKeys[i], rec.Key)
+		}
+	}
+	result, err = scanner.PrefixScan("b", 1, 10)
+	if err != nil {
+		t.Fatalf("PrefixScan failed: %v", err)
+	}
+	expectedKeys = []string{"banana", "berry", "blueberry"}
+	if len(result.Records) != 3 {
+		t.Fatalf("Expected 3 records for prefix 'b', got %d", len(result.Records))
+	}
+	result, err = scanner.PrefixScan("xyz", 1, 10)
+	if err != nil {
+		t.Fatalf("PrefixScan failed: %v", err)
+	}
+	if len(result.Records) != 0 {
+		t.Fatalf("Expected 0 records for prefix 'xyz', got %d", len(result.Records))
+	}
+}
+
+func TestPrefixScanPagination(t *testing.T) {
+	scanner, cleanup := setupTestScanner(t)
+	defer cleanup()
+	for i := 0; i < 10; i++ {
+		scanner.memtable.Put("test_key_"+string(rune('a'+i)), []byte("value"))
+	}
+
+	result, err := scanner.PrefixScan("test", 1, 3)
+	if err != nil {
+		t.Fatalf("PrefixScan failed: %v", err)
+	}
+
+	if len(result.Records) != 3 {
+		t.Fatalf("Page 1: expected 3 records, got %d", len(result.Records))
+	}
+	if result.TotalCount != 10 {
+		t.Fatalf("Expected TotalCount=10, got %d", result.TotalCount)
+	}
+	if !result.HasMore {
+		t.Fatal("HasMore should be true for page 1")
+	}
+
+	result, err = scanner.PrefixScan("test", 2, 3)
+	if err != nil {
+		t.Fatalf("PrefixScan failed: %v", err)
+	}
+	if len(result.Records) != 3 {
+		t.Fatalf("Page 2: expected 3 records, got %d", len(result.Records))
+	}
+	if !result.HasMore {
+		t.Fatal("HasMore should be true for page 2")
+	}
+
+	result, err = scanner.PrefixScan("test", 4, 3)
+	if err != nil {
+		t.Fatalf("PrefixScan failed: %v", err)
+	}
+	if len(result.Records) != 1 {
+		t.Fatalf("Page 4: expected 1 record, got %d", len(result.Records))
+	}
+	if result.HasMore {
+		t.Fatal("HasMore should be false for last page")
+	}
+
+	result, err = scanner.PrefixScan("test", 10, 3)
+	if err != nil {
+		t.Fatalf("PrefixScan failed: %v", err)
+	}
+	if len(result.Records) != 0 {
+		t.Fatalf("Page out of range: expected 0 records, got %d", len(result.Records))
+	}
+}
