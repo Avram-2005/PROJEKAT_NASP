@@ -141,13 +141,63 @@ func mainMenu() {
 				fmt.Println("Cannot scan token bucket internal key.")
 				continue
 			}
-			pageNumber, pageSize := readPage()
-			result, err := engine.PrefixScan(prefix, pageNumber, pageSize)
-			if err != nil {
-				fmt.Printf("Prefix scan error: %v\n", err)
-				continue
+			currentPage := 1
+			pageSize := 0
+			fmt.Print("Enter page size: ")
+			fmt.Scanln(&pageSize)
+			if pageSize < 0 {
+				pageSize = 5
 			}
-			printScanResult(result)
+			for {
+				result, err := engine.PrefixScan(prefix, currentPage, pageSize)
+				if err != nil {
+					fmt.Printf("Prefix scan error: %v\n", err)
+				}
+				printScanResult(result, currentPage, pageSize)
+				if result.TotalCount == 0 {
+					break
+				}
+				fmt.Println("\nOptions:")
+				fmt.Println("  n - NEXT PAGE")
+				fmt.Println("  p - PREVIOUS PAGE")
+				fmt.Println("  g - GO TO SPECIFIC PAGE")
+				fmt.Println("  q - QUIT")
+				fmt.Print("Enter command: ")
+
+				var userInput string
+				fmt.Scanln(&userInput)
+				if userInput == "q" {
+					break
+				}
+				switch userInput {
+				case "n":
+					if result.HasMore {
+						currentPage++
+					} else {
+						fmt.Println("Already on last page.")
+					}
+				case "p":
+					if currentPage > 1 {
+						currentPage--
+					} else {
+						fmt.Println("Already on first page.")
+					}
+				case "g":
+					fmt.Print("Enter page number: ")
+					var page int
+					fmt.Scanln(&page)
+					if page >= 1 && page <= (result.TotalCount+pageSize-1)/pageSize {
+						currentPage = page
+					} else {
+						fmt.Println("Invalid page number.")
+					}
+				default:
+					fmt.Println("Unknown command.")
+
+				}
+
+				fmt.Println()
+			}
 
 		case 5:
 			startKey := readLine("Enter start key: ")
@@ -162,13 +212,66 @@ func mainMenu() {
 				continue
 			}
 
-			pageNumber, pageSize := readPage()
-			result, err := engine.RangeScan(startKey, endKey, pageNumber, pageSize)
-			if err != nil {
-				fmt.Printf("Range scan error: %v\n", err)
-				continue
+			currentPage := 1
+			pageSize := 0
+
+			fmt.Print("Enter page size: ")
+			fmt.Scanln(&pageSize)
+			if pageSize <= 0 {
+				pageSize = 5
 			}
-			printScanResult(result)
+
+			for {
+				result, err := engine.RangeScan(startKey, endKey, currentPage, pageSize)
+				if err != nil {
+					fmt.Printf("Range scan error: %v\n", err)
+					break
+				}
+				printScanResult(result, currentPage, pageSize)
+				if result.TotalCount == 0 {
+					break
+				}
+				fmt.Println("\nOptions:")
+				fmt.Println("  n - NEXT PAGE")
+				fmt.Println("  p - PREVIOUS PAGE")
+				fmt.Println("  g - GO TO SPECIFIC PAGE")
+				fmt.Println("  q - QUIT")
+				fmt.Print("Enter command: ")
+
+				var userInput string
+				fmt.Scanln(&userInput)
+				if userInput == "q" {
+					break
+				}
+				switch userInput {
+				case "n":
+					if result.HasMore {
+						currentPage++
+					} else {
+						fmt.Println("Already on last page.")
+					}
+				case "p":
+					if currentPage > 1 {
+						currentPage--
+					} else {
+						fmt.Println("Already on first page.")
+					}
+				case "g":
+					fmt.Print("Enter page number: ")
+					var page int
+					fmt.Scanln(&page)
+					if page >= 1 && page <= (result.TotalCount+pageSize-1)/pageSize {
+						currentPage = page
+					} else {
+						fmt.Println("Invalid page number.")
+					}
+				default:
+					fmt.Println("Unknown command.")
+
+				}
+
+				fmt.Println()
+			}
 
 		case 6:
 			prefix := readLine("Enter prefix: ")
@@ -573,20 +676,6 @@ func readLine(prompt string) string {
 	return strings.TrimSpace(text)
 }
 
-/*func printRecords(records *[]record.Record) {
-	if records == nil || len(*records) == 0 {
-		fmt.Println("No results.")
-		return
-	}
-
-	fmt.Println("Results:")
-	fmt.Println("----------------------------------------------")
-	for i, r := range *records {
-		fmt.Printf("%d. Key: %s, Value: %s\n", i+1, r.Key, string(r.Value))
-	}
-	fmt.Println("----------------------------------------------")
-}*/
-
 // helper for pagination
 func readPage() (int, int) {
 	fmt.Print("Enter page number: ")
@@ -605,20 +694,29 @@ func readPage() (int, int) {
 }
 
 // helper for scan results
-func printScanResult(result *scan.ScanResult) {
+func printScanResult(result *scan.ScanResult, currentPage, pageSize int) {
 	if result == nil || len(result.Records) == 0 {
 		fmt.Println("No results found")
 		return
 	}
-	fmt.Printf("Total records: %d\n", result.TotalCount)
-	fmt.Printf("Page %d out of %d (page size: %d)\n", result.PageNumber, (result.TotalCount+result.PageSize-1)/result.PageSize, result.PageSize)
+	totalPages := (result.TotalCount + pageSize - 1) / pageSize
+
+	fmt.Println("----------------------------------------------")
+	fmt.Printf("Page %d of %d | Total records: %d\n", currentPage, totalPages, result.TotalCount)
 	fmt.Println("----------------------------------------------")
 
+	startIdx := (currentPage-1)*pageSize + 1
 	for i, rec := range result.Records {
-		fmt.Printf("%d. Key: %s, Value: %s\n", (result.PageNumber-1)*result.PageSize+i+1, rec.Key, string(rec.Value))
+		fmt.Printf("%d. Key: %s\n", startIdx+i, rec.Key)
+		fmt.Printf("   Value: %s\n", string(rec.Value))
+		fmt.Println("   ---")
 	}
 	fmt.Println("----------------------------------------------")
+
 	if result.HasMore {
-		fmt.Println("More pages available. Use a bigger pageNumber than the current to see more.")
+		fmt.Printf("Next page available (page %d)\n", currentPage+1)
+	}
+	if currentPage > 1 {
+		fmt.Printf("Previous page available (page %d)\n", currentPage-1)
 	}
 }
