@@ -132,8 +132,8 @@ func (s *SystemScanner) PrefixScan(prefix string, pageNumber, pageSize int) (*Sc
 		}
 	}
 
-	sort.Slice(allRecords, func(i, j int) bool { //sortiranje po kljucu
-		return allRecords[i].Key < allRecords[j].Key
+	sort.Slice(activeRecords, func(i, j int) bool { //sortiranje po kljucu
+		return activeRecords[i].Key < activeRecords[j].Key
 	})
 
 	//paginacija

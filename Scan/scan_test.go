@@ -508,3 +508,44 @@ func TestPrefixScanPagination(t *testing.T) {
 		t.Fatalf("Page out of range: expected 0 records, got %d", len(result.Records))
 	}
 }
+
+func TestPrefixScanWithDeletion(t *testing.T) {
+	scanner, cleanup := setupTestScanner(t)
+	defer cleanup()
+	scanner.memtable.Put("test_key1", []byte("value1"))
+	scanner.memtable.Put("test_key2", []byte("value2"))
+	scanner.memtable.Put("test_key3", []byte("value3"))
+	scanner.memtable.Delete("test_key2", time.Now())
+	result, err := scanner.PrefixScan("test", 1, 10)
+	if err != nil {
+		t.Fatalf("PrefixScan failed: %v", err)
+	}
+	expectedKeys := []string{"test_key1", "test_key3"}
+	if len(result.Records) != 2 {
+		t.Fatalf("Expected 2 records, got %d", len(result.Records))
+	}
+
+	for i, rec := range result.Records {
+		if rec.Key != expectedKeys[i] {
+			t.Fatalf("Expected %s, got %s", expectedKeys[i], rec.Key)
+		}
+	}
+}
+
+func TestPrefixScanWithUpdate(t *testing.T) {
+	scanner, cleanup := setupTestScanner(t)
+	defer cleanup()
+	scanner.memtable.Put("test_key", []byte("old_value"))
+	time.Sleep(1 * time.Millisecond)
+	scanner.memtable.Put("test_key", []byte("new_value"))
+	result, err := scanner.PrefixScan("test", 1, 10)
+	if err != nil {
+		t.Fatalf("PrefixScan failed: %v", err)
+	}
+	if len(result.Records) != 1 {
+		t.Fatalf("Expected 1 record, got %d", len(result.Records))
+	}
+	if string(result.Records[0].Value) != "new_value" {
+		t.Fatalf("Expected 'new_value', got '%s'", result.Records[0].Value)
+	}
+}
