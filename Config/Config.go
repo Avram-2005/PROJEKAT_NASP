@@ -89,7 +89,7 @@ SSTableConfig:
   SummaryInterval: 40
   MultipleFiles: false
 WriteAheadLogConfig:
-  SegmentSize: 64
+  SegmentSize: 16
   FilePath: ../DataBase/walDATA
 LSMConfig:
   NumLevels: 4
@@ -142,29 +142,27 @@ func (config *Config) Initialize(bm *BlockManager.BlockManager, configFile *os.F
 		config.WriteAheadLogConfig = defaultConfig.WriteAheadLogConfig
 		isConfigValid = false
 	}
-	err = wal.SetBlockManager(bm)
-	if err != nil {
-		fmt.Print("WAL configuration is incorrect, default configuration will be used.\n")
-		config.WriteAheadLogConfig = defaultConfig.WriteAheadLogConfig
-		isConfigValid = false
-	}
 	_, err = config.InitializeMemtable(func(entries []*record.Record) error {
 		return lsm.Flush(entries)
 	}, func() error {
-		return wal.FlushWAL()
+		return wal.MemtableRotation()
 	})
 	if err != nil {
 		fmt.Print("Memtable configuration is incorrect, default configuration will be used.\n")
 		config.MemtableConfig = defaultConfig.MemtableConfig
 		isConfigValid = false
 	}
+
+	if wal != nil {
+		wal.Close()
+	}
+
 	_, err = config.InitializeTokenBucket()
 	if err != nil {
 		fmt.Print("Token bucket configuration is incorrect, default configuration will be used.\n")
 		config.TokenBucketConfig = defaultConfig.TokenBucketConfig
 		isConfigValid = false
 	}
-	wal.Close()
 	if !isConfigValid {
 		return fmt.Errorf("configuration file has improper values")
 	}

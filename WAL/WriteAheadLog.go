@@ -45,10 +45,6 @@ func CreatNewWAL(sizeSegment int, blocksize int, filePath string, memtableRotati
 		return nil, fmt.Errorf("size of segment must be at least 64KB")
 	}
 
-	if memtableRotationCount <= 0 {
-		return nil, fmt.Errorf("number of memtable rotations before deleting old WAL segments must be a positive number")
-	}
-
 	//Pravimo folder za WAL ukoliko već ne postoji
 	if err := os.MkdirAll(filePath, 0755); err != nil {
 		return nil, fmt.Errorf("critical error: %v", err)
@@ -225,11 +221,12 @@ func (wal *WAL) rotateSegment() error {
 
 // memtableRotation se poziva spolja kada se Memtable napuni
 // Belezimo segmente koji su aktivni tokom memtable rotacije, jer su oni potencijalno potrebni za recovery
-func (wal *WAL) memtableRotation() {
+func (wal *WAL) MemtableRotation() error {
 	wal.lowWatermarks = append(wal.lowWatermarks, wal.segmentList[len(wal.segmentList)-1])
 	if len(wal.lowWatermarks) >= wal.memtableRotationCount {
-		wal.FlushWAL()
+		return wal.FlushWAL()
 	}
+	return nil
 }
 
 // FlushWAL fizički briše stare WAL segmente sa diska koji više nisu potrebni
@@ -247,7 +244,7 @@ func (wal *WAL) FlushWAL() error {
 		}
 	}
 
-	if keepIndex < 0 {
+	if keepIndex <= 0 {
 		return nil
 	}
 
