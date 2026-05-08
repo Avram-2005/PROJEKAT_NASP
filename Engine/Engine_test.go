@@ -304,27 +304,35 @@ func TestStressEngineDelete(t *testing.T) {
 		t.FailNow()
 	}
 
-	n := 200
+	n := 250
 
 	dataArray := make([][]byte, int(n))
 
+	fmt.Println("Putting keys...")
 	for i := 0; i < n; i++ {
 		temp := make([]byte, 100)
 		random := uint32(rand.Intn(100))
 		binary.BigEndian.PutUint32(temp, random)
 		dataArray[i] = temp
-		key := "key" + strconv.Itoa(i)
+		key := fmt.Sprintf("key%03d", i)
 		engine.Put(key, temp)
 	}
 
+	fmt.Println("Deleting keys...")
 	for i := 0; i < n; i += 2 {
 		dataArray[i] = nil
-		key := "key" + strconv.Itoa(i)
-		engine.Delete(key)
+		key := fmt.Sprintf("key%03d", i)
+		err := engine.Delete(key)
+		if err != nil {
+			fmt.Print("error deleting key: " + key + "\n")
+			fmt.Print(err)
+			t.FailNow()
+		}
 	}
 
+	fmt.Println("Getting keys...")
 	for i := n - 1; i >= 0; i-- {
-		key := "key" + strconv.Itoa(i)
+		key := fmt.Sprintf("key%03d", i)
 		temp, err := engine.Get(key)
 		if err != nil {
 			fmt.Print("error getting key: " + key + "\n")
@@ -333,7 +341,7 @@ func TestStressEngineDelete(t *testing.T) {
 		}
 		if !reflect.DeepEqual(dataArray[i], temp) {
 			fmt.Print("key: " + key + " not the same after put and get" + "\n")
-			fmt.Print(dataArray[i], temp)
+			fmt.Printf("expected: %v, got: %v\n", dataArray[i], temp)
 			t.FailNow()
 		}
 	}
@@ -348,7 +356,7 @@ func TestStressEngineDelete(t *testing.T) {
 	}
 
 	for i := n - 1; i >= 0; i-- {
-		key := "key" + strconv.Itoa(i)
+		key := fmt.Sprintf("key%03d", i)
 		temp, err := engine2.Get(key)
 		if err != nil {
 			fmt.Print("error getting key after second boot up: " + key + "\n")

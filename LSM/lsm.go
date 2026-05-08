@@ -53,6 +53,7 @@ func NewLSM(lsmConfig LSMConfig, tablesRoot string, sstConfig SSTableConfig, bm 
 		if err != nil {
 			return nil, fmt.Errorf("failed to startup LSM: %v", err)
 		}
+		fmt.Printf("Loaded SSTable %s into level %d\n", file.Name(), levelNum)
 		lsm.levels[levelNum].tables = append(lsm.levels[levelNum].tables, sstable)
 		lsm.levels[levelNum].size += sstable.size
 		lsm.levels[levelNum].levelNum = levelNum
@@ -66,6 +67,7 @@ func (l *Level) ShouldCompact(compFactor int) bool {
 }
 
 func (lsm *LSM) Compact(levelNum int) error {
+	fmt.Printf("Compacting level %d with %d SSTables\n", levelNum, len(lsm.levels[levelNum].tables))
 	newSST, err := lsm.sstm.Merge(lsm.levels[levelNum].tables, levelNum+1)
 	if err != nil {
 		return fmt.Errorf("failed to merge SSTables for compaction: %v", err)
@@ -77,6 +79,11 @@ func (lsm *LSM) Compact(levelNum int) error {
 	lsm.levels[levelNum+1].tables = append(lsm.levels[levelNum+1].tables, newSST)
 	lsm.levels[levelNum+1].size += newSST.size
 	lsm.levels[levelNum+1].levelNum = levelNum + 1
+	if levelNum < lsm.config.NumLevels-1 && lsm.levels[levelNum+1].ShouldCompact(lsm.config.CompactionFactor) {
+		if err := lsm.Compact(levelNum + 1); err != nil {
+			return fmt.Errorf("failed to compact level %d: %v", levelNum+1, err)
+		}
+	}
 	return nil
 }
 
@@ -92,18 +99,16 @@ func (l *Level) delete() error {
 }
 
 func (lsm *LSM) Flush(records []*Record) error {
+	fmt.Printf("Flushing memtable with %d records to level 0\n", len(records))
 	sst, err := lsm.sstm.Flush(records)
 	if err != nil {
 		return fmt.Errorf("failed to flush memtable: %v", err)
 	}
 	lsm.levels[0].tables = append(lsm.levels[0].tables, sst)
 	lsm.levels[0].size += sst.size
-	for levelNum, level := range lsm.levels[:len(lsm.levels)-1] {
-		if !level.ShouldCompact(lsm.config.CompactionFactor) {
-			break
-		}
-		if err := lsm.Compact(levelNum); err != nil {
-			return fmt.Errorf("failed to compact level %d: %v", level.levelNum, err)
+	if lsm.levels[0].ShouldCompact(lsm.config.CompactionFactor) {
+		if err := lsm.Compact(0); err != nil {
+			return fmt.Errorf("failed to compact level 0: %v", err)
 		}
 	}
 	return nil
@@ -118,6 +123,9 @@ func (lsm *LSM) Get(key string) ([]byte, error) {
 				return nil, fmt.Errorf("error getting key from SSTable %s: %v", sstable.path, err)
 			}
 			if rec != nil {
+				if rec.Tombstone {
+					return nil, fmt.Errorf("key %s has been deleted", key)
+				}
 				return rec.Value, nil
 			}
 		}

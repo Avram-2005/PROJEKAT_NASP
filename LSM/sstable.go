@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
 	"github.com/Avram-2005/PROJEKAT_NASP/BloomFilter"
@@ -110,6 +111,12 @@ func (s *Summary) IsFound(key string) (bool, uint64, error) {
 func (sstm *SSTableManager) Flush(entries []*Record) (*SSTable, error) {
 	var sst *SSTable
 	var err error
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].Key != entries[j].Key {
+			return entries[i].Key < entries[j].Key
+		}
+		return entries[i].Timestamp.After(entries[j].Timestamp)
+	})
 	if sstm.config.MultipleFiles {
 		sst, err = sstm.multipleFilesFlush(entries, sstm.numTables)
 	} else {
@@ -119,12 +126,14 @@ func (sstm *SSTableManager) Flush(entries []*Record) (*SSTable, error) {
 		return nil, fmt.Errorf("failed to flush memtable: %v", err)
 	}
 	sstm.numTables++
+	fmt.Printf("Flushed SSTable: %s\n", sst.path)
 	return sst, err
 }
 
 func (sstm *SSTableManager) Merge(ssts []*SSTable, level int) (*SSTable, error) {
 	var sst *SSTable
 	var err error
+	fmt.Printf("Merging SSTables %v into level %d\n", ssts, level)
 	if sstm.config.MultipleFiles {
 		sst, err = sstm.multipleFilesMerge(ssts, level, sstm.numTables)
 	} else {
@@ -133,6 +142,8 @@ func (sstm *SSTableManager) Merge(ssts []*SSTable, level int) (*SSTable, error) 
 	if err != nil {
 		return nil, fmt.Errorf("failed to merge SSTables: %v", err)
 	}
+	sstm.numTables++
+	fmt.Printf("Merged SSTable: %s\n", sst.path)
 	return sst, nil
 }
 
