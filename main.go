@@ -639,6 +639,67 @@ func openedCheckpoint(ch *checkpoint.Checkpoint, originalEngine *eng.Engine) {
 				continue
 			}
 
+			currentPage := 1
+			pageSize := 0
+
+			fmt.Print("Enter page size: ")
+			fmt.Scanln(&pageSize)
+			if pageSize <= 0 {
+				pageSize = 5
+			}
+
+			for {
+				result, err := engine.RangeScan(startKey, endKey, currentPage, pageSize)
+				if err != nil {
+					fmt.Printf("Range scan error: %v\n", err)
+					break
+				}
+				printScanResult(result, currentPage, pageSize)
+				if result.TotalCount == 0 {
+					break
+				}
+				fmt.Println("\nOptions:")
+				fmt.Println("  n - NEXT PAGE")
+				fmt.Println("  p - PREVIOUS PAGE")
+				fmt.Println("  g - GO TO SPECIFIC PAGE")
+				fmt.Println("  q - QUIT")
+				fmt.Print("Enter command: ")
+
+				var userInput string
+				fmt.Scanln(&userInput)
+				if userInput == "q" {
+					break
+				}
+				switch userInput {
+				case "n":
+					if result.HasMore {
+						currentPage++
+					} else {
+						fmt.Println("Already on last page.")
+					}
+				case "p":
+					if currentPage > 1 {
+						currentPage--
+					} else {
+						fmt.Println("Already on first page.")
+					}
+				case "g":
+					fmt.Print("Enter page number: ")
+					var page int
+					fmt.Scanln(&page)
+					if page >= 1 && page <= (result.TotalCount+pageSize-1)/pageSize {
+						currentPage = page
+					} else {
+						fmt.Println("Invalid page number.")
+					}
+				default:
+					fmt.Println("Unknown command.")
+
+				}
+
+				fmt.Println()
+			}
+
 		case 4:
 			//TODO: implement token bucket once functionality is implemented
 			//tokenbucket.INTERNAL_KEY may not be accessed by prefix iterate
