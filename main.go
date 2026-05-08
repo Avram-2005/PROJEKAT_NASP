@@ -171,7 +171,48 @@ func mainMenu() {
 			printScanResult(result)
 
 		case 6:
-			fmt.Println("PREFIX_ITERATE is not implemented!")
+			prefix := readLine("Enter prefix: ")
+			if prefix == "" {
+				fmt.Println("Prefix must not be empty")
+				continue
+			}
+			if strings.HasPrefix(tokenbucket.INTERNAL_KEY, prefix) {
+				fmt.Println("Cannot iterate over token bucket internal key.")
+				continue
+			}
+			iter, err := engine.NewPrefixIterator(prefix)
+			if err != nil {
+				fmt.Printf("Failed to create iterator: %v\n", err)
+				continue
+			}
+			defer iter.Stop()
+			fmt.Println("Iterating through records: ")
+			fmt.Println("----------------------------------------------")
+			count := 0
+			for {
+				fmt.Print("\nPress 'n' for next record, 's' to stop: ")
+				var command string
+				fmt.Scanln(&command)
+				if command == "s" || command == "stop" {
+					iter.Stop()
+					fmt.Println("Iteration stopped.")
+					break
+				}
+				if command == "n" || command == "next" {
+					if !iter.Next() {
+						fmt.Println("No more records.End of iteration.")
+						break
+					}
+					count++
+					fmt.Printf("%d. Key: %s, Value: %s\n", count, iter.Key(), string(iter.Value()))
+				} else {
+					fmt.Println("Unknown command. Use 'n' for next, 's' to stop.")
+				}
+			}
+			if count == 0 {
+				fmt.Println("No results found.")
+			}
+			fmt.Println("----------------------------------------------")
 
 		case 7:
 			fmt.Println("RANGE_ITERATE is not implemented!")
