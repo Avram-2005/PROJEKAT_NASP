@@ -141,7 +141,6 @@ func mainMenu() {
 			checkPointMenu(engine)
 
 		case 10:
-<<<<<<< HEAD
 			all := engine.GetAllSSTables()
 			if len(all) == 0 {
 				fmt.Println("There are no SSTables to validate.")
@@ -173,9 +172,6 @@ func mainMenu() {
 					fmt.Printf("\nKey: %s, Value: %s, Timestamp: %s, Tombstone: %t", rec.Key, rec.Value, rec.Timestamp.String(), rec.Tombstone)
 				}
 			}
-=======
-			fmt.Println("MERKLE TREE VALIDATION is not implemented!")
->>>>>>> develop
 
 		default:
 			fmt.Println("ERROR UNKNOWN COMMAND")
@@ -347,7 +343,6 @@ func openedCheckpoint(ch *checkpoint.Checkpoint) {
 			fmt.Println("RANGE_ITERATE is not implemented!")
 
 		case 6:
-<<<<<<< HEAD
 			all := engine.GetAllSSTables()
 			if len(all) == 0 {
 				fmt.Println("There are no SSTables to validate.")
@@ -379,9 +374,6 @@ func openedCheckpoint(ch *checkpoint.Checkpoint) {
 					fmt.Printf("Key: %s, Value: %s, Timestamp: %s, Tombstone: %t", rec.Key, rec.Value, rec.Timestamp.String(), rec.Tombstone)
 				}
 			}
-=======
-			fmt.Println("MERKLE TREE VALIDATION is not implemented!")
->>>>>>> develop
 
 		case 7:
 			engine.ShutDown()
