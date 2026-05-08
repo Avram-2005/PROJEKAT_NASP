@@ -12,6 +12,7 @@ import (
 	lsm "github.com/Avram-2005/PROJEKAT_NASP/LSM"
 	memtable "github.com/Avram-2005/PROJEKAT_NASP/Memtable"
 	record "github.com/Avram-2005/PROJEKAT_NASP/Record"
+	scan "github.com/Avram-2005/PROJEKAT_NASP/Scan"
 	tokenbucket "github.com/Avram-2005/PROJEKAT_NASP/TokenBucket"
 	wal "github.com/Avram-2005/PROJEKAT_NASP/WAL"
 )
@@ -24,6 +25,7 @@ type Engine struct {
 	writeAheadLog *wal.WAL
 	blockManager  *blockmanager.BlockManager
 	tokenBucket   *tokenbucket.TokenBucket
+	scanner       *scan.SystemScanner
 }
 
 // TODO: incorporate token bucket after merge
@@ -105,6 +107,7 @@ func NewEngine(configPath string, walPath string, sstablePath string) (*Engine, 
 			return nil, err
 		}
 	}
+	engineScanner := scan.NewSystemScanner(engineMemtable, engineLSMTree)
 
 	return &Engine{
 		configuration: configuration,
@@ -114,6 +117,7 @@ func NewEngine(configPath string, walPath string, sstablePath string) (*Engine, 
 		writeAheadLog: engineWriteAheadLog,
 		blockManager:  engineBlockManager,
 		tokenBucket:   engineTokenBucket,
+		scanner:       engineScanner,
 	}, nil
 }
 
@@ -230,12 +234,20 @@ func (engine *Engine) Delete(key string) error {
 	return nil
 }
 
-func (engine *Engine) PrefixScan(prefix string) *[]record.Record {
-	return nil
+func (engine *Engine) PrefixScan(prefix string, pageNumber, pageSize int) (*scan.ScanResult, error) {
+	return engine.scanner.PrefixScan(prefix, pageNumber, pageSize)
 }
 
-func (engine *Engine) RangeScan(startKey, endKey string) *[]record.Record {
-	return nil
+func (engine *Engine) RangeScan(startKey, endKey string, pageNumber, pageSize int) (*scan.ScanResult, error) {
+	return engine.scanner.RangeScan(startKey, endKey, pageNumber, pageSize)
+}
+
+func (engine *Engine) NewPrefixIterator(prefix string) (*scan.SystemIterator, error) {
+	return engine.scanner.NewSystemPrefixIterator(prefix)
+}
+
+func (engine *Engine) NewRangeIterator(startKey, endKey string) (*scan.SystemIterator, error) {
+	return engine.scanner.NewSystemRangeIterator(startKey, endKey)
 }
 
 func (engine *Engine) GetAllSSTables() []lsm.SSTableInfo {

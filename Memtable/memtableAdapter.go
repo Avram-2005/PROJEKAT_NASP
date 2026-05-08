@@ -228,6 +228,16 @@ func (adapt *MemtableAdapter) PrefixScan(prefix string) []*record.Record {
 	}
 }
 
+func (adapt *MemtableAdapter) PrefixIterator(prefix string) Iterator {
+	records := adapt.PrefixScan(prefix)
+	return NewBaseIterator(records)
+}
+
+func (adapt *MemtableAdapter) RangeIterator(startKey, endKey string) Iterator {
+	records := adapt.RangeScan(startKey, endKey)
+	return NewBaseIterator(records)
+}
+
 // Implementacija dobavljanja sortiranih podataka
 func (adapt *MemtableAdapter) GetSortedEntries() []*record.Record {
 	switch adapt.structureType {

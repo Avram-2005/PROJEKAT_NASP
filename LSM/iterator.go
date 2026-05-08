@@ -75,10 +75,13 @@ func (sstm *SSTableManager) NewSSTableIterator(sst *SSTable, startKey string, ch
 		}
 		indexOffset, dataOffset := uint64(0), uint64(0)
 		if startKey != "" {
-			_, indexOffset, err := sst.summary.IsFound(startKey)
+			isFound, indexOffset, err := sst.summary.IsFound(startKey)
 			if err != nil {
 				indexFile.Close()
 				return nil, fmt.Errorf("failed to search for start key in summary and index: %v", err)
+			}
+			if !isFound {
+				indexOffset = sst.footer.IndexStart
 			}
 			restartReader := newIndexReader(indexFile, sstm.bm, indexOffset)
 			restartEntry, n, err := restartReader.Next()
@@ -114,10 +117,13 @@ func (sstm *SSTableManager) NewSSTableIterator(sst *SSTable, startKey string, ch
 		}
 		indexOffset, dataOffset := sst.footer.IndexStart, uint64(0)
 		if startKey != "" {
-			_, indexOffset, err := sst.summary.IsFound(startKey)
+			isFound, indexOffset, err := sst.summary.IsFound(startKey)
 			if err != nil {
 				file.Close()
 				return nil, fmt.Errorf("failed to search for start key in summary and index: %v", err)
+			}
+			if !isFound {
+				indexOffset = sst.footer.IndexStart
 			}
 			restartReader := newIndexReader(file, sstm.bm, indexOffset)
 			restartEntry, n, err := restartReader.Next()

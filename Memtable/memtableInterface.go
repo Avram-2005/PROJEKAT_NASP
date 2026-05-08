@@ -18,6 +18,7 @@ type Iterator interface {
 	Tombstone() bool
 	Reset()
 	Error() error
+	Stop()
 }
 type Memtable interface {
 	PutRecord(rec *record.Record) error
@@ -33,7 +34,8 @@ type Memtable interface {
 	GetSortedEntries() []*record.Record //povratna vrednost je record, neophodna za sstable
 	RangeScan(startKey, endKey string) []*record.Record
 	PrefixScan(prefix string) []*record.Record
-
+	PrefixIterator(prefix string) Iterator
+	RangeIterator(startKey, endKey string) Iterator
 	Iterator() Iterator
 	ShouldFlush() bool //provera da li je vreme za flush u SSTable
 	IsFull() bool
