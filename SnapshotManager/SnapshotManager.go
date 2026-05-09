@@ -48,7 +48,7 @@ func (sp *SnapshotManager) Add(key string, value snapshot.SnapshotInterface) err
 }
 
 // prototype for add many function
-func (sp *SnapshotManager) AddMany(key string, memtables *[]*memtable.MemtableAdapter, sstables *[]sstable.SSTable, sstableManager *sstable.SSTableManager) error {
+func (sp *SnapshotManager) AddMany(key string, memtables *[]*memtable.MemtableAdapter, sstables *[]*sstable.SSTable, sstableManager *sstable.SSTableManager) error {
 	memLen := len(*memtables)
 	for i := 0; i < memLen; i++ {
 		newSnapshot, err := snapshot.NewSnapshotMemtable(key, (*memtables)[i])
@@ -62,7 +62,7 @@ func (sp *SnapshotManager) AddMany(key string, memtables *[]*memtable.MemtableAd
 	}
 	sstLen := len(*sstables)
 	for i := 0; i < sstLen; i++ {
-		newSnapshot, err := snapshot.NewSnapshotSSTable(key, &(*sstables)[i], sstableManager)
+		newSnapshot, err := snapshot.NewSnapshotSSTable(key, (*sstables)[i], sstableManager)
 		if err != nil {
 			continue
 		}

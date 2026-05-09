@@ -61,7 +61,7 @@ func NewLSM(lsmConfig LSMConfig, tablesRoot string, sstConfig SSTableConfig, bm 
 	return &lsm, nil
 }
 
-func (lsm *LSM) GetAllSSTables() ([]*SSTable, error) {
+func (lsm *LSM) GetAllSSTablesForSnapshot() ([]*SSTable, error) {
 	var sstables []*SSTable
 	for _, level := range lsm.levels {
 		for _, sst := range level.tables {
@@ -69,6 +69,10 @@ func (lsm *LSM) GetAllSSTables() ([]*SSTable, error) {
 		}
 	}
 	return sstables, nil
+}
+
+func (lsm *LSM) GetSSTableManager() *SSTableManager {
+	return lsm.sstm
 }
 
 func (l *Level) ShouldCompact(compFactor int) bool {
