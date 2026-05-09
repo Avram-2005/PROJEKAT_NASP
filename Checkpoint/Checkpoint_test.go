@@ -13,6 +13,17 @@ import (
 // provera funkcionalnosti samih hard linkova-ocekivano ponasanje je da
 // pri upisu u originalni fajl hard link bude izmenjen, i obratno
 func TestHardLink(t *testing.T) {
+	err := os.Mkdir("sstables", 0755)
+	if err != nil {
+		fmt.Print(err)
+		t.FailNow()
+	}
+	err = os.Mkdir("checkpoints", 0755)
+	if err != nil {
+		fmt.Print(err)
+		t.FailNow()
+	}
+
 	file1, err := os.Create("sstables/test.bin")
 	if err != nil {
 		fmt.Print("error creating file", err)
@@ -162,11 +173,32 @@ func TestHardLink(t *testing.T) {
 		t.FailNow()
 	}
 
+	err = os.RemoveAll("sstables")
+	if err != nil {
+		fmt.Print(err)
+		t.FailNow()
+	}
+	err = os.RemoveAll("checkpoints")
+	if err != nil {
+		fmt.Print(err)
+		t.FailNow()
+	}
 }
 
 // testiranje kreiranja checkpoint-a za odredjen direktorijum
 // zelimo da za svaki fajl unutar odabranog direktorijuma nastane hard link unutar checkpoints-a
 func TestCheckpoint(t *testing.T) {
+	err := os.Mkdir("sstables", 0755)
+	if err != nil {
+		fmt.Print(err)
+		t.FailNow()
+	}
+	err = os.Mkdir("checkpoints", 0755)
+	if err != nil {
+		fmt.Print(err)
+		t.FailNow()
+	}
+
 	firstTable, err := os.Create("sstables/test1.bin")
 	if err != nil {
 		fmt.Print("error creating file 1", err)
@@ -308,11 +340,33 @@ func TestCheckpoint(t *testing.T) {
 		t.FailNow()
 	}
 	checkpoint.Delete()
+
+	err = os.RemoveAll("sstables")
+	if err != nil {
+		fmt.Print(err)
+		t.FailNow()
+	}
+	err = os.RemoveAll("checkpoints")
+	if err != nil {
+		fmt.Print(err)
+		t.FailNow()
+	}
 }
 
 // testiranje funkcionalnosti CheckpointManager klase
 func TestCheckpointManager(t *testing.T) {
-	err := os.Mkdir("checkpoints/ch1", 0755)
+	err := os.Mkdir("sstables", 0755)
+	if err != nil {
+		fmt.Print(err)
+		t.FailNow()
+	}
+	err = os.Mkdir("checkpoints", 0755)
+	if err != nil {
+		fmt.Print(err)
+		t.FailNow()
+	}
+
+	err = os.Mkdir("checkpoints/ch1", 0755)
 	if err != nil {
 		fmt.Print("error creating directory 1", err)
 		t.FailNow()
@@ -418,6 +472,17 @@ func TestCheckpointManager(t *testing.T) {
 	err = checkpointManager.DeleteCheckpoint("ch2")
 	if err != nil {
 		fmt.Print("error deleting checkpoint 2", err)
+		t.FailNow()
+	}
+
+	err = os.RemoveAll("sstables")
+	if err != nil {
+		fmt.Print(err)
+		t.FailNow()
+	}
+	err = os.RemoveAll("checkpoints")
+	if err != nil {
+		fmt.Print(err)
 		t.FailNow()
 	}
 }
