@@ -164,3 +164,7 @@ func (mm *MemtableManager) RangeIterator(startKey, endKey string) Iterator {
 	records := mm.RangeScan(startKey, endKey)
 	return NewBaseIterator(records)
 }
+
+func (mm *MemtableManager) GetMemtables() []*MemtableAdapter {
+	return mm.instances
+}
