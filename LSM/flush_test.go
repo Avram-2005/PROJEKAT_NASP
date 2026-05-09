@@ -190,7 +190,7 @@ func testMergeFiles(t *testing.T, ssts []*SSTable, config SSTableConfig, expecte
 		t.Fatalf("Failed to setup SSTableManager: %v", err)
 	}
 
-	mergedSST, err := m.Merge(ssts, 0)
+	mergedSST, err := m.Merge(ssts, 0, false)
 	if err != nil {
 		t.Fatalf("Merge failed: %v", err)
 	}
@@ -213,7 +213,7 @@ func testMergeFiles(t *testing.T, ssts []*SSTable, config SSTableConfig, expecte
 		if err != nil {
 			t.Fatalf("Failed to get key '%s' after merge: %v", key, err)
 		}
-		if val != nil {
+		if val != nil && !val.Tombstone {
 			t.Fatalf("Expected key '%s' to not be found in merged SSTable, but got value %v", key, val)
 		}
 	}
