@@ -188,14 +188,26 @@ func (engine *Engine) ReadPath(key string) ([]byte, error) {
 		return nil, err
 	}
 	if ok {
+		//ako vidimo da je kljuc obrisan u cache-u, vracamo nil
+		if value == nil {
+			return nil, nil
+		}
 		return *value, nil
 	}
+
 	//ako nije pronadjeno u cache-u trazimo u memtableu
 	foundRecord, ok, err := engine.memtable.GetRecord(key)
 	if err != nil {
 		return nil, err
 	}
-	if ok && !foundRecord.Tombstone {
+	if ok {
+		//ako je record u memtable-u obrisan, oznacavamo da je obrisan i unutar cache-a
+		//i vracamo nil
+		if foundRecord.Tombstone {
+			engine.cache.Delete(key)
+			return nil, nil
+		}
+		//ako record nije tu, vracamo vrednost
 		retVal := foundRecord.Value
 		//dodajemo pronadjenu vrednost u cache
 		engine.cache.Put(key, &retVal)
@@ -204,7 +216,7 @@ func (engine *Engine) ReadPath(key string) ([]byte, error) {
 	//trazimo u lsm stablu vrednost ako nije pronadjena
 	sstValue, err := engine.lsmTree.Get(key)
 	if err != nil {
-		return nil, err
+		return nil, nil
 	}
 	//vracamo vrednost iz record-a
 	return sstValue, nil

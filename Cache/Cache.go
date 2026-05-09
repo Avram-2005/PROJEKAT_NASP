@@ -89,9 +89,6 @@ func (ch *Cache) Get(key string) (*[]byte, error, bool) {
 	if !ok {
 		return nil, nil, false
 	}
-	if value == nil {
-		return nil, nil, false
-	}
 	//pomeramo element napred
 	elem, err := ch.findElement(key)
 	if err != nil {
