@@ -269,3 +269,15 @@ func (engine *Engine) GetAllSSTables() []lsm.SSTableInfo {
 func (engine *Engine) ValidateSSTable(sst *lsm.SSTable) (bool, []record.Record, error) {
 	return engine.lsmTree.ValidateSSTable(sst)
 }
+
+func (engine *Engine) GetAllSSTablesForSnapshot() ([]*lsm.SSTable, error) {
+	return engine.lsmTree.GetAllSSTablesForSnapshot()
+}
+
+func (engine *Engine) GetAllMemtables() []*memtable.MemtableAdapter {
+	return engine.memtable.GetMemtables()
+}
+
+func (engine *Engine) GetSSTableManager() lsm.SSTableManager {
+	return *engine.lsmTree.GetSSTableManager()
+}
