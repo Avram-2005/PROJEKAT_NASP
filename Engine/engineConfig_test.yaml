@@ -27,7 +27,7 @@ TokenBucketConfig:
 SSTableConfig:
   TablesRoot: ./TestDataBase/sstable
   SummaryInterval: 40
-  MultipleFiles: false
+  MultipleFiles: true
 WriteAheadLogConfig:
   SegmentSize: 64
   FilePath: ./TestDataBase/walDATA

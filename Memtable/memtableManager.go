@@ -94,32 +94,13 @@ func (mm *MemtableManager) PutRecord(rec *record.Record) error {
 
 // Upisuje tombstone u aktivnu tabelu
 func (mm *MemtableManager) Delete(key string, recTimestamp time.Time) error {
-	for i := len(mm.instances) - 1; i >= 0; i-- {
-		rec, found, err := mm.instances[i].GetRecord(key)
-		if err != nil {
-			return err
-		}
-		if found {
-			if rec.Tombstone {
-				return nil
-			}
-			tombstoneRec := &record.Record{
-				Key:       rec.Key,
-				Value:     rec.Value,
-				Tombstone: true,
-				Timestamp: recTimestamp,
-			}
-			active := mm.activeTable()
-			if err := active.PutRecord(tombstoneRec); err != nil {
-				return err
-			}
-			if active.IsFull() {
-				return mm.rotateAndFlushIfNecessary()
-			}
-			return nil
-		}
+	tombstoneRec := &record.Record{
+		Key:       key,
+		Value:     nil,
+		Tombstone: true,
+		Timestamp: recTimestamp,
 	}
-	return nil
+	return mm.PutRecord(tombstoneRec)
 }
 
 // pretrazuje od najnovije ka najstarijoj tabeli, LRU princip

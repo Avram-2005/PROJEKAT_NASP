@@ -10,6 +10,21 @@ import (
 	"testing"
 )
 
+func cleanupTestData(walPath, sstPath string, t *testing.T) {
+	err := os.RemoveAll(walPath)
+	if err != nil {
+		fmt.Print("Deleting WAL directory failed!")
+		fmt.Print(err)
+		t.FailNow()
+	}
+	err = os.RemoveAll(sstPath)
+	if err != nil {
+		fmt.Print("Deleting SSTable directory failed!")
+		fmt.Print(err)
+		t.FailNow()
+	}
+}
+
 func TestEngineBasicFunctions(t *testing.T) {
 	configPath := "engineConfig_test.yaml"
 	walPath := "TestDataBase/walDATA"
@@ -125,22 +140,7 @@ func TestEngineBasicFunctions(t *testing.T) {
 
 	engine2.ShutDown()
 
-	err = os.RemoveAll(walPath)
-
-	if err != nil {
-		fmt.Print("Deleting WAL directory failed!")
-		fmt.Print(err)
-		t.FailNow()
-	}
-
-	err = os.RemoveAll(sstPath)
-
-	if err != nil {
-		fmt.Print("Deleting SSTable directory failed!")
-		fmt.Print(err)
-		t.FailNow()
-	}
-
+	cleanupTestData(walPath, sstPath, t)
 }
 
 func TestStressEngineFunction(t *testing.T) {
@@ -209,18 +209,7 @@ func TestStressEngineFunction(t *testing.T) {
 
 	engine2.ShutDown()
 
-	err = os.RemoveAll(walPath)
-	if err != nil {
-		fmt.Print("Deleting WAL directory failed!")
-		fmt.Print(err)
-		t.FailNow()
-	}
-	err = os.RemoveAll(sstPath)
-	if err != nil {
-		fmt.Print("Deleting SSTable directory failed!")
-		fmt.Print(err)
-		t.FailNow()
-	}
+	cleanupTestData(walPath, sstPath, t)
 }
 
 func TestEngineDelete(t *testing.T) {
@@ -308,16 +297,88 @@ func TestEngineDelete(t *testing.T) {
 
 	engine2.ShutDown()
 
-	err = os.RemoveAll(walPath)
+	cleanupTestData(walPath, sstPath, t)
+}
+
+func TestStressEngineDelete(t *testing.T) {
+	configPath := "engineConfig_test.yaml"
+	walPath := "TestDataBase/walDATA"
+	sstPath := "TestDataBase/sstable"
+
+	engine, err := NewEngine(configPath, walPath, sstPath)
 	if err != nil {
-		fmt.Print("Deleting WAL directory failed!")
+		fmt.Print("Engine initialization failed!\n")
 		fmt.Print(err)
 		t.FailNow()
 	}
-	err = os.RemoveAll(sstPath)
+
+	n := 5000
+
+	dataArray := make([][]byte, int(n))
+
+	fmt.Println("Putting keys...")
+	for i := 0; i < n; i++ {
+		temp := make([]byte, 100)
+		random := uint32(rand.Intn(100))
+		binary.BigEndian.PutUint32(temp, random)
+		dataArray[i] = temp
+		key := fmt.Sprintf("key%03d", i)
+		engine.Put(key, temp)
+	}
+
+	fmt.Println("Deleting keys...")
+	for i := 0; i < n; i += 2 {
+		dataArray[i] = nil
+		key := fmt.Sprintf("key%03d", i)
+		err := engine.Delete(key)
+		if err != nil {
+			fmt.Print("error deleting key: " + key + "\n")
+			fmt.Print(err)
+			t.FailNow()
+		}
+	}
+
+	fmt.Println("Getting keys...")
+	for i := n - 1; i >= 0; i-- {
+		key := fmt.Sprintf("key%03d", i)
+		temp, err := engine.Get(key)
+		if err != nil {
+			fmt.Print("error getting key: " + key + "\n")
+			fmt.Print(err)
+			t.FailNow()
+		}
+		if !reflect.DeepEqual(dataArray[i], temp) {
+			fmt.Print("key: " + key + " not the same after put and get" + "\n")
+			fmt.Printf("expected: %v, got: %v\n", dataArray[i], temp)
+			t.FailNow()
+		}
+	}
+
+	engine.ShutDown()
+
+	engine2, err := NewEngine(configPath, walPath, sstPath)
 	if err != nil {
-		fmt.Print("Deleting SSTable directory failed!")
+		fmt.Print("Error after booting up engine again")
 		fmt.Print(err)
 		t.FailNow()
 	}
+
+	for i := n - 1; i >= 0; i-- {
+		key := fmt.Sprintf("key%03d", i)
+		temp, err := engine2.Get(key)
+		if err != nil {
+			fmt.Print("error getting key after second boot up: " + key + "\n")
+			fmt.Print(err)
+			t.FailNow()
+		}
+		if !reflect.DeepEqual(dataArray[i], temp) {
+			fmt.Print("key: " + key + " not the same after put and get after second boot up" + "\n")
+			fmt.Print(dataArray[i], temp)
+			t.FailNow()
+		}
+	}
+
+	engine2.ShutDown()
+
+	cleanupTestData(walPath, sstPath, t)
 }
