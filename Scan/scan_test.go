@@ -18,7 +18,7 @@ func setupTestScanner(t *testing.T) (*SystemScanner, func()) {
 		MaxSizeEntries:    100,
 		SkipListMaxHeight: 8,
 	}
-	mm, err := memtable.NewMemtableManager(3, memConfig, nil)
+	mm, err := memtable.NewMemtableManager(3, memConfig, nil, nil)
 	if err != nil {
 		t.Fatalf("Failed to create memtable manager: %v", err)
 	}

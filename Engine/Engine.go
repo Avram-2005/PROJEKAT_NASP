@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	blockmanager "github.com/Avram-2005/PROJEKAT_NASP/BlockManager"
 	cache "github.com/Avram-2005/PROJEKAT_NASP/Cache"
@@ -69,25 +70,44 @@ func NewEngine(configPath string, walPath string, sstablePath string) (*Engine, 
 		return nil, err
 	}
 
+	engineWriteAheadLog, err := configuration.InitializeWAL()
+	if err != nil {
+		return nil, err
+	}
+	err = engineWriteAheadLog.SetBlockManager(engineBlockManager)
+	if err != nil {
+		return nil, err
+	}
+
+	rec, err := engineLSMTree.GetNewestRecord()
+	if err != nil {
+		return nil, err
+	}
+
 	engineMemtable, err := configuration.InitializeMemtable(
 		func(entries []*record.Record) error {
 			return engineLSMTree.Flush(entries)
+		}, func() error {
+			return engineWriteAheadLog.MemtableRotation()
 		})
 	if err != nil {
 		return nil, err
 	}
 
+	entries, _ := os.ReadDir(walPath)
+	if len(entries) > 0 {
+		var lastSSTableTimestamp time.Time
+		if rec != nil {
+			lastSSTableTimestamp = rec.Timestamp
+		} else {
+			lastSSTableTimestamp = time.Time{}
+		}
+		err = engineWriteAheadLog.Recovery(engineMemtable, lastSSTableTimestamp)
+		if err != nil {
+			return nil, err
+		}
+	}
 	engineScanner := scan.NewSystemScanner(engineMemtable, engineLSMTree)
-
-	engineWriteAheadLog, err := configuration.InitializeWAL()
-	if err != nil {
-		return nil, err
-	}
-
-	err = engineWriteAheadLog.Recovery(engineMemtable)
-	if err != nil {
-		return nil, err
-	}
 
 	return &Engine{
 		configuration: configuration,
