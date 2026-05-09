@@ -1,14 +1,18 @@
 package main
 
 import (
+	"container/list"
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	checkpoint "github.com/Avram-2005/PROJEKAT_NASP/Checkpoint"
 	eng "github.com/Avram-2005/PROJEKAT_NASP/Engine"
 	engine "github.com/Avram-2005/PROJEKAT_NASP/Engine"
 	scan "github.com/Avram-2005/PROJEKAT_NASP/Scan"
+	sp "github.com/Avram-2005/PROJEKAT_NASP/Snapshot"
+	snapshot "github.com/Avram-2005/PROJEKAT_NASP/SnapshotManager"
 	tokenbucket "github.com/Avram-2005/PROJEKAT_NASP/TokenBucket"
 )
 
@@ -359,7 +363,7 @@ func mainMenu() {
 			fmt.Println("----------------------------------------------")
 
 		case 8:
-			fmt.Println("SNAPSHOT is not implemented!")
+			snapshotMenu(engine)
 
 		case 9:
 			checkPointMenu(engine)
@@ -828,6 +832,109 @@ func openedCheckpoint(ch *checkpoint.Checkpoint, originalEngine *eng.Engine) {
 			return
 
 		default:
+			fmt.Println("ERROR UNKNOWN COMMAND")
+		}
+	}
+}
+
+func snapshotMenu(engine *eng.Engine) {
+	manager, err := snapshot.NewSnapshotManager()
+	if err != nil {
+		fmt.Print(err)
+	}
+	for {
+		fmt.Println()
+		fmt.Print("Enter command: ")
+		fmt.Println("0  - GO BACK")
+		fmt.Println("1  - CREATE SNAPSHOT")
+		fmt.Println("2  - VIEW SNAPSHOT")
+
+		var command int
+		_, err := fmt.Scanln(&command)
+		if err != nil {
+			fmt.Println("Invalid command input")
+			continue
+		}
+
+		if command == 0 {
+			break
+		}
+
+		ok, err := checkTokens(engine)
+		if err != nil {
+			break
+		}
+		if !ok {
+			continue
+		}
+
+		if command == 1 {
+			fmt.Println()
+			fmt.Print("Enter snapshot key: ")
+			var command string
+			_, err := fmt.Scanln(&command)
+			if err != nil {
+				fmt.Println("Invalid command input")
+				continue
+			}
+			versions, err := manager.GetVersionCount(command)
+			if err != nil {
+				fmt.Print(err)
+			}
+			if versions > 0 {
+				fmt.Print("Snapshot for key already exists")
+				continue
+			}
+			memtables := engine.GetAllMemtables()
+			sstables, err := engine.GetAllSSTablesForSnapshot()
+			if err != nil {
+				fmt.Println("Error getting sstables")
+				continue
+			}
+			sstableManager := engine.GetSSTableManager()
+			manager.AddMany(command, &memtables, &sstables, &sstableManager)
+		} else if command == 2 {
+			fmt.Println()
+			fmt.Print("Enter snapshot key: ")
+
+			checkpointList := list.New()
+			for key := range manager.SnapshotManagerMap {
+				checkpointList.PushBack(key)
+				fmt.Println(key)
+			}
+
+			var command string
+			_, err := fmt.Scanln(&command)
+			if err != nil {
+				fmt.Println("Invalid command input")
+				continue
+			}
+
+			versions, err := manager.GetVersionCount(command)
+			if err != nil {
+				fmt.Print(err)
+			}
+			if versions == 0 {
+				fmt.Print("Key not tracked in snapshot")
+				continue
+			}
+			snapshotList, err := manager.GetList(command)
+			if err != nil {
+				fmt.Print(err)
+				continue
+			}
+
+			timestampMap := make(map[time.Time]bool, snapshotList.Len())
+			for elem := snapshotList.Front(); elem != nil; elem = elem.Next() {
+				bytes, err := elem.Value.(sp.SnapshotInterface).GetValue()
+				timestamp := elem.Value.(sp.SnapshotInterface).GetTimestamp()
+				_, ok := timestampMap[timestamp]
+				if err == nil && bytes != nil && !ok {
+					fmt.Println("Value ", string(*bytes), " : ", timestamp)
+					timestampMap[timestamp] = true
+				}
+			}
+		} else {
 			fmt.Println("ERROR UNKNOWN COMMAND")
 		}
 	}
