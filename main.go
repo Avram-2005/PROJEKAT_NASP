@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	checkpoint "github.com/Avram-2005/PROJEKAT_NASP/Checkpoint"
 	eng "github.com/Avram-2005/PROJEKAT_NASP/Engine"
@@ -892,15 +893,14 @@ func snapshotMenu(engine *eng.Engine) {
 			}
 			sstableManager := engine.GetSSTableManager()
 			manager.AddMany(command, &memtables, &sstables, &sstableManager)
-		}
-		if command == 2 {
+		} else if command == 2 {
 			fmt.Println()
 			fmt.Print("Enter snapshot key: ")
 
 			checkpointList := list.New()
 			for key := range manager.SnapshotManagerMap {
 				checkpointList.PushBack(key)
-				fmt.Print(key)
+				fmt.Println(key)
 			}
 
 			var command string
@@ -923,12 +923,19 @@ func snapshotMenu(engine *eng.Engine) {
 				fmt.Print(err)
 				continue
 			}
+
+			timestampMap := make(map[time.Time]bool, snapshotList.Len())
 			for elem := snapshotList.Front(); elem != nil; elem = elem.Next() {
 				bytes, err := elem.Value.(sp.SnapshotInterface).GetValue()
-				if err == nil && bytes != nil {
-					fmt.Println("Value ", string(*bytes), " : ", elem.Value.(sp.SnapshotInterface).GetTimestamp())
+				timestamp := elem.Value.(sp.SnapshotInterface).GetTimestamp()
+				_, ok := timestampMap[timestamp]
+				if err == nil && bytes != nil && !ok {
+					fmt.Println("Value ", string(*bytes), " : ", timestamp)
+					timestampMap[timestamp] = true
 				}
 			}
+		} else {
+			fmt.Println("ERROR UNKNOWN COMMAND")
 		}
 	}
 }
