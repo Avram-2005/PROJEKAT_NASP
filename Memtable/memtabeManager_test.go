@@ -17,7 +17,7 @@ func makeManager(t *testing.T, structType string, maxCount int, maxEntries int) 
 		SkipListMaxHeight: 8,
 		BPlusTreeDegree:   2,
 	}
-	m, err := NewMemtableManager(maxCount, conf, nil)
+	m, err := NewMemtableManager(maxCount, conf, nil, nil)
 	if err != nil {
 		t.Fatalf("[%s] Failed to load NewMemtableManager %v", structType, err)
 	}
@@ -30,7 +30,7 @@ func TestNewManagerInvalidMaxCount(t *testing.T) {
 		Type:           "hashmap",
 		MaxSizeEntries: 5,
 	}
-	_, err := NewMemtableManager(0, conf, nil)
+	_, err := NewMemtableManager(0, conf, nil, nil)
 	if err == nil {
 		t.Fatal("Expected error when maxCount is one")
 	}
@@ -116,7 +116,7 @@ func TestMaxInstancesNotExceeded(t *testing.T) {
 			m, _ := NewMemtableManager(2, conf, func(entries []*record.Record) error {
 				flushed++
 				return nil
-			})
+			}, nil)
 			for i := 0; i < 4; i++ {
 				m.Put(fmt.Sprintf("kljuc%d", i), []byte(fmt.Sprintf("val%d", i)))
 

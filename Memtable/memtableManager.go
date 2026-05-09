@@ -14,9 +14,10 @@ type MemtableManager struct {
 	maxCount   int
 	baseConfig MemtableConfig
 	Flush      func(entries []*record.Record) error
+	FlushWAL   func() error
 }
 
-func NewMemtableManager(maxCount int, config MemtableConfig, Flush func([]*record.Record) error) (*MemtableManager, error) {
+func NewMemtableManager(maxCount int, config MemtableConfig, Flush func([]*record.Record) error, FlushWAL func() error) (*MemtableManager, error) {
 	if maxCount < 1 {
 		return nil, fmt.Errorf("Number of instances of memtable must be greater or equal to 1")
 	}
@@ -29,6 +30,7 @@ func NewMemtableManager(maxCount int, config MemtableConfig, Flush func([]*recor
 		maxCount:   maxCount,
 		baseConfig: config,
 		Flush:      Flush,
+		FlushWAL:   FlushWAL,
 	}, nil
 }
 
@@ -49,6 +51,11 @@ func (mm *MemtableManager) rotateAndFlushIfNecessary() error {
 			}
 		}
 		mm.instances = mm.instances[1:]
+	}
+	if mm.FlushWAL != nil {
+		if err := mm.FlushWAL(); err != nil {
+			return fmt.Errorf("Error while flushing WAL: %w", err)
+		}
 	}
 	newTable, err := NewMemtableAdapter(mm.baseConfig)
 	if err != nil {

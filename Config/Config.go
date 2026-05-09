@@ -89,7 +89,7 @@ SSTableConfig:
   SummaryInterval: 40
   MultipleFiles: false
 WriteAheadLogConfig:
-  SegmentSize: 64
+  SegmentSize: 16
   FilePath: ../DataBase/walDATA
 LSMConfig:
   NumLevels: 4
@@ -136,27 +136,33 @@ func (config *Config) Initialize(bm *BlockManager.BlockManager, configFile *os.F
 		config.SSTableConfig = defaultConfig.SSTableConfig
 		isConfigValid = false
 	}
-	_, err = config.InitializeMemtable(func(entries []*record.Record) error {
-		return lsm.Flush(entries)
-	})
-	if err != nil {
-		fmt.Print("Memtable configuration is incorrect, default configuration will be used.\n")
-		config.MemtableConfig = defaultConfig.MemtableConfig
-		isConfigValid = false
-	}
-	_, err = config.InitializeTokenBucket()
-	if err != nil {
-		fmt.Print("Token bucket configuration is incorrect, default configuration will be used.\n")
-		config.TokenBucketConfig = defaultConfig.TokenBucketConfig
-		isConfigValid = false
-	}
 	wal, err := config.InitializeWAL()
 	if err != nil {
 		fmt.Print("WAL configuration is incorrect, default configuration will be used.\n")
 		config.WriteAheadLogConfig = defaultConfig.WriteAheadLogConfig
 		isConfigValid = false
 	}
-	wal.Close()
+	_, err = config.InitializeMemtable(func(entries []*record.Record) error {
+		return lsm.Flush(entries)
+	}, func() error {
+		return wal.MemtableRotation()
+	})
+	if err != nil {
+		fmt.Print("Memtable configuration is incorrect, default configuration will be used.\n")
+		config.MemtableConfig = defaultConfig.MemtableConfig
+		isConfigValid = false
+	}
+
+	if wal != nil {
+		wal.Close()
+	}
+
+	_, err = config.InitializeTokenBucket()
+	if err != nil {
+		fmt.Print("Token bucket configuration is incorrect, default configuration will be used.\n")
+		config.TokenBucketConfig = defaultConfig.TokenBucketConfig
+		isConfigValid = false
+	}
 	if !isConfigValid {
 		return fmt.Errorf("configuration file has improper values")
 	}
@@ -167,7 +173,7 @@ func (config *Config) InitializeBlockManager() (*BlockManager.BlockManager, erro
 	return BlockManager.NewBlockManager(config.BufferPoolConfig.MaxSize, config.BufferPoolConfig.BlockSize)
 }
 
-func (config *Config) InitializeMemtable(Flush func([]*record.Record) error) (*memtable.MemtableManager, error) {
+func (config *Config) InitializeMemtable(Flush func([]*record.Record) error, FlushWAL func() error) (*memtable.MemtableManager, error) {
 	memtableConfig := &memtable.MemtableConfig{
 		Type:              config.MemtableConfig.Type,
 		MaxSizeBytes:      config.MemtableConfig.MaxSizeBytes,
@@ -175,7 +181,7 @@ func (config *Config) InitializeMemtable(Flush func([]*record.Record) error) (*m
 		BPlusTreeDegree:   config.MemtableConfig.BPlusTreeDegree,
 		SkipListMaxHeight: config.MemtableConfig.SkipListMaxHeight,
 	}
-	return memtable.NewMemtableManager(config.MemtableConfig.MaxCount, *memtableConfig, Flush)
+	return memtable.NewMemtableManager(config.MemtableConfig.MaxCount, *memtableConfig, Flush, FlushWAL)
 }
 
 func (config *Config) InitializeCache() (*cache.Cache, error) {

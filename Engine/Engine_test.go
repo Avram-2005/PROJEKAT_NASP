@@ -76,7 +76,7 @@ func TestEngineBasicFunctions(t *testing.T) {
 		t.FailNow()
 	}
 	if !reflect.DeepEqual(data3, compare3) {
-		fmt.Print("data1 not equal before and after write")
+		fmt.Print("data3 not equal before and after write")
 		fmt.Print(data3, compare3)
 		t.FailNow()
 	}
@@ -98,7 +98,7 @@ func TestEngineBasicFunctions(t *testing.T) {
 		t.FailNow()
 	}
 	if !reflect.DeepEqual(data1, compare1) {
-		fmt.Print("data1 not equal before and after write")
+		fmt.Print("data12 not equal before and after write")
 		fmt.Print(data1, compare1)
 		t.FailNow()
 	}
@@ -109,7 +109,7 @@ func TestEngineBasicFunctions(t *testing.T) {
 		t.FailNow()
 	}
 	if !reflect.DeepEqual(data2, compare2) {
-		fmt.Print("data2 not equal before and after write")
+		fmt.Print("data22 not equal before and after write")
 		fmt.Print(data2, compare2)
 		t.FailNow()
 	}
@@ -120,7 +120,7 @@ func TestEngineBasicFunctions(t *testing.T) {
 		t.FailNow()
 	}
 	if !reflect.DeepEqual(data3, compare3) {
-		fmt.Print("data1 not equal before and after write")
+		fmt.Print("data32 not equal before and after write")
 		fmt.Print(data3, compare3)
 		t.FailNow()
 	}

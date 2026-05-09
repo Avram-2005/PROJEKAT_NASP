@@ -30,7 +30,7 @@ const (
 	FILE_PATH      = "./WAL/walDATA"
 	FILE_EXTENSION = ".wal"
 
-	//Tipovi "chunk-ova" koji se koriste kada zapis ne staje u jedan blok i mora da se iseče na delove
+	//Tipovi chunkova koji se koriste kada zapis ne staje u jedan blok i mora da se iseče na delove
 	ChunkTypeZero   byte = 0
 	ChunkTypeFull   byte = 1
 	ChunkTypeFirst  byte = 2
@@ -40,14 +40,14 @@ const (
 
 // CreatNewWAL pronalazi postojeće fajlove ili pravi nove, i vraća spremnu WAL strukturu
 func CreatNewWAL(sizeSegment int, blocksize int, filePath string, memtableRotationCount int) (*WAL, error) {
-	bm, err := BlockManager.NewBlockManager(2, blocksize)
-	if err != nil {
-		return nil, err
+	sizeSegment = sizeSegment * blocksize
+	if sizeSegment < 64 {
+		return nil, fmt.Errorf("size of segment must be at least 64KB")
 	}
 
 	//Pravimo folder za WAL ukoliko već ne postoji
 	if err := os.MkdirAll(filePath, 0755); err != nil {
-		return nil, fmt.Errorf("kritična greška: %v", err)
+		return nil, fmt.Errorf("critical error: %v", err)
 	}
 
 	//Skeniramo folder i skupljamo sve postojeće .wal fajlove u segmentList
@@ -88,21 +88,31 @@ func CreatNewWAL(sizeSegment int, blocksize int, filePath string, memtableRotati
 		writeFile:             writeFile,
 		currentWritePosition:  int(pos),
 		segmentSize:           sizeSegment * 1024,
-		blockManager:          bm,
+		blockManager:          nil,
 		memtableRotationCount: memtableRotationCount,
-	}
-	//proveravamo da li je segmentSize promenjen od poslednjeg pokretanja, i ako jeste, refaktorisemo fajlove da se uklope u novu veličinu
-	if err := walInstance.refactor(); err != nil {
-		return nil, err
 	}
 
 	return walInstance, nil
 }
 
+func (wal *WAL) SetBlockManager(blockManager *BlockManager.BlockManager) error {
+	if blockManager == nil {
+		return fmt.Errorf("BlockManager must not be nil")
+	}
+	wal.blockManager = blockManager
+
+	//proveravamo da li je segmentSize promenjen od poslednjeg pokretanja, i ako jeste, refaktorisemo fajlove da se uklope u novu veličinu
+	err := wal.refactor()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // AddRecord pakuje ključ i vrednost u novi Record i šalje ga na upis
 func (wal *WAL) AddRecord(key string, value []byte) (*Record.Record, error) {
 	if len(key) == 0 {
-		return nil, fmt.Errorf("kljuc je prazan")
+		return nil, fmt.Errorf("key is empty")
 	}
 
 	rec, err := Record.NewRecord(key, value, false, time.Now())
@@ -115,7 +125,7 @@ func (wal *WAL) AddRecord(key string, value []byte) (*Record.Record, error) {
 // DeleteRecord kreira Record sa Tombstone markerom koji označava da je ključ obrisan, i šalje ga na upis
 func (wal *WAL) DeleteRecord(key string) (*Record.Record, error) {
 	if len(key) == 0 {
-		return nil, fmt.Errorf("kljuc je prazan")
+		return nil, fmt.Errorf("key is empty")
 	}
 
 	rec, err := Record.NewRecord(key, nil, true, time.Now())
@@ -146,7 +156,7 @@ func (wal *WAL) appendRecord(newRecord *Record.Record) error {
 
 		//Svaki chunk mora imati 1 bajt za tip i barem 20 bajtova za podatke.
 		//Ako nema toliko mesta, ostatak bloka punimo nulama i idemo na sledeći blok
-		if remainingInBlock <= 20 {
+		if remainingInBlock <= 22 {
 			padding := make([]byte, remainingInBlock)
 			wal.blockManager.PutSpecific(wal.writeFile, wal.currentWritePosition/blockSize, blockOffset, remainingInBlock, &padding)
 			wal.currentWritePosition += remainingInBlock
@@ -211,11 +221,12 @@ func (wal *WAL) rotateSegment() error {
 
 // memtableRotation se poziva spolja kada se Memtable napuni
 // Belezimo segmente koji su aktivni tokom memtable rotacije, jer su oni potencijalno potrebni za recovery
-func (wal *WAL) memtableRotation() {
+func (wal *WAL) MemtableRotation() error {
 	wal.lowWatermarks = append(wal.lowWatermarks, wal.segmentList[len(wal.segmentList)-1])
 	if len(wal.lowWatermarks) >= wal.memtableRotationCount {
-		wal.FlushWAL()
+		return wal.FlushWAL()
 	}
+	return nil
 }
 
 // FlushWAL fizički briše stare WAL segmente sa diska koji više nisu potrebni
@@ -247,7 +258,7 @@ func (wal *WAL) FlushWAL() error {
 
 		err := os.Remove(pathToDelete)
 		if err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("neuspesno brisanje WAL segmenta %s: %v", pathToDelete, err)
+			return fmt.Errorf("failed to delete WAL segment %s: %v", pathToDelete, err)
 		}
 	}
 
@@ -258,10 +269,10 @@ func (wal *WAL) FlushWAL() error {
 }
 
 // Recovery prolazi kroz sve fajlove po redu i oživljava Memtable
-func (wal *WAL) Recovery(mm *memtable.MemtableManager) error {
+func (wal *WAL) Recovery(mm *memtable.MemtableManager, lastSSTableTimestamp time.Time) error {
 	var recordBuffer []byte
 	for _, path := range wal.segmentList {
-		if err := wal.recoverSingleSegment(path, mm, &recordBuffer); err != nil {
+		if err := wal.recoverSingleSegment(path, mm, &recordBuffer, lastSSTableTimestamp); err != nil {
 			return err
 		}
 	}
@@ -269,7 +280,7 @@ func (wal *WAL) Recovery(mm *memtable.MemtableManager) error {
 }
 
 // recoverSingleSegment čita jedan specifičan WAL fajl i obnavlja zapise
-func (wal *WAL) recoverSingleSegment(path string, mm *memtable.MemtableManager, buffer *[]byte) error {
+func (wal *WAL) recoverSingleSegment(path string, mm *memtable.MemtableManager, buffer *[]byte, lastSSTableTimestamp time.Time) error {
 	file, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -309,11 +320,14 @@ func (wal *WAL) recoverSingleSegment(path string, mm *memtable.MemtableManager, 
 				}
 				rec, totalSize, err := Record.DeserializeRecord(data[offset+1:])
 				if err == nil {
-					mm.PutRecord(rec)
+					if rec.Timestamp.After(lastSSTableTimestamp) {
+						mm.PutRecord(rec)
+					}
 					offset += 1 + totalSize
 				} else {
 					offset = len(data)
 				}
+				*buffer = (*buffer)[:0]
 
 			case ChunkTypeFirst:
 				//Zapis je isečen na više delova. Ovde je početak, pa ga čuvamo u bafer dok ne nađemo ostatak
@@ -352,7 +366,9 @@ func (wal *WAL) recoverSingleSegment(path string, mm *memtable.MemtableManager, 
 				*buffer = append(*buffer, data[offset+1:offset+1+missingBytes]...)
 				rec, _, err := Record.DeserializeRecord(*buffer)
 				if err == nil {
-					mm.PutRecord(rec)
+					if rec.Timestamp.After(lastSSTableTimestamp) {
+						mm.PutRecord(rec)
+					}
 				}
 
 				*buffer = (*buffer)[:0]
@@ -374,7 +390,7 @@ func (wal *WAL) refactor() error {
 
 	firstFileInfo, err := os.Stat(wal.segmentList[0])
 	if err != nil {
-		return fmt.Errorf("greska pri citanju prvog segmenta: %v", err)
+		return fmt.Errorf("failed to read first segment: %v", err)
 	}
 
 	if firstFileInfo.Size() == int64(wal.segmentSize) {
@@ -389,7 +405,7 @@ func (wal *WAL) refactor() error {
 	for _, stariFajl := range wal.segmentList {
 		binPath := stariFajl + ".bin"
 		if err := os.Rename(stariFajl, binPath); err != nil {
-			return fmt.Errorf("greska pri pravljenju bekapa: %v", err)
+			return fmt.Errorf("failed to create backup: %v", err)
 		}
 		backupFiles = append(backupFiles, binPath)
 	}
@@ -400,7 +416,7 @@ func (wal *WAL) refactor() error {
 	firstPath := filepath.Join(wal.filePath, fmt.Sprintf("%s0000%s", SEGMENT_NAME, FILE_EXTENSION))
 	newFile, err := os.OpenFile(firstPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
-		return fmt.Errorf("greska pri kreiranju prvog refaktorisanog fajla: %v", err)
+		return fmt.Errorf("failed to create first refactored file: %v", err)
 	}
 	wal.segmentList = append(wal.segmentList, firstPath)
 	wal.writeFile = newFile
@@ -409,7 +425,7 @@ func (wal *WAL) refactor() error {
 	for _, binPath := range backupFiles {
 		binFile, err := os.Open(binPath)
 		if err != nil {
-			return fmt.Errorf("greska pri otvaranju bekap fajla %s: %v", binPath, err)
+			return fmt.Errorf("failed to open backup file %s: %v", binPath, err)
 		}
 
 		for blockNum := 0; ; blockNum++ {
@@ -421,14 +437,14 @@ func (wal *WAL) refactor() error {
 			if wal.currentWritePosition >= wal.segmentSize {
 				if err := wal.rotateSegment(); err != nil {
 					binFile.Close()
-					return fmt.Errorf("greska pri rotaciji tokom refaktorisanja: %v", err)
+					return fmt.Errorf("failed to rotate segment during refactoring: %v", err)
 				}
 			}
 
 			err = wal.blockManager.PutSpecific(wal.writeFile, wal.currentWritePosition/blockSize, 0, len(*block), block)
 			if err != nil {
 				binFile.Close()
-				return fmt.Errorf("greska pri prepisivanju bloka: %v", err)
+				return fmt.Errorf("failed to rewrite block: %v", err)
 			}
 
 			wal.currentWritePosition += len(*block)
