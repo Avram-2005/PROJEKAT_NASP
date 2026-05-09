@@ -88,7 +88,7 @@ func NewEngine(configPath string, walPath string, sstablePath string) (*Engine, 
 		func(entries []*record.Record) error {
 			return engineLSMTree.Flush(entries)
 		}, func() error {
-			return engineWriteAheadLog.FlushWAL()
+			return engineWriteAheadLog.MemtableRotation()
 		})
 	if err != nil {
 		return nil, err
