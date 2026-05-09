@@ -102,7 +102,7 @@ func advanceIterator(h *IterHeap, iter *SSTableIterator) error {
 	return nil
 }
 
-func (sstm *SSTableManager) multipleFilesMerge(ssts []*SSTable, level int, tableNum int) (*SSTable, error) {
+func (sstm *SSTableManager) multipleFilesMerge(ssts []*SSTable, level int, tableNum int, shouldDeleteTombstones bool) (*SSTable, error) {
 	// Cannot calculate number of records in advance, so we set it to 0 for now
 	state, err := sstm.multipleFilesFlushInit(level, tableNum, 0)
 	if err != nil {
@@ -137,7 +137,7 @@ func (sstm *SSTableManager) multipleFilesMerge(ssts []*SSTable, level int, table
 			}
 		}
 
-		if currentRec.Tombstone {
+		if shouldDeleteTombstones && currentRec.Tombstone {
 			continue
 		}
 
@@ -158,7 +158,7 @@ func (sstm *SSTableManager) multipleFilesMerge(ssts []*SSTable, level int, table
 	return sst, err
 }
 
-func (sstm *SSTableManager) oneFileMerge(ssts []*SSTable, level int, tableNum int) (*SSTable, error) {
+func (sstm *SSTableManager) oneFileMerge(ssts []*SSTable, level int, tableNum int, shouldDeleteTombstones bool) (*SSTable, error) {
 	// Cannot calculate number of records in advance, so we set it to 0 for now
 	state, err := sstm.oneFileFlushInit(level, tableNum, 0)
 	if err != nil {
@@ -189,11 +189,11 @@ func (sstm *SSTableManager) oneFileMerge(ssts []*SSTable, level int, tableNum in
 			}
 		}
 
-		if currentRec.Tombstone {
+		if shouldDeleteTombstones && currentRec.Tombstone {
 			continue
 		}
 
-		sstm.oneFileFlushRecord(level, currentRec, state)
+		sstm.oneFileFlushRecord(currentRec, state)
 		numRecs++
 	}
 	sst, err := sstm.oneFileFlushFinalize(level, state, tableNum)
